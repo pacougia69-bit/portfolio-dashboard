@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1766592089777,
+      "tag": "0000_boring_warpath",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1766592166753,
+      "tag": "0001_mysterious_venus",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1766595710571,
+      "tag": "0002_unique_power_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1766615039417,
+      "tag": "0003_mean_havok",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1766653125383,
+      "tag": "0004_ordinary_sally_floyd",
+      "breakpoints": true
+    }
+  ]
+}
