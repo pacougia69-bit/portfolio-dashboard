@@ -3,15 +3,14 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
-
   "scripts": {
-  "dev": "NODE_ENV=development tsx watch server/core/index.ts",
-  "build": "vite build && esbuild server/_core/index.prod.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-  "start": "NODE_ENV=production node dist/index.prod.js",
-  "check": "tsc --noEmit",
-  "format": "prettier --write .",
-  "test": "vitest run",
-  "db:push": "drizzle-kit generate && drizzle-kit migrate"
+    "dev": "NODE_ENV=development tsx watch server/core/index.ts",
+    "build": "vite build && esbuild server/_core/index.prod.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "start": "NODE_ENV=production node dist/index.prod.js",
+    "check": "tsc --noEmit",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
@@ -64,6 +63,7 @@
     "mysql2": "^3.15.0",
     "nanoid": "^5.1.5",
     "next-themes": "^0.4.6",
+    "openai": "^4.77.0",
     "react": "^19.2.1",
     "react-day-picker": "^9.11.1",
     "react-dom": "^19.2.1",
@@ -105,5 +105,4 @@
     "vitest": "^2.1.4"
   },
   "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af"
-  
 }
