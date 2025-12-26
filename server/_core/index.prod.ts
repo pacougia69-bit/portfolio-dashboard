@@ -27,8 +27,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 function serveStatic(app: express.Express) {
-  const distPath = path.resolve(import.meta.dirname, 'public')
-  if (!fs.existsSync(distPath)) {
+const distPath = path.resolve(import.meta.dirname, '../../dist/public')  if (!fs.existsSync(distPath)) {
     console.error(`Could not find the build directory: ${distPath}`)
   } else {
     console.log(`Serving static files from ${distPath}`)
