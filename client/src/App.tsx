@@ -27,14 +27,17 @@ import HilfePage from "./pages/HilfePage";
 const PIN_UNLOCKED_KEY = 'pin_unlocked_at';
 const PIN_LOCK_TIMEOUT_KEY = 'pin_lock_timeout';
 
-function usePinLock() {
+function usePinLock(isAuthenticated: boolean) {
   const [isLocked, setIsLocked] = useState(true);
   const [checkingPin, setCheckingPin] = useState(true);
-  const { data: pinStatus, isLoading: pinStatusLoading } = trpc.settings.getPinStatus.useQuery();
+  const { data: pinStatus, isLoading: pinStatusLoading } = trpc.settings.getPinStatus.useQuery(undefined, {
+    enabled: isAuthenticated,
+  });
   const verifyPinMutation = trpc.settings.verifyPin.useMutation();
 
   // Check if PIN is enabled and if we should show lock screen
   useEffect(() => {
+    if (!isAuthenticated) return;
     if (pinStatusLoading) return;
     
     if (!pinStatus?.enabled) {
@@ -212,8 +215,8 @@ function Router() {
 }
 
 function AppContent() {
-  const { isLocked, checkingPin, verifyPin, unlock } = usePinLock();
   const { loading: authLoading, isAuthenticated } = useAuth();
+  const { isLocked, checkingPin, verifyPin, unlock } = usePinLock(isAuthenticated);
 
   // Show loading while checking auth and PIN status
   if (authLoading || (isAuthenticated && checkingPin)) {
