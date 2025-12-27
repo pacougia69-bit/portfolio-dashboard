@@ -21,5 +21,5 @@ export const getAppUrl = () => {
 export const getLoginUrl = () => {
   const baseUrl = getAppUrl();
   // Ensure trailing slash is removed before adding path
-  return baseUrl.replace(/\/$/, "") + "/";
+  return baseUrl.replace(/\/$/, "") + "/login";
 };

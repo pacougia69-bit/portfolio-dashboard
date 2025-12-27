@@ -10,6 +10,7 @@ import { getLoginUrl } from "@/const";
 import { Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import PinLock from "./components/PinLock";
+import Login from "./pages/Login";
 
 // Pages
 import DashboardPage from "./pages/DashboardPage";
@@ -175,6 +176,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function Router() {
   return (
     <Switch>
+      <Route path="/login" component={Login} />
       <Route path="/">
         {() => <ProtectedRoute component={DashboardPage} />}
       </Route>
