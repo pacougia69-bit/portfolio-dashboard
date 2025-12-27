@@ -11,13 +11,32 @@ export type TrpcContext = {
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
+  // Default demo user - app works without authentication
+  const defaultUser: User = {
+    id: 1,
+    openId: 'demo-user',
+    name: 'Demo User',
+    email: 'demo@portfolio.local',
+    loginMethod: 'none',
+    role: 'user',
+    pin: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    lastSignedIn: new Date(),
+  };
+
   let user: User | null = null;
 
   try {
     user = await sdk.authenticateRequest(opts.req);
   } catch (error) {
-    // Authentication is optional for public procedures.
-    user = null;
+    // Authentication disabled - always use default demo user
+    user = defaultUser;
+  }
+
+  // If no authenticated user, use default demo user
+  if (!user) {
+    user = defaultUser;
   }
 
   return {
