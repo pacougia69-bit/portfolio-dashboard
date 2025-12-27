@@ -34,6 +34,21 @@ async function startServer() {
   const port = Number(process.env.PORT || 3000)
   const host = '0.0.0.0'
 
+  // CORS-Headers für Entwicklung (erlaubt localhost-Anfragen)
+  app.use((req, res, next) => {
+    const origin = req.headers.origin
+    if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+      res.setHeader('Access-Control-Allow-Credentials', 'true')
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    }
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200)
+    }
+    next()
+  })
+
   app.get('/health', (_req, res) => res.status(200).send('OK'))
 
   registerOAuthRoutes(app)

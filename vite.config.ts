@@ -29,6 +29,13 @@ export default defineConfig({
   },
   server: {
     host: true,
+    // Proxy für API-Requests in der Entwicklung
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
     allowedHosts: [
       ".manuspre.computer",
       ".manus.computer",
