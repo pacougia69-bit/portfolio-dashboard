@@ -7,7 +7,9 @@ import { defineConfig } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime()];
+// vitePluginManusRuntime() temporär deaktiviert - verursacht fehlendes <div id="root"></div>
+// Dies führt zu schwarzem Bildschirm auf Railway, da React sich nicht mounten kann
+const plugins = [react(), tailwindcss(), jsxLocPlugin()];
 
 export default defineConfig({
   plugins,
