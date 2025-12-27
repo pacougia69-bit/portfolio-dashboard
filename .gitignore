@@ -1,1 +1,9 @@
 node_modules
+
+# Build artifacts
+dist/
+client/public/assets/
+client/public/index.html
+
+# Environment variables
+.env
