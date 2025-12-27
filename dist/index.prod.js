@@ -2119,14 +2119,14 @@ async function createContext(opts) {
 
 // server/_core/index.prod.ts
 function serveStatic(app) {
-  const distPath = path.resolve(import.meta.dirname, "../../public");
+  const distPath = path.resolve(process.cwd(), "public");
   if (!fs.existsSync(distPath)) {
     console.error(`Could not find the build directory: ${distPath}`);
   } else {
     console.log(`Serving static files from ${distPath}`);
   }
   app.use(express.static(distPath));
-  app.use("*", (req, res) => {
+  app.use("*", (_req, res) => {
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
@@ -2158,4 +2158,6 @@ async function startServer() {
     });
   });
 }
-startServer().catch(console.error);
+startServer().catch((err) => {
+  console.error("\u274C Failed to start server:", err);
+});
