@@ -23,7 +23,10 @@ export default function Login() {
 
   const handleLogin = () => {
     // Redirect to OAuth login
-    window.location.href = `${import.meta.env.VITE_OAUTH_PORTAL_URL}?app_id=${import.meta.env.VITE_APP_ID}`;
+    // VITE_OAUTH_PORTAL_URL should be set in Railway environment variables
+    const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL || 'http://localhost:3000';
+    const appId = import.meta.env.VITE_APP_ID || 'demo-app';
+    window.location.href = `${oauthPortalUrl}?app_id=${appId}`;
   };
 
   if (isLoading) {
