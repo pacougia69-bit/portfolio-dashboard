@@ -360,15 +360,10 @@ Antworte immer auf Deutsch.`;
 4. Vorschläge für Rebalancing falls nötig`;
 
   try {
-    const response = await invokeLLM({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-    
-    const content = response.choices[0]?.message?.content;
-    const analysis = typeof content === 'string' ? content : "Analyse konnte nicht erstellt werden.";
+    const analysis = await invokeLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ]);
     
     // Save analysis to database
     await saveAiAnalysis(userId, "portfolio", analysis);
@@ -416,15 +411,10 @@ Bitte gib mir eine Einschätzung zu ${name} (${ticker}):
 4. Falls Kaufen: Welcher Anteil am Portfolio wäre sinnvoll?`;
 
   try {
-    const response = await invokeLLM({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-    
-    const recContent = response.choices[0]?.message?.content;
-    const recommendation = typeof recContent === 'string' ? recContent : "Empfehlung konnte nicht erstellt werden.";
+    const recommendation = await invokeLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ]);
     
     // Determine action from response
     let action = "Halten";
