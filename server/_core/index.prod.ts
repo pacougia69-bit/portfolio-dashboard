@@ -27,7 +27,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 function serveStatic(app: express.Express) {
-  const distPath = path.resolve(import.meta.dirname, 'public')
+  const distPath = path.resolve(import.meta.dirname, "../../public")
   if (!fs.existsSync(distPath)) {
     console.error(`Could not find the build directory: ${distPath}`)
   } else {
@@ -41,24 +41,23 @@ function serveStatic(app: express.Express) {
 
 async function startServer() {
   const app = express()
-  const server = createServer(app)
-  
-  app.use(express.json({ limit: '50mb' }))
-  app.use(express.urlencoded({ limit: '50mb', extended: true }))
-  
+  const port = await findAvailablePort(Number(process.env.PORT) || 3000)
+
   registerOAuthRoutes(app)
-  app.use('/api/trpc', createExpressMiddleware({
-    router: appRouter,
-    createContext
-  }))
-  
+
+  app.use(
+    '/api/trpc',
+    createExpressMiddleware({
+      router: appRouter,
+      createContext,
+    }),
+  )
+
   serveStatic(app)
-  
-  const preferredPort = parseInt(process.env.PORT || '3000')
-  const port = await findAvailablePort(preferredPort)
-  
-  server.listen(port, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${port}`)
+
+  const httpServer = createServer(app)
+  httpServer.listen(port, () => {
+    console.log(`Server is running on http://localhost:${port}`)
   })
 }
 
