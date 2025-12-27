@@ -2121,13 +2121,20 @@ async function createContext(opts) {
 function serveStatic(app) {
   const distPath = path.resolve(process.cwd(), "public");
   if (!fs.existsSync(distPath)) {
-    console.error(`Could not find the build directory: ${distPath}`);
-  } else {
-    console.log(`Serving static files from ${distPath}`);
+    console.error(`\u274C Could not find the build directory: ${distPath}`);
+    console.error('Make sure "pnpm build" was run and created the public/ folder.');
+    return;
   }
+  console.log(`\u2705 Serving static files from ${distPath}`);
   app.use(express.static(distPath));
   app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+    const indexPath = path.resolve(distPath, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      console.error(`\u274C index.html not found at ${indexPath}`);
+      res.status(404).send("index.html not found");
+    }
   });
 }
 async function startServer() {
@@ -2157,7 +2164,15 @@ async function startServer() {
       process.exit(0);
     });
   });
+  process.on("SIGINT", () => {
+    console.log("SIGINT signal received: closing HTTP server");
+    httpServer.close(() => {
+      console.log("HTTP server closed");
+      process.exit(0);
+    });
+  });
 }
 startServer().catch((err) => {
   console.error("\u274C Failed to start server:", err);
+  process.exit(1);
 });
