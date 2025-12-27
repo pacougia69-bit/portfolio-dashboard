@@ -2119,7 +2119,7 @@ async function createContext(opts) {
 
 // server/_core/index.prod.ts
 function serveStatic(app) {
-  const distPath = path.resolve(process.cwd(), "public");
+  const distPath = path.resolve(process.cwd(), "dist", "public");
   if (!fs.existsSync(distPath)) {
     console.error(`\u274C Could not find the build directory: ${distPath}`);
     console.error('Make sure "pnpm build" was run and created the public/ folder.');
