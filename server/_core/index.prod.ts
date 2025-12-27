@@ -12,7 +12,7 @@ const distPath = path.resolve(process.cwd(), 'dist', 'public')
 
   if (!fs.existsSync(distPath)) {
     console.error(`❌ Could not find the build directory: ${distPath}`)
-    console.error('Make sure "pnpm build" was run and created the public/ folder.')
+    console.error('Make sure "pnpm build" was run and created the dist/public/ folder.')
     return // Wichtig: Nicht weiter machen, wenn public/ fehlt
   }
 
