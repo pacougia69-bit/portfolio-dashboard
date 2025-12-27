@@ -8,32 +8,39 @@ import { appRouter } from '../routers'
 import { createContext } from './context'
 
 function serveStatic(app: express.Express) {
-  const distPath = path.resolve(import.meta.dirname, "../../public")
+  // Wenn dein public-Ordner woanders liegt, diesen Pfad anpassen
+  const distPath = path.resolve(process.cwd(), 'public')
+
   if (!fs.existsSync(distPath)) {
     console.error(`Could not find the build directory: ${distPath}`)
   } else {
     console.log(`Serving static files from ${distPath}`)
   }
+
   app.use(express.static(distPath))
-  app.use('*', (req, res) => {
+
+  // Alle anderen Routen auf index.html leiten (SPA)
+  app.use('*', (_req, res) => {
     res.sendFile(path.resolve(distPath, 'index.html'))
   })
 }
 
 async function startServer() {
   const app = express()
-  
-  // ✅ Railway gibt den Port vor - nicht selbst suchen!
-  const port = Number(process.env.PORT || 3000)
-  const host = '0.0.0.0' // ✅ Nicht 'localhost'!
 
-  // ✅ Health-Check Endpunkt für Railway
+  // ✅ Railway-Port verwenden
+  const port = Number(process.env.PORT || 3000)
+  const host = '0.0.0.0'
+
+  // ✅ Healthcheck-Endpoint für Railway
   app.get('/health', (_req, res) => {
     res.status(200).send('OK')
   })
 
+  // Deine OAuth-Routen
   registerOAuthRoutes(app)
 
+  // tRPC Middleware
   app.use(
     '/api/trpc',
     createExpressMiddleware({
@@ -42,16 +49,17 @@ async function startServer() {
     }),
   )
 
+  // Statische Dateien (Frontend)
   serveStatic(app)
 
   const httpServer = createServer(app)
-  
-  // ✅ Auf 0.0.0.0 und process.env.PORT lauschen
+
+  // ✅ Auf 0.0.0.0 und process.env.PORT hören
   httpServer.listen(port, host, () => {
     console.log(`✅ Server is running on http://${host}:${port}`)
   })
 
-  // ✅ Graceful Shutdown für Railway
+  // ✅ Sauber herunterfahren (Railway SIGTERM)
   process.on('SIGTERM', () => {
     console.log('SIGTERM signal received: closing HTTP server')
     httpServer.close(() => {
@@ -61,4 +69,6 @@ async function startServer() {
   })
 }
 
-startServer().catch(console.error)
+startServer().catch((err) => {
+  console.error('❌ Failed to start server:', err)
+})
