@@ -360,20 +360,15 @@ Antworte immer auf Deutsch.`;
 4. Vorschläge für Rebalancing falls nötig`;
 
   try {
-    const response = await invokeLLM({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-    
-    const content = response.choices[0]?.message?.content;
-    const analysis = typeof content === 'string' ? content : "Analyse konnte nicht erstellt werden.";
+    const analysis = await invokeLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ]);
     
     // Save analysis to database
-    await saveAiAnalysis(userId, "portfolio", analysis);
+    await saveAiAnalysis(userId, "portfolio", analysis || "Analyse konnte nicht erstellt werden.");
     
-    return { analysis, type: "portfolio" };
+    return { analysis: analysis || "Analyse konnte nicht erstellt werden.", type: "portfolio" };
   } catch (error) {
     console.error("Error analyzing portfolio:", error);
     return { 
@@ -416,19 +411,14 @@ Bitte gib mir eine Einschätzung zu ${name} (${ticker}):
 4. Falls Kaufen: Welcher Anteil am Portfolio wäre sinnvoll?`;
 
   try {
-    const response = await invokeLLM({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-    
-    const recContent = response.choices[0]?.message?.content;
-    const recommendation = typeof recContent === 'string' ? recContent : "Empfehlung konnte nicht erstellt werden.";
+    const recommendation = await invokeLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ]);
     
     // Determine action from response
     let action = "Halten";
-    const lowerRec = recommendation.toLowerCase();
+    const lowerRec = (recommendation || "").toLowerCase();
     if (lowerRec.includes("kaufen") && !lowerRec.includes("nicht kaufen")) {
       action = "Kaufen";
     } else if (lowerRec.includes("verkaufen")) {
@@ -436,9 +426,9 @@ Bitte gib mir eine Einschätzung zu ${name} (${ticker}):
     }
     
     // Save analysis
-    await saveAiAnalysis(userId, "recommendation", recommendation, ticker);
+    await saveAiAnalysis(userId, "recommendation", recommendation || "Empfehlung konnte nicht erstellt werden.", ticker);
     
-    return { recommendation, action };
+    return { recommendation: recommendation || "Empfehlung konnte nicht erstellt werden.", action };
   } catch (error) {
     console.error("Error generating recommendation:", error);
     return { 
