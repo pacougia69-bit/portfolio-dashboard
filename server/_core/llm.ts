@@ -49,15 +49,23 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
     console.log(`Messages parameter type: ${Array.isArray(messages) ? 'array' : typeof messages}`);
     console.log(`Messages being sent:`, JSON.stringify(messages, null, 2));
     
-    // CRITICAL FIX: Ensure messages is always an array
-    const messagesArray = Array.isArray(messages) ? messages : [messages];
+    // CRITICAL FIX: Ensure messages is always an array with explicit validation
+    let messagesArray: Message[];
+    if (!Array.isArray(messages)) {
+      console.warn("Messages is not an array, converting:", typeof messages);
+      messagesArray = [messages as Message];
+    } else {
+      messagesArray = messages;
+    }
     
     if (messagesArray.length === 0) {
       throw new Error("Messages array is empty");
     }
     
-    // Convert messages to the exact format OpenAI expects
-    const formattedMessages: ChatCompletionMessageParam[] = messagesArray.map(msg => {
+    // Convert messages to the exact format OpenAI expects with strict validation
+    const formattedMessages: ChatCompletionMessageParam[] = [];
+    
+    for (const msg of messagesArray) {
       // Ensure msg is an object with required properties
       if (!msg || typeof msg !== 'object' || !msg.role) {
         console.error("Invalid message object:", msg);
@@ -79,27 +87,48 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
         throw new Error("Message content must be a string or text object");
       }
       
-      return {
+      // Explicitly create each message object
+      formattedMessages.push({
         role: msg.role as "system" | "user" | "assistant",
         content: contentStr
-      };
-    });
+      });
+    }
     
-    // CRITICAL: Verify formattedMessages is an array before sending to OpenAI
-    if (!Array.isArray(formattedMessages) || formattedMessages.length === 0) {
-      console.error("formattedMessages is not a valid array:", formattedMessages);
-      throw new Error("Failed to format messages array");
+    // CRITICAL: Triple-check formattedMessages is a valid array
+    if (!Array.isArray(formattedMessages)) {
+      console.error("FATAL: formattedMessages is not an array!");
+      throw new Error("Failed to create messages array");
+    }
+    
+    if (formattedMessages.length === 0) {
+      console.error("FATAL: formattedMessages array is empty!");
+      throw new Error("Messages array cannot be empty");
+    }
+    
+    // Validate each message object
+    for (let i = 0; i < formattedMessages.length; i++) {
+      const m = formattedMessages[i];
+      if (!m || typeof m !== 'object' || !m.role || !m.content) {
+        console.error(`Invalid formatted message at index ${i}:`, m);
+        throw new Error(`Invalid message object at index ${i}`);
+      }
     }
     
     console.log(`Formatted messages count: ${formattedMessages.length}`);
     console.log(`Formatted messages for OpenAI:`, JSON.stringify(formattedMessages, null, 2));
     
-    const response = await openai.chat.completions.create({
+    // Create the API call with explicit array spread to ensure it's recognized as array
+    const apiPayload = {
       model: model,
-      messages: formattedMessages,
+      messages: [...formattedMessages] as ChatCompletionMessageParam[],
       temperature: 0.7,
       max_tokens: 2000,
-    });
+    };
+    
+    console.log(`Final API payload messages type: ${Array.isArray(apiPayload.messages) ? 'array' : typeof apiPayload.messages}`);
+    console.log(`Final API payload messages length: ${apiPayload.messages.length}`);
+    
+    const response = await openai.chat.completions.create(apiPayload);
 
     const content = response.choices[0].message.content;
     
