@@ -1,6 +1,7 @@
 
 import { ENV } from "./env";
 import OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 const apiKey = process.env.OPENAI_API_KEY;
 const openai = apiKey ? new OpenAI({ apiKey }) : null;
@@ -45,10 +46,23 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
 
   try {
     console.log(`Attempting to use OpenAI model: ${model}`);
+    console.log(`Messages being sent:`, JSON.stringify(messages, null, 2));
+    
+    // Convert messages to the exact format OpenAI expects
+    const formattedMessages: ChatCompletionMessageParam[] = messages.map(msg => ({
+      role: msg.role as "system" | "user" | "assistant",
+      content: typeof msg.content === 'string' ? msg.content : 
+               Array.isArray(msg.content) ? msg.content.map(c => 
+                 typeof c === 'string' ? c : c.text
+               ).join(' ') :
+               msg.content.text
+    }));
+    
+    console.log(`Formatted messages for OpenAI:`, JSON.stringify(formattedMessages, null, 2));
     
     const response = await openai.chat.completions.create({
       model: model,
-      messages: messages as any,
+      messages: formattedMessages,
       temperature: 0.7,
       max_tokens: 2000,
     });
@@ -71,6 +85,7 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
       code: errorCode,
       type: error?.type,
       status: error?.status,
+      fullError: error,
     });
     
     // Check if it's a model-specific error and we have more models to try
