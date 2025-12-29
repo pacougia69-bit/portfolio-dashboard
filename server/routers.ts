@@ -29,8 +29,12 @@ import {
   getPriceCacheForTickers,
   getUserSettings,
   saveUserSettings,
+  createTransaction,
+  getTransactions,
+  updatePortfolioFromTransaction,
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
+import { parseDKBPDF } from "./dkb-parser";
 
 export const appRouter = router({
   system: systemRouter,
@@ -466,6 +470,75 @@ export const appRouter = router({
         await deleteWatchlistItem(ctx.user.id, input.watchlistId);
         
         return { success: true, position };
+      }),
+  }),
+
+  // Transactions (DKB PDF Import)
+  transactions: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return getTransactions(ctx.user.id);
+    }),
+    
+    uploadDKBPDF: protectedProcedure
+      .input(z.object({
+        pdfBase64: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          // Decode base64 PDF
+          const pdfBuffer = Buffer.from(input.pdfBase64, 'base64');
+          
+          // Parse DKB PDF
+          const transactionData = await parseDKBPDF(pdfBuffer);
+          
+          // Create transaction record (with duplicate check)
+          const result = await createTransaction(ctx.user.id, {
+            date: transactionData.date,
+            type: transactionData.type,
+            isin: transactionData.isin,
+            wkn: transactionData.wkn,
+            name: transactionData.name,
+            quantity: transactionData.quantity,
+            price: transactionData.price,
+            fees: transactionData.fees,
+            totalAmount: transactionData.totalAmount,
+            orderNumber: transactionData.orderNumber,
+            invoiceNumber: transactionData.invoiceNumber,
+          });
+          
+          if (result.duplicate) {
+            return {
+              success: false,
+              duplicate: true,
+              message: 'Diese Abrechnung wurde bereits importiert (Duplikat erkannt).',
+            };
+          }
+          
+          // Update portfolio position
+          await updatePortfolioFromTransaction(
+            ctx.user.id,
+            transactionData.isin,
+            transactionData.wkn,
+            transactionData.name,
+            transactionData.type,
+            transactionData.quantity,
+            transactionData.totalAmount
+          );
+          
+          return {
+            success: true,
+            duplicate: false,
+            message: '1 Transaktion erfolgreich importiert.',
+            transaction: transactionData,
+          };
+        } catch (error) {
+          console.error('DKB PDF import error:', error);
+          return {
+            success: false,
+            duplicate: false,
+            message: error instanceof Error ? error.message : 'Fehler beim Importieren der PDF.',
+          };
+        }
       }),
   }),
 

@@ -162,3 +162,26 @@ export const userSettings = mysqlTable("user_settings", {
 
 export type UserSettings = typeof userSettings.$inferSelect;
 export type InsertUserSettings = typeof userSettings.$inferInsert;
+
+/**
+ * Transactions table for tracking buys/sells from DKB PDF imports
+ */
+export const transactions = mysqlTable("transactions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  date: timestamp("date").notNull(),
+  type: mysqlEnum("type", ["Kauf", "Verkauf", "Sparplan"]).notNull(),
+  isin: varchar("isin", { length: 20 }).notNull(),
+  wkn: varchar("wkn", { length: 20 }),
+  name: varchar("name", { length: 255 }).notNull(),
+  quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
+  price: decimal("price", { precision: 18, scale: 4 }).notNull(),
+  fees: decimal("fees", { precision: 18, scale: 4 }).default("0"),
+  totalAmount: decimal("totalAmount", { precision: 18, scale: 4 }).notNull(),
+  orderNumber: varchar("orderNumber", { length: 100 }).notNull().unique(),
+  invoiceNumber: varchar("invoiceNumber", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Transaction = typeof transactions.$inferSelect;
+export type InsertTransaction = typeof transactions.$inferInsert;
