@@ -46,18 +46,52 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
 
   try {
     console.log(`Attempting to use OpenAI model: ${model}`);
+    console.log(`Messages parameter type: ${Array.isArray(messages) ? 'array' : typeof messages}`);
     console.log(`Messages being sent:`, JSON.stringify(messages, null, 2));
     
-    // Convert messages to the exact format OpenAI expects
-    const formattedMessages: ChatCompletionMessageParam[] = messages.map(msg => ({
-      role: msg.role as "system" | "user" | "assistant",
-      content: typeof msg.content === 'string' ? msg.content : 
-               Array.isArray(msg.content) ? msg.content.map(c => 
-                 typeof c === 'string' ? c : c.text
-               ).join(' ') :
-               msg.content.text
-    }));
+    // CRITICAL FIX: Ensure messages is always an array
+    const messagesArray = Array.isArray(messages) ? messages : [messages];
     
+    if (messagesArray.length === 0) {
+      throw new Error("Messages array is empty");
+    }
+    
+    // Convert messages to the exact format OpenAI expects
+    const formattedMessages: ChatCompletionMessageParam[] = messagesArray.map(msg => {
+      // Ensure msg is an object with required properties
+      if (!msg || typeof msg !== 'object' || !msg.role) {
+        console.error("Invalid message object:", msg);
+        throw new Error("Invalid message format");
+      }
+      
+      // Convert content to string
+      let contentStr: string;
+      if (typeof msg.content === 'string') {
+        contentStr = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        contentStr = msg.content.map(c => 
+          typeof c === 'string' ? c : (c as TextContent).text
+        ).join(' ');
+      } else if (msg.content && typeof msg.content === 'object' && 'text' in msg.content) {
+        contentStr = (msg.content as TextContent).text;
+      } else {
+        console.error("Invalid content format:", msg.content);
+        throw new Error("Message content must be a string or text object");
+      }
+      
+      return {
+        role: msg.role as "system" | "user" | "assistant",
+        content: contentStr
+      };
+    });
+    
+    // CRITICAL: Verify formattedMessages is an array before sending to OpenAI
+    if (!Array.isArray(formattedMessages) || formattedMessages.length === 0) {
+      console.error("formattedMessages is not a valid array:", formattedMessages);
+      throw new Error("Failed to format messages array");
+    }
+    
+    console.log(`Formatted messages count: ${formattedMessages.length}`);
     console.log(`Formatted messages for OpenAI:`, JSON.stringify(formattedMessages, null, 2));
     
     const response = await openai.chat.completions.create({
