@@ -43,7 +43,8 @@ export default function EinstellungenPage() {
   // Mutations
   const importPortfolio = trpc.portfolio.import.useMutation({
     onSuccess: (data) => {
-      toast.success(`${data.imported} Positionen importiert`);
+      const total = (data.imported?.portfolio || 0) + (data.imported?.watchlist || 0);
+      toast.success(`Import erfolgreich: ${data.imported?.portfolio || 0} Portfolio, ${data.imported?.watchlist || 0} Watchlist (${total} gesamt)`);
       setIsImportDialogOpen(false);
       setJsonInput('');
       refetchPortfolio();

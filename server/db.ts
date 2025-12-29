@@ -434,10 +434,13 @@ export async function importPortfolioData(userId: number, portfolio: any[], watc
       category: item.category || null,
       amount: String(item.amount),
       buyPrice: String(item.buyPrice),
-      currentPrice: item.value ? String(item.value / item.amount) : null,
+      // Support both legacy (item.value/item.amount) and version 2.0 (item.currentPrice) formats
+      currentPrice: item.currentPrice !== undefined && item.currentPrice !== null
+        ? String(item.currentPrice)
+        : item.value ? String(item.value / item.amount) : null,
       status: item.status || "Halten",
       autoUpdate: item.autoUpdate ?? true,
-      notes: null,
+      notes: item.notes || null,
     });
   }
   
@@ -446,8 +449,12 @@ export async function importPortfolioData(userId: number, portfolio: any[], watc
     await db.insert(watchlistItems).values({
       userId,
       ticker: item.ticker,
+      wkn: item.wkn || null,
       name: item.name || item.ticker,
-      currentPrice: item.price ? String(item.price) : null,
+      // Support both legacy (item.price) and version 2.0 (item.currentPrice) formats
+      currentPrice: item.currentPrice !== undefined && item.currentPrice !== null
+        ? String(item.currentPrice)
+        : item.price ? String(item.price) : null,
       targetPrice: item.targetPrice ? String(item.targetPrice) : null,
       notes: item.notes || null,
     });
