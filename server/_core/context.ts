@@ -10,19 +10,10 @@ const defaultUser: User = {
   email: 'demo@portfolio.local',
   loginMethod: 'none',
   role: 'user',
+  pin: null,
   createdAt: new Date(),
   updatedAt: new Date(),
-  lastLoginAt: new Date(),
-  isActive: true,
-  preferences: null,
-  avatarUrl: null,
-  bio: null,
-  location: null,
-  website: null,
-  twoFactorEnabled: false,
-  emailVerified: true,
-  phoneNumber: null,
-  phoneVerified: false,
+  lastSignedIn: new Date(),
 };
 
 export type TrpcContext = {
