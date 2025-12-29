@@ -702,7 +702,6 @@ var GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInf
 var OAuthService = class {
   constructor(client) {
     this.client = client;
-    console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
     if (!ENV.oAuthServerUrl) {
       console.error(
         "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
@@ -828,7 +827,6 @@ var SDKServer = class {
   }
   async verifySession(cookieValue) {
     if (!cookieValue) {
-      console.warn("[Auth] Missing session cookie");
       return null;
     }
     try {
@@ -838,7 +836,6 @@ var SDKServer = class {
       });
       const { openId, appId, name } = payload;
       if (!isNonEmptyString(openId) || !isNonEmptyString(appId) || !isNonEmptyString(name)) {
-        console.warn("[Auth] Session payload missing required fields");
         return null;
       }
       return {
@@ -847,7 +844,6 @@ var SDKServer = class {
         name
       };
     } catch (error) {
-      console.warn("[Auth] Session verification failed", String(error));
       return null;
     }
   }
@@ -892,7 +888,6 @@ var SDKServer = class {
         });
         user = await getUserByOpenId(userInfo.openId);
       } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
         throw ForbiddenError("Failed to sync user info");
       }
     }
@@ -943,7 +938,6 @@ function registerOAuthRoutes(app) {
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
       res.redirect(302, "/");
     } catch (error) {
-      console.error("[OAuth] Callback failed", error);
       res.status(500).json({ error: "OAuth callback failed" });
     }
   });
@@ -2103,17 +2097,23 @@ Bitte bewerte jeden Watchlist-ETF:
 });
 
 // server/_core/context.ts
+var defaultUser = {
+  id: 1,
+  openId: "demo-user",
+  name: "Demo User",
+  email: "demo@portfolio.local",
+  loginMethod: "none",
+  role: "user",
+  pin: null,
+  createdAt: /* @__PURE__ */ new Date(),
+  updatedAt: /* @__PURE__ */ new Date(),
+  lastSignedIn: /* @__PURE__ */ new Date()
+};
 async function createContext(opts) {
-  let user = null;
-  try {
-    user = await sdk.authenticateRequest(opts.req);
-  } catch (error) {
-    user = null;
-  }
   return {
     req: opts.req,
     res: opts.res,
-    user
+    user: defaultUser
   };
 }
 
