@@ -117,18 +117,24 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
     console.log(`Formatted messages count: ${formattedMessages.length}`);
     console.log(`Formatted messages for OpenAI:`, JSON.stringify(formattedMessages, null, 2));
     
-    // Create the API call with explicit array spread to ensure it's recognized as array
-    const apiPayload = {
+    // COMPREHENSIVE DEBUG LOGGING - RIGHT BEFORE API CALL
+    console.log("=== DEBUG OpenAI API Call ===");
+    console.log("DEBUG messages value:", JSON.stringify(formattedMessages, null, 2));
+    console.log("DEBUG messages isArray:", Array.isArray(formattedMessages));
+    console.log("DEBUG messages type:", typeof formattedMessages);
+    console.log("DEBUG messages length:", formattedMessages?.length);
+    console.log("DEBUG messages constructor:", formattedMessages?.constructor?.name);
+    console.log("DEBUG first message:", JSON.stringify(formattedMessages[0]));
+    console.log("=== END DEBUG ===");
+    
+    // CRITICAL FIX: Pass parameters directly inline to avoid any object transformation
+    // Do NOT use intermediate variables that might get optimized/transformed by bundler
+    const response = await openai.chat.completions.create({
       model: model,
-      messages: [...formattedMessages] as ChatCompletionMessageParam[],
+      messages: Array.isArray(formattedMessages) ? formattedMessages : [formattedMessages],
       temperature: 0.7,
       max_tokens: 2000,
-    };
-    
-    console.log(`Final API payload messages type: ${Array.isArray(apiPayload.messages) ? 'array' : typeof apiPayload.messages}`);
-    console.log(`Final API payload messages length: ${apiPayload.messages.length}`);
-    
-    const response = await openai.chat.completions.create(apiPayload);
+    });
 
     const content = response.choices[0].message.content;
     
