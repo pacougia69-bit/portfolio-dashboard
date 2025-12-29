@@ -1,1 +1,15 @@
-node_modules
+# Node modules
+node_modules/
+
+# Build output
+dist/
+client/public/assets/
+public/assets/
+
+# Logs
+logs/
+*.log
+
+# Environment files
+.env
+.env.local
