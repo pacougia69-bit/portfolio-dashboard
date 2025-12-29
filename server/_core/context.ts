@@ -1,8 +1,7 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
-import { sdk } from "./sdk";
 
-// Demo user for development/demo mode (no authentication required)
+// Demo user - always returned, no authentication required
 const defaultUser: User = {
   id: 1,
   openId: 'demo-user',
@@ -25,13 +24,10 @@ export type TrpcContext = {
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
-  // Always use demo user - no authentication required
-  const user: User = defaultUser;
-  console.log("[Context] Using demo user:", user.email);
-
+  // Always return demo user - no authentication logic
   return {
     req: opts.req,
     res: opts.res,
-    user,
+    user: defaultUser,
   };
 }
