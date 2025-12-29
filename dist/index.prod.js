@@ -484,18 +484,21 @@ async function importPortfolioData(userId, portfolio, watchlist) {
       category: item.category || null,
       amount: String(item.amount),
       buyPrice: String(item.buyPrice),
-      currentPrice: item.value ? String(item.value / item.amount) : null,
+      // Support both legacy (item.value/item.amount) and version 2.0 (item.currentPrice) formats
+      currentPrice: item.currentPrice !== void 0 && item.currentPrice !== null ? String(item.currentPrice) : item.value ? String(item.value / item.amount) : null,
       status: item.status || "Halten",
       autoUpdate: item.autoUpdate ?? true,
-      notes: null
+      notes: item.notes || null
     });
   }
   for (const item of watchlist) {
     await db.insert(watchlistItems).values({
       userId,
       ticker: item.ticker,
+      wkn: item.wkn || null,
       name: item.name || item.ticker,
-      currentPrice: item.price ? String(item.price) : null,
+      // Support both legacy (item.price) and version 2.0 (item.currentPrice) formats
+      currentPrice: item.currentPrice !== void 0 && item.currentPrice !== null ? String(item.currentPrice) : item.price ? String(item.price) : null,
       targetPrice: item.targetPrice ? String(item.targetPrice) : null,
       notes: item.notes || null
     });
@@ -1095,16 +1098,121 @@ import { z as z2 } from "zod";
 import OpenAI from "openai";
 var apiKey = process.env.OPENAI_API_KEY;
 var openai = apiKey ? new OpenAI({ apiKey }) : null;
-async function invokeLLM(messages) {
+var MODELS_TO_TRY = [
+  "gpt-4o",
+  // Try GPT-4o first if available
+  "gpt-4o-mini",
+  // Fallback to GPT-4o mini
+  "gpt-4-turbo",
+  // Then GPT-4 Turbo
+  "gpt-3.5-turbo"
+  // Most reliable fallback
+];
+async function invokeLLM(messages, modelIndex = 0) {
   if (!openai) {
-    console.warn("OpenAI API key is missing. AI features are disabled.");
-    return "AI features are currently disabled. Please provide an OpenAI API key to enable them.";
+    const error = "OpenAI API key is missing. AI features are disabled.";
+    console.error(error);
+    throw new Error(error);
   }
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages
-  });
-  return response.choices[0].message.content;
+  const model = MODELS_TO_TRY[modelIndex];
+  if (!model) {
+    const error = "All OpenAI models failed. Please check your API key and quota.";
+    console.error(error);
+    throw new Error(error);
+  }
+  try {
+    console.log(`Attempting to use OpenAI model: ${model}`);
+    console.log(`Messages parameter type: ${Array.isArray(messages) ? "array" : typeof messages}`);
+    console.log(`Messages being sent:`, JSON.stringify(messages, null, 2));
+    let messagesArray;
+    if (!Array.isArray(messages)) {
+      console.warn("Messages is not an array, converting:", typeof messages);
+      messagesArray = [messages];
+    } else {
+      messagesArray = messages;
+    }
+    if (messagesArray.length === 0) {
+      throw new Error("Messages array is empty");
+    }
+    const formattedMessages = [];
+    for (const msg of messagesArray) {
+      if (!msg || typeof msg !== "object" || !msg.role) {
+        console.error("Invalid message object:", msg);
+        throw new Error("Invalid message format");
+      }
+      let contentStr;
+      if (typeof msg.content === "string") {
+        contentStr = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        contentStr = msg.content.map(
+          (c) => typeof c === "string" ? c : c.text
+        ).join(" ");
+      } else if (msg.content && typeof msg.content === "object" && "text" in msg.content) {
+        contentStr = msg.content.text;
+      } else {
+        console.error("Invalid content format:", msg.content);
+        throw new Error("Message content must be a string or text object");
+      }
+      formattedMessages.push({
+        role: msg.role,
+        content: contentStr
+      });
+    }
+    if (!Array.isArray(formattedMessages)) {
+      console.error("FATAL: formattedMessages is not an array!");
+      throw new Error("Failed to create messages array");
+    }
+    if (formattedMessages.length === 0) {
+      console.error("FATAL: formattedMessages array is empty!");
+      throw new Error("Messages array cannot be empty");
+    }
+    for (let i = 0; i < formattedMessages.length; i++) {
+      const m = formattedMessages[i];
+      if (!m || typeof m !== "object" || !m.role || !m.content) {
+        console.error(`Invalid formatted message at index ${i}:`, m);
+        throw new Error(`Invalid message object at index ${i}`);
+      }
+    }
+    console.log(`Formatted messages count: ${formattedMessages.length}`);
+    console.log(`Formatted messages for OpenAI:`, JSON.stringify(formattedMessages, null, 2));
+    console.log("=== DEBUG OpenAI API Call ===");
+    console.log("DEBUG messages value:", JSON.stringify(formattedMessages, null, 2));
+    console.log("DEBUG messages isArray:", Array.isArray(formattedMessages));
+    console.log("DEBUG messages type:", typeof formattedMessages);
+    console.log("DEBUG messages length:", formattedMessages?.length);
+    console.log("DEBUG messages constructor:", formattedMessages?.constructor?.name);
+    console.log("DEBUG first message:", JSON.stringify(formattedMessages[0]));
+    console.log("=== END DEBUG ===");
+    const response = await openai.chat.completions.create({
+      model,
+      messages: Array.isArray(formattedMessages) ? formattedMessages : [formattedMessages],
+      temperature: 0.7,
+      max_tokens: 2e3
+    });
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error("OpenAI returned empty response");
+    }
+    console.log(`Successfully generated response using model: ${model}`);
+    return content;
+  } catch (error) {
+    const errorMessage = error?.message || String(error);
+    const errorCode = error?.code || error?.status;
+    console.error(`Error with model ${model}:`, {
+      message: errorMessage,
+      code: errorCode,
+      type: error?.type,
+      status: error?.status,
+      fullError: error
+    });
+    if ((errorMessage.includes("model") || errorMessage.includes("does not exist") || errorCode === "model_not_found" || error?.status === 404) && modelIndex < MODELS_TO_TRY.length - 1) {
+      console.log(`Trying next model...`);
+      return invokeLLM(messages, modelIndex + 1);
+    }
+    const detailedError = `OpenAI API Error: ${errorMessage} (Model: ${model}, Code: ${errorCode || "unknown"})`;
+    console.error(detailedError);
+    throw new Error(detailedError);
+  }
 }
 
 // server/services.ts
@@ -1413,20 +1521,22 @@ Bitte analysiere dieses Portfolio und gib mir:
 3. Konkrete Handlungsempfehlungen
 4. Vorschl\xE4ge f\xFCr Rebalancing falls n\xF6tig`;
   try {
-    const response = await invokeLLM({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ]
-    });
-    const content = response.choices[0]?.message?.content;
-    const analysis = typeof content === "string" ? content : "Analyse konnte nicht erstellt werden.";
-    await saveAiAnalysis(userId, "portfolio", analysis);
-    return { analysis, type: "portfolio" };
+    const analysis = await invokeLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]);
+    await saveAiAnalysis(userId, "portfolio", analysis || "Analyse konnte nicht erstellt werden.");
+    return { analysis: analysis || "Analyse konnte nicht erstellt werden.", type: "portfolio" };
   } catch (error) {
-    console.error("Error analyzing portfolio:", error);
+    const errorMessage = error?.message || String(error);
+    console.error("Error analyzing portfolio:", {
+      message: errorMessage,
+      error,
+      stack: error?.stack
+    });
+    const userMessage = errorMessage.includes("API key") ? "OpenAI API-Schl\xFCssel fehlt oder ist ung\xFCltig. Bitte \xFCberpr\xFCfen Sie die Konfiguration." : errorMessage.includes("quota") || errorMessage.includes("rate_limit") ? "OpenAI API-Limit erreicht. Bitte versuchen Sie es sp\xE4ter erneut." : `Die KI-Analyse ist derzeit nicht verf\xFCgbar. Fehler: ${errorMessage}`;
     return {
-      analysis: "Die KI-Analyse ist derzeit nicht verf\xFCgbar. Bitte versuchen Sie es sp\xE4ter erneut.",
+      analysis: userMessage,
       type: "error"
     };
   }
@@ -1452,27 +1562,29 @@ Bitte gib mir eine Einsch\xE4tzung zu ${name} (${ticker}):
 3. Empfehlung: Kaufen, Halten oder Verkaufen?
 4. Falls Kaufen: Welcher Anteil am Portfolio w\xE4re sinnvoll?`;
   try {
-    const response = await invokeLLM({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ]
-    });
-    const recContent = response.choices[0]?.message?.content;
-    const recommendation = typeof recContent === "string" ? recContent : "Empfehlung konnte nicht erstellt werden.";
+    const recommendation = await invokeLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]);
     let action = "Halten";
-    const lowerRec = recommendation.toLowerCase();
+    const lowerRec = (recommendation || "").toLowerCase();
     if (lowerRec.includes("kaufen") && !lowerRec.includes("nicht kaufen")) {
       action = "Kaufen";
     } else if (lowerRec.includes("verkaufen")) {
       action = "Verkaufen";
     }
-    await saveAiAnalysis(userId, "recommendation", recommendation, ticker);
-    return { recommendation, action };
+    await saveAiAnalysis(userId, "recommendation", recommendation || "Empfehlung konnte nicht erstellt werden.", ticker);
+    return { recommendation: recommendation || "Empfehlung konnte nicht erstellt werden.", action };
   } catch (error) {
-    console.error("Error generating recommendation:", error);
+    const errorMessage = error?.message || String(error);
+    console.error("Error generating recommendation:", {
+      message: errorMessage,
+      error,
+      stack: error?.stack
+    });
+    const userMessage = errorMessage.includes("API key") ? "OpenAI API-Schl\xFCssel fehlt oder ist ung\xFCltig. Bitte \xFCberpr\xFCfen Sie die Konfiguration." : errorMessage.includes("quota") || errorMessage.includes("rate_limit") ? "OpenAI API-Limit erreicht. Bitte versuchen Sie es sp\xE4ter erneut." : `Die KI-Empfehlung ist derzeit nicht verf\xFCgbar. Fehler: ${errorMessage}`;
     return {
-      recommendation: "Die KI-Empfehlung ist derzeit nicht verf\xFCgbar. Bitte versuchen Sie es sp\xE4ter erneut.",
+      recommendation: userMessage,
       action: "Halten"
     };
   }
