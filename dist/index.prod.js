@@ -10,7 +10,7 @@ var __export = (target, all) => {
 
 // drizzle/schema.ts
 import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, json, boolean } from "drizzle-orm/mysql-core";
-var users, portfolioPositions, watchlistItems, dividends, savingsPlans, notes, priceCache, aiAnalyses, userSettings;
+var users, portfolioPositions, watchlistItems, dividends, savingsPlans, notes, priceCache, aiAnalyses, userSettings, transactions;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -114,6 +114,22 @@ var init_schema = __esm({
       createdAt: timestamp("createdAt").defaultNow().notNull(),
       updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
     });
+    transactions = mysqlTable("transactions", {
+      id: int("id").autoincrement().primaryKey(),
+      userId: int("userId").notNull(),
+      date: timestamp("date").notNull(),
+      type: mysqlEnum("type", ["Kauf", "Verkauf", "Sparplan"]).notNull(),
+      isin: varchar("isin", { length: 20 }).notNull(),
+      wkn: varchar("wkn", { length: 20 }),
+      name: varchar("name", { length: 255 }).notNull(),
+      quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
+      price: decimal("price", { precision: 18, scale: 4 }).notNull(),
+      fees: decimal("fees", { precision: 18, scale: 4 }).default("0"),
+      totalAmount: decimal("totalAmount", { precision: 18, scale: 4 }).notNull(),
+      orderNumber: varchar("orderNumber", { length: 100 }).notNull().unique(),
+      invoiceNumber: varchar("invoiceNumber", { length: 100 }),
+      createdAt: timestamp("createdAt").defaultNow().notNull()
+    });
   }
 });
 
@@ -142,6 +158,7 @@ __export(db_exports, {
   createNote: () => createNote,
   createPortfolioPosition: () => createPortfolioPosition,
   createSavingsPlan: () => createSavingsPlan,
+  createTransaction: () => createTransaction,
   createWatchlistItem: () => createWatchlistItem,
   deleteDividend: () => deleteDividend,
   deleteNote: () => deleteNote,
@@ -155,6 +172,8 @@ __export(db_exports, {
   getPortfolioPositions: () => getPortfolioPositions,
   getPriceCacheForTickers: () => getPriceCacheForTickers,
   getSavingsPlans: () => getSavingsPlans,
+  getTransactions: () => getTransactions,
+  getTransactionsByISIN: () => getTransactionsByISIN,
   getUserByOpenId: () => getUserByOpenId,
   getUserPinStatus: () => getUserPinStatus,
   getUserSettings: () => getUserSettings,
@@ -165,6 +184,7 @@ __export(db_exports, {
   saveUserSettings: () => saveUserSettings,
   setUserPin: () => setUserPin,
   updateNote: () => updateNote,
+  updatePortfolioFromTransaction: () => updatePortfolioFromTransaction,
   updatePortfolioPosition: () => updatePortfolioPosition,
   updatePriceCache: () => updatePriceCache,
   updateSavingsPlan: () => updateSavingsPlan,
@@ -172,7 +192,7 @@ __export(db_exports, {
   upsertUser: () => upsertUser,
   verifyUserPin: () => verifyUserPin
 });
-import { eq, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import * as crypto from "crypto";
 async function getDb() {
@@ -637,6 +657,105 @@ async function getUserPinStatus(userId) {
     enabled: result[0].pinEnabled || false,
     autoLockMinutes: result[0].autoLockMinutes || 5
   };
+}
+async function createTransaction(userId, data) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(transactions).where(eq(transactions.orderNumber, data.orderNumber)).limit(1);
+  if (existing.length > 0) {
+    return { duplicate: true, id: existing[0].id };
+  }
+  const result = await db.insert(transactions).values({
+    userId,
+    date: data.date,
+    type: data.type,
+    isin: data.isin,
+    wkn: data.wkn,
+    name: data.name,
+    quantity: String(data.quantity),
+    price: String(data.price),
+    fees: String(data.fees),
+    totalAmount: String(data.totalAmount),
+    orderNumber: data.orderNumber,
+    invoiceNumber: data.invoiceNumber
+  });
+  return { duplicate: false, id: Number(result[0].insertId) };
+}
+async function getTransactions(userId) {
+  const db = await getDb();
+  if (!db) return [];
+  const result = await db.select().from(transactions).where(eq(transactions.userId, userId)).orderBy(desc(transactions.date));
+  return result.map((t2) => ({
+    ...t2,
+    quantity: Number(t2.quantity),
+    price: Number(t2.price),
+    fees: Number(t2.fees),
+    totalAmount: Number(t2.totalAmount)
+  }));
+}
+async function getTransactionsByISIN(userId, isin) {
+  const db = await getDb();
+  if (!db) return [];
+  const result = await db.select().from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.isin, isin))).orderBy(desc(transactions.date));
+  return result.map((t2) => ({
+    ...t2,
+    quantity: Number(t2.quantity),
+    price: Number(t2.price),
+    fees: Number(t2.fees),
+    totalAmount: Number(t2.totalAmount)
+  }));
+}
+async function updatePortfolioFromTransaction(userId, isin, wkn, name, transactionType, quantity, totalAmount) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  let existingPosition = null;
+  if (isin) {
+    if (wkn) {
+      const positions = await db.select().from(portfolioPositions).where(and(eq(portfolioPositions.userId, userId), eq(portfolioPositions.wkn, wkn))).limit(1);
+      if (positions.length > 0) {
+        existingPosition = positions[0];
+      }
+    }
+  }
+  if (existingPosition) {
+    const oldQuantity = Number(existingPosition.amount);
+    const oldBuyPrice = Number(existingPosition.buyPrice);
+    const oldInvestedCapital = oldQuantity * oldBuyPrice;
+    let newQuantity;
+    let newInvestedCapital;
+    if (transactionType === "Verkauf") {
+      newQuantity = oldQuantity - quantity;
+      if (newQuantity < 0) newQuantity = 0;
+      newInvestedCapital = newQuantity > 0 ? oldInvestedCapital * (newQuantity / oldQuantity) : 0;
+    } else {
+      newQuantity = oldQuantity + quantity;
+      newInvestedCapital = oldInvestedCapital + totalAmount;
+    }
+    const newAvgPrice = newQuantity > 0 ? newInvestedCapital / newQuantity : 0;
+    await db.update(portfolioPositions).set({
+      amount: String(newQuantity),
+      buyPrice: String(newAvgPrice)
+    }).where(eq(portfolioPositions.id, existingPosition.id));
+    return { updated: true, positionId: existingPosition.id };
+  } else {
+    const result = await db.insert(portfolioPositions).values({
+      userId,
+      wkn: wkn || null,
+      ticker: isin,
+      // Use ISIN as ticker for now
+      name,
+      type: "ETF",
+      // Default to ETF, can be changed by user
+      category: null,
+      amount: String(quantity),
+      buyPrice: String(totalAmount / quantity),
+      currentPrice: null,
+      status: "Halten",
+      autoUpdate: true,
+      notes: `Importiert aus DKB-Abrechnung am ${(/* @__PURE__ */ new Date()).toLocaleDateString("de-DE")}`
+    });
+    return { updated: false, positionId: Number(result[0].insertId) };
+  }
 }
 var _db;
 var init_db = __esm({
@@ -1838,6 +1957,86 @@ async function lookupByTicker(ticker) {
   }
 }
 
+// server/dkb-parser.ts
+import pdf from "pdf-parse";
+async function parseDKBPDF(pdfBuffer) {
+  const data = await pdf(pdfBuffer);
+  const text2 = data.text;
+  const orderNumberMatch = text2.match(/Auftragsnummer\s*(\d+\/[\d.]+)/);
+  if (!orderNumberMatch) {
+    throw new Error("Auftragsnummer nicht gefunden");
+  }
+  const orderNumber = orderNumberMatch[1];
+  const invoiceNumberMatch = text2.match(/Rechnungsnummer\s*(W\d+-\d+\/\d+)/);
+  if (!invoiceNumberMatch) {
+    throw new Error("Rechnungsnummer nicht gefunden");
+  }
+  const invoiceNumber = invoiceNumberMatch[1];
+  const dateMatch = text2.match(/Schlusstag\/-Zeit\s*(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2}:\d{2})/);
+  if (!dateMatch) {
+    throw new Error("Datum nicht gefunden");
+  }
+  const [, dateStr, timeStr] = dateMatch;
+  const [day, month, year] = dateStr.split(".").map(Number);
+  const [hour, minute, second] = timeStr.split(":").map(Number);
+  const date = new Date(year, month - 1, day, hour, minute, second);
+  let type = "Kauf";
+  if (text2.includes("Wertpapier Abrechnung Kauf")) {
+    type = "Kauf";
+    if (text2.includes("Ihr ETF-Sparplan Nr.")) {
+      type = "Sparplan";
+    }
+  } else if (text2.includes("Wertpapier Abrechnung Verkauf")) {
+    type = "Verkauf";
+  }
+  const isinWknMatch = text2.match(/([A-Z]{2}[A-Z0-9]{10})\s*\(([A-Z0-9]{6})\)/);
+  if (!isinWknMatch) {
+    throw new Error("ISIN nicht gefunden");
+  }
+  const isin = isinWknMatch[1];
+  const wkn = isinWknMatch[2];
+  const nameMatch = text2.match(/St[üu]ck\s+[\d,]+\s*([^\n]+(?:\n[^\n]+)?)\s*IE00/);
+  let name = "";
+  if (nameMatch) {
+    name = nameMatch[1].replace(/\s+/g, " ").trim();
+  } else {
+    const nameMatch2 = text2.match(/St[üu]ck\s+[\d,]+\s*([A-Z][^\n]+(?:\n[A-Z][^\n]+)?)\s*IE00/);
+    if (nameMatch2) {
+      name = nameMatch2[1].replace(/\s+/g, " ").trim();
+    }
+  }
+  const quantityMatch = text2.match(/St[üu]ck\s+([\d,]+)/);
+  if (!quantityMatch) {
+    throw new Error("St\xFCckzahl nicht gefunden");
+  }
+  const quantity = parseFloat(quantityMatch[1].replace(",", "."));
+  const priceMatch = text2.match(/Ausf[üu]hrungskurs\s*([\d,]+)\s+EUR/);
+  if (!priceMatch) {
+    throw new Error("Ausf\xFChrungskurs nicht gefunden");
+  }
+  const price = parseFloat(priceMatch[1].replace(",", "."));
+  const feesMatch = text2.match(/Provision\s*([\d,]+)-?\s*EUR/);
+  const fees = feesMatch ? parseFloat(feesMatch[1].replace(",", ".")) : 0;
+  const totalMatch = text2.match(/Ausmachender Betrag\s*([\d,]+)-?\s*EUR/);
+  if (!totalMatch) {
+    throw new Error("Gesamtbetrag nicht gefunden");
+  }
+  const totalAmount = parseFloat(totalMatch[1].replace(",", "."));
+  return {
+    date,
+    type,
+    isin,
+    wkn,
+    name,
+    quantity,
+    price,
+    fees,
+    totalAmount,
+    orderNumber,
+    invoiceNumber
+  };
+}
+
 // server/routers.ts
 var appRouter = router({
   system: systemRouter,
@@ -2165,6 +2364,62 @@ Bitte bewerte jeden Watchlist-ETF:
       });
       await deleteWatchlistItem(ctx.user.id, input.watchlistId);
       return { success: true, position };
+    })
+  }),
+  // Transactions (DKB PDF Import)
+  transactions: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return getTransactions(ctx.user.id);
+    }),
+    uploadDKBPDF: protectedProcedure.input(z2.object({
+      pdfBase64: z2.string()
+    })).mutation(async ({ ctx, input }) => {
+      try {
+        const pdfBuffer = Buffer.from(input.pdfBase64, "base64");
+        const transactionData = await parseDKBPDF(pdfBuffer);
+        const result = await createTransaction(ctx.user.id, {
+          date: transactionData.date,
+          type: transactionData.type,
+          isin: transactionData.isin,
+          wkn: transactionData.wkn,
+          name: transactionData.name,
+          quantity: transactionData.quantity,
+          price: transactionData.price,
+          fees: transactionData.fees,
+          totalAmount: transactionData.totalAmount,
+          orderNumber: transactionData.orderNumber,
+          invoiceNumber: transactionData.invoiceNumber
+        });
+        if (result.duplicate) {
+          return {
+            success: false,
+            duplicate: true,
+            message: "Diese Abrechnung wurde bereits importiert (Duplikat erkannt)."
+          };
+        }
+        await updatePortfolioFromTransaction(
+          ctx.user.id,
+          transactionData.isin,
+          transactionData.wkn,
+          transactionData.name,
+          transactionData.type,
+          transactionData.quantity,
+          transactionData.totalAmount
+        );
+        return {
+          success: true,
+          duplicate: false,
+          message: "1 Transaktion erfolgreich importiert.",
+          transaction: transactionData
+        };
+      } catch (error) {
+        console.error("DKB PDF import error:", error);
+        return {
+          success: false,
+          duplicate: false,
+          message: error instanceof Error ? error.message : "Fehler beim Importieren der PDF."
+        };
+      }
     })
   }),
   // User Settings
