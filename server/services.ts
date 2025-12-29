@@ -369,10 +369,23 @@ Antworte immer auf Deutsch.`;
     await saveAiAnalysis(userId, "portfolio", analysis || "Analyse konnte nicht erstellt werden.");
     
     return { analysis: analysis || "Analyse konnte nicht erstellt werden.", type: "portfolio" };
-  } catch (error) {
-    console.error("Error analyzing portfolio:", error);
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    console.error("Error analyzing portfolio:", {
+      message: errorMessage,
+      error: error,
+      stack: error?.stack,
+    });
+    
+    // Return detailed error message for debugging
+    const userMessage = errorMessage.includes("API key") 
+      ? "OpenAI API-Schlüssel fehlt oder ist ungültig. Bitte überprüfen Sie die Konfiguration."
+      : errorMessage.includes("quota") || errorMessage.includes("rate_limit")
+      ? "OpenAI API-Limit erreicht. Bitte versuchen Sie es später erneut."
+      : `Die KI-Analyse ist derzeit nicht verfügbar. Fehler: ${errorMessage}`;
+    
     return { 
-      analysis: "Die KI-Analyse ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.", 
+      analysis: userMessage, 
       type: "error" 
     };
   }
@@ -429,10 +442,23 @@ Bitte gib mir eine Einschätzung zu ${name} (${ticker}):
     await saveAiAnalysis(userId, "recommendation", recommendation || "Empfehlung konnte nicht erstellt werden.", ticker);
     
     return { recommendation: recommendation || "Empfehlung konnte nicht erstellt werden.", action };
-  } catch (error) {
-    console.error("Error generating recommendation:", error);
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    console.error("Error generating recommendation:", {
+      message: errorMessage,
+      error: error,
+      stack: error?.stack,
+    });
+    
+    // Return detailed error message for debugging
+    const userMessage = errorMessage.includes("API key") 
+      ? "OpenAI API-Schlüssel fehlt oder ist ungültig. Bitte überprüfen Sie die Konfiguration."
+      : errorMessage.includes("quota") || errorMessage.includes("rate_limit")
+      ? "OpenAI API-Limit erreicht. Bitte versuchen Sie es später erneut."
+      : `Die KI-Empfehlung ist derzeit nicht verfügbar. Fehler: ${errorMessage}`;
+    
     return { 
-      recommendation: "Die KI-Empfehlung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.", 
+      recommendation: userMessage, 
       action: "Halten" 
     };
   }
