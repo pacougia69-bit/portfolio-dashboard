@@ -27,6 +27,7 @@ export async function createContext(
 ): Promise<TrpcContext> {
   // Always use demo user - no authentication required
   const user: User = defaultUser;
+  console.log("[Context] Using demo user:", user.email);
 
   return {
     req: opts.req,
