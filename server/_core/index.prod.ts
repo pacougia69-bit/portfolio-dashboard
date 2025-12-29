@@ -34,15 +34,6 @@ async function startServer() {
   const port = Number(process.env.PORT || 3000)
   const host = '0.0.0.0'
 
-  // Add CSP middleware to allow inline scripts
-  app.use((_req, res, next) => {
-    res.setHeader(
-      'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:;"
-    )
-    next()
-  })
-
   app.get('/health', (_req, res) => res.status(200).send('OK'))
 
   registerOAuthRoutes(app)
