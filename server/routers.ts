@@ -532,11 +532,18 @@ export const appRouter = router({
             transaction: transactionData,
           };
         } catch (error) {
+          // Log detailed error for debugging (server-side only)
           console.error('DKB PDF import error:', error);
+          
+          // Ensure server doesn't crash - always return a structured response
+          const errorMessage = error instanceof Error 
+            ? error.message 
+            : 'Unerwarteter Fehler beim Importieren der PDF.';
+          
           return {
             success: false,
             duplicate: false,
-            message: error instanceof Error ? error.message : 'Fehler beim Importieren der PDF.',
+            message: errorMessage,
           };
         }
       }),
