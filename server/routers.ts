@@ -34,7 +34,6 @@ import {
   updatePortfolioFromTransaction,
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
-import { parseDKBPDF } from "./dkb-parser";
 
 export const appRouter = router({
   system: systemRouter,
@@ -488,7 +487,8 @@ export const appRouter = router({
           // Decode base64 PDF
           const pdfBuffer = Buffer.from(input.pdfBase64, 'base64');
           
-          // Parse DKB PDF
+          // Parse DKB PDF (dynamic import to avoid pdf-parse initialization at server startup)
+          const { parseDKBPDF } = await import("./dkb-parser");
           const transactionData = await parseDKBPDF(pdfBuffer);
           
           // Create transaction record (with duplicate check)
