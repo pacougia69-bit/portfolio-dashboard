@@ -13,17 +13,44 @@ export interface DKBTransaction {
 }
 
 /**
- * Extract text from PDF using pdf-parse (Node.js-native library)
+ * Extract text from PDF using pdf2json (Node.js-native library, no browser dependencies)
  */
 async function extractTextFromPDF(pdfBuffer: Buffer): Promise<string> {
   try {
-    // Dynamic import to avoid loading pdf-parse during server startup
-    const pdfParse = (await import('pdf-parse')).default;
+    // Dynamic import to avoid loading pdf2json during server startup
+    const PDFParser = (await import('pdf2json')).default;
     
-    // Parse PDF and extract text
-    const data = await pdfParse(pdfBuffer);
-    
-    return data.text;
+    return new Promise<string>((resolve, reject) => {
+      const pdfParser = new (PDFParser as any)(null, true);
+      
+      pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
+        try {
+          // Extract text from all pages
+          let text = '';
+          for (const page of pdfData.Pages || []) {
+            for (const textElement of page.Texts || []) {
+              // Each text element can have multiple runs (R array)
+              for (const run of textElement.R || []) {
+                // Decode URI-encoded text and add space
+                const decodedText = decodeURIComponent(run.T);
+                text += decodedText + ' ';
+              }
+            }
+            text += '\n'; // Add newline after each page
+          }
+          resolve(text);
+        } catch (error) {
+          reject(error);
+        }
+      });
+      
+      pdfParser.on('pdfParser_dataError', (error: any) => {
+        reject(new Error(error.parserError || 'PDF parsing failed'));
+      });
+      
+      // Parse the buffer
+      pdfParser.parseBuffer(pdfBuffer);
+    });
   } catch (error) {
     console.error('PDF extraction error:', error);
     throw new Error(`PDF konnte nicht gelesen werden: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);

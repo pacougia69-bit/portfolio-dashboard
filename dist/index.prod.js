@@ -774,9 +774,31 @@ __export(dkb_parser_exports, {
 });
 async function extractTextFromPDF(pdfBuffer) {
   try {
-    const pdfParse = (await import("pdf-parse")).default;
-    const data = await pdfParse(pdfBuffer);
-    return data.text;
+    const PDFParser = (await import("pdf2json")).default;
+    return new Promise((resolve, reject) => {
+      const pdfParser = new PDFParser(null, true);
+      pdfParser.on("pdfParser_dataReady", (pdfData) => {
+        try {
+          let text2 = "";
+          for (const page of pdfData.Pages || []) {
+            for (const textElement of page.Texts || []) {
+              for (const run of textElement.R || []) {
+                const decodedText = decodeURIComponent(run.T);
+                text2 += decodedText + " ";
+              }
+            }
+            text2 += "\n";
+          }
+          resolve(text2);
+        } catch (error) {
+          reject(error);
+        }
+      });
+      pdfParser.on("pdfParser_dataError", (error) => {
+        reject(new Error(error.parserError || "PDF parsing failed"));
+      });
+      pdfParser.parseBuffer(pdfBuffer);
+    });
   } catch (error) {
     console.error("PDF extraction error:", error);
     throw new Error(`PDF konnte nicht gelesen werden: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`);
