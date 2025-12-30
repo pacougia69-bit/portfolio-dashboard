@@ -13,34 +13,17 @@ export interface DKBTransaction {
 }
 
 /**
- * Extract text from PDF using pdfjs-dist
+ * Extract text from PDF using pdf-parse (Node.js-native library)
  */
 async function extractTextFromPDF(pdfBuffer: Buffer): Promise<string> {
   try {
-    // Dynamic import to avoid loading pdfjs-dist during server startup
-    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    // Dynamic import to avoid loading pdf-parse during server startup
+    const pdfParse = (await import('pdf-parse')).default;
     
-    // Load the PDF document
-    const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(pdfBuffer),
-      verbosity: 0, // Suppress pdfjs warnings
-    });
+    // Parse PDF and extract text
+    const data = await pdfParse(pdfBuffer);
     
-    const pdfDocument = await loadingTask.promise;
-    const numPages = pdfDocument.numPages;
-    
-    // Extract text from all pages
-    let fullText = '';
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      const page = await pdfDocument.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ');
-      fullText += pageText + '\n';
-    }
-    
-    return fullText;
+    return data.text;
   } catch (error) {
     console.error('PDF extraction error:', error);
     throw new Error(`PDF konnte nicht gelesen werden: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);

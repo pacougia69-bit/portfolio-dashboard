@@ -774,22 +774,9 @@ __export(dkb_parser_exports, {
 });
 async function extractTextFromPDF(pdfBuffer) {
   try {
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(pdfBuffer),
-      verbosity: 0
-      // Suppress pdfjs warnings
-    });
-    const pdfDocument = await loadingTask.promise;
-    const numPages = pdfDocument.numPages;
-    let fullText = "";
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      const page = await pdfDocument.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map((item) => item.str).join(" ");
-      fullText += pageText + "\n";
-    }
-    return fullText;
+    const pdfParse = (await import("pdf-parse")).default;
+    const data = await pdfParse(pdfBuffer);
+    return data.text;
   } catch (error) {
     console.error("PDF extraction error:", error);
     throw new Error(`PDF konnte nicht gelesen werden: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`);
