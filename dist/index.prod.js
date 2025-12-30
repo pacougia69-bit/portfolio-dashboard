@@ -1958,8 +1958,8 @@ async function lookupByTicker(ticker) {
 }
 
 // server/dkb-parser.ts
-import pdf from "pdf-parse";
 async function parseDKBPDF(pdfBuffer) {
+  const pdf = (await import("pdf-parse")).default;
   const data = await pdf(pdfBuffer);
   const text2 = data.text;
   const orderNumberMatch = text2.match(/Auftragsnummer\s*(\d+\/[\d.]+)/);

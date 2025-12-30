@@ -1,5 +1,3 @@
-import pdf from 'pdf-parse';
-
 export interface DKBTransaction {
   date: Date;
   type: 'Kauf' | 'Verkauf' | 'Sparplan';
@@ -18,6 +16,8 @@ export interface DKBTransaction {
  * Parse DKB PDF to extract transaction information
  */
 export async function parseDKBPDF(pdfBuffer: Buffer): Promise<DKBTransaction> {
+  // Dynamic import to avoid pdf-parse initialization issues during bundling
+  const pdf = (await import('pdf-parse')).default;
   const data = await pdf(pdfBuffer);
   const text = data.text;
   
