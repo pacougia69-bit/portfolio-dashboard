@@ -233,7 +233,7 @@ async function startServer() {
     }
   });
 
-  app.get("/admin/recreate-transactions-table", async (req, res) => {
+  app.post("/api/admin/fix-db-table", async (req, res) => {
     try {
       const databaseUrl = process.env.DATABASE_URL;
       if (!databaseUrl) {
@@ -242,10 +242,25 @@ async function startServer() {
       const connection = await mysql.createConnection(databaseUrl);
       const logs: string[] = [];
       
-      logs.push('🔄 Recreating transactions table...\n');
+      logs.push('🔧 FIXING DATABASE TABLE\n');
+      logs.push('='.repeat(50) + '\n');
       
-      // First, check for and remove foreign key constraints
-      logs.push('1. Checking for foreign key constraints...');
+      // Check current structure
+      logs.push('1. Checking current table structure...');
+      try {
+        const [columns]: any = await connection.query("DESCRIBE transactions");
+        logs.push(`   Current columns: ${columns.map((c: any) => c.Field).join(', ')}\n`);
+        
+        const hasWorld = columns.some((c: any) => c.Field === 'world');
+        if (hasWorld) {
+          logs.push('   ⚠️  DETECTED: Table has "world" column (CORRUPTED!)\n');
+        }
+      } catch (err: any) {
+        logs.push(`   Table doesn't exist or error: ${err.message}\n`);
+      }
+      
+      // Drop all foreign keys first
+      logs.push('2. Removing foreign key constraints...');
       try {
         const [fks]: any = await connection.query(`
           SELECT CONSTRAINT_NAME 
@@ -255,27 +270,22 @@ async function startServer() {
           AND REFERENCED_TABLE_NAME IS NOT NULL
         `);
         
-        if (fks.length > 0) {
-          logs.push(`   Found ${fks.length} foreign key constraint(s)`);
-          for (const fk of fks) {
-            logs.push(`   Dropping FK: ${fk.CONSTRAINT_NAME}`);
-            await connection.query(`ALTER TABLE transactions DROP FOREIGN KEY ${fk.CONSTRAINT_NAME}`);
-          }
-          logs.push('   ✅ All foreign keys removed\n');
-        } else {
-          logs.push('   No foreign keys found\n');
+        for (const fk of fks) {
+          await connection.query(`ALTER TABLE transactions DROP FOREIGN KEY ${fk.CONSTRAINT_NAME}`);
+          logs.push(`   Dropped FK: ${fk.CONSTRAINT_NAME}`);
         }
-      } catch (fkError: any) {
-        logs.push(`   ℹ️  Could not check foreign keys: ${fkError.message}\n`);
+        logs.push('   ✅ All FKs removed\n');
+      } catch (err: any) {
+        logs.push(`   No FKs or error: ${err.message}\n`);
       }
       
-      // Drop existing table
-      logs.push('2. Dropping existing transactions table...');
+      // Drop table
+      logs.push('3. Dropping transactions table...');
       await connection.query("DROP TABLE IF EXISTS transactions");
       logs.push('   ✅ Dropped\n');
       
-      // Create new table with correct schema (NO FOREIGN KEYS)
-      logs.push('3. Creating new transactions table with correct schema...');
+      // Recreate with correct schema
+      logs.push('4. Creating new transactions table...');
       await connection.query(`
         CREATE TABLE transactions (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -294,25 +304,26 @@ async function startServer() {
           createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      logs.push('   ✅ Created (without foreign keys)\n');
+      logs.push('   ✅ Created\n');
       
       // Verify
-      logs.push('4. Verifying new table structure...');
-      const [columns]: any = await connection.query("DESCRIBE transactions");
-      logs.push(`   ✅ Table has ${columns.length} columns:\n`);
-      columns.forEach((col: any) => {
+      logs.push('5. Verifying new table structure...');
+      const [newColumns]: any = await connection.query("DESCRIBE transactions");
+      logs.push(`   ✅ Table has ${newColumns.length} columns:\n`);
+      newColumns.forEach((col: any) => {
         logs.push(`      - ${col.Field} (${col.Type})`);
       });
       
       await connection.end();
       
-      logs.push('\n✅ SUCCESS! Transactions table recreated with correct schema.');
-      logs.push('\nYou can now upload DKB PDFs.');
+      logs.push('\n' + '='.repeat(50));
+      logs.push('\n✅ SUCCESS! Database fixed!\n');
+      logs.push('The transactions table now has the correct schema.');
+      logs.push('You can now upload DKB PDFs without errors.');
       
-      res.setHeader('Content-Type', 'text/plain');
-      res.send(logs.join('\n'));
+      res.json({ success: true, logs: logs.join('\n') });
     } catch (error: any) {
-      res.status(500).send(`Error: ${error.message}\n${error.stack}`);
+      res.status(500).json({ success: false, error: error.message, stack: error.stack });
     }
   });
 
