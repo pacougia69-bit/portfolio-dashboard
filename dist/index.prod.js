@@ -2537,6 +2537,9 @@ async function createContext(opts) {
 }
 
 // server/_core/index.prod.ts
+import { migrate } from "drizzle-orm/mysql2/migrator";
+import { drizzle as drizzle2 } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 function serveStatic(app) {
   const distPath = path.resolve(process.cwd(), "dist", "public");
   if (!fs.existsSync(distPath)) {
@@ -2554,7 +2557,26 @@ function serveStatic(app) {
     }
   });
 }
+async function runDatabaseMigration() {
+  const DATABASE_URL = process.env.DATABASE_URL;
+  if (!DATABASE_URL) {
+    console.warn("\u26A0\uFE0F  DATABASE_URL not configured - skipping database migration");
+    return;
+  }
+  try {
+    console.log("\u{1F504} Starting database migration...");
+    const connection = await mysql.createConnection(DATABASE_URL);
+    const db = drizzle2(connection);
+    await migrate(db, { migrationsFolder: "./drizzle" });
+    await connection.end();
+    console.log("\u2705 Database migration completed successfully");
+  } catch (error) {
+    console.error("\u274C Database migration failed:", error);
+    console.error("\u26A0\uFE0F  Server will continue, but database may be out of sync");
+  }
+}
 async function startServer() {
+  await runDatabaseMigration();
   const app = express();
   const port = Number(process.env.PORT || 3e3);
   const host = "0.0.0.0";

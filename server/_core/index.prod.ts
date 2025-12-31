@@ -6,6 +6,9 @@ import { createExpressMiddleware } from '@trpc/server/adapters/express'
 import { registerOAuthRoutes } from './oauth'
 import { appRouter } from '../routers'
 import { createContext } from './context'
+import { migrate } from 'drizzle-orm/mysql2/migrator'
+import { drizzle } from 'drizzle-orm/mysql2'
+import mysql from 'mysql2/promise'
 
 function serveStatic(app: express.Express) {
   // Wir nutzen dist/public, weil dein Build dort landet
@@ -29,7 +32,43 @@ function serveStatic(app: express.Express) {
   })
 }
 
+/**
+ * Run database migrations automatically on server startup
+ * This ensures the transactions table and other schema changes are applied
+ */
+async function runDatabaseMigration() {
+  const DATABASE_URL = process.env.DATABASE_URL;
+  
+  if (!DATABASE_URL) {
+    console.warn('⚠️  DATABASE_URL not configured - skipping database migration');
+    return;
+  }
+
+  try {
+    console.log('🔄 Starting database migration...');
+    
+    // Create a connection for migrations
+    const connection = await mysql.createConnection(DATABASE_URL);
+    const db = drizzle(connection);
+    
+    // Run migrations from the drizzle folder
+    await migrate(db, { migrationsFolder: './drizzle' });
+    
+    await connection.end();
+    
+    console.log('✅ Database migration completed successfully');
+  } catch (error) {
+    console.error('❌ Database migration failed:', error);
+    console.error('⚠️  Server will continue, but database may be out of sync');
+    // Don't exit - allow server to start even if migration fails
+    // This prevents deployment failures due to temporary DB issues
+  }
+}
+
 async function startServer() {
+  // Run database migration before starting the server
+  await runDatabaseMigration();
+  
   const app = express()
   const port = Number(process.env.PORT || 3000)
   const host = '0.0.0.0'
