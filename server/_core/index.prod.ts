@@ -57,20 +57,54 @@ async function runDatabaseMigration() {
     const connection = await mysql.createConnection(DATABASE_URL);
     const db = drizzle(connection);
     
-    // CRITICAL FIX: Drop and recreate transactions table if it has wrong structure
+    // CRITICAL FIX: ALWAYS drop transactions table if it exists to ensure clean schema
+    console.log('🔧 FORCING transactions table recreation...');
     try {
-      console.log('🔍 Checking transactions table structure...');
-      const [columns]: any = await connection.query("DESCRIBE transactions");
-      const columnNames = columns.map((col: any) => col.Field);
+      // Check if table exists first
+      const [tables]: any = await connection.query("SHOW TABLES LIKE 'transactions'");
       
-      // Check if table has 'world' or other wrong columns instead of 'userId'
-      if (columnNames.includes('world') || !columnNames.includes('userId')) {
-        console.log('⚠️  Detected corrupted transactions table schema! Dropping and recreating...');
-        await connection.query("DROP TABLE IF EXISTS transactions");
-        console.log('✅ Dropped corrupted transactions table');
+      if (Array.isArray(tables) && tables.length > 0) {
+        console.log('   Found existing transactions table, checking structure...');
+        
+        // Get column info
+        const [columns]: any = await connection.query("DESCRIBE transactions");
+        const columnNames = columns.map((col: any) => col.Field);
+        console.log(`   Current columns: ${columnNames.join(', ')}`);
+        
+        // Check if it has wrong structure
+        if (columnNames.includes('world') || !columnNames.includes('userId')) {
+          console.log('   ⚠️  CORRUPTED SCHEMA DETECTED! Has "world" instead of "userId"');
+          
+          // Remove all foreign keys first
+          try {
+            const [fks]: any = await connection.query(`
+              SELECT CONSTRAINT_NAME 
+              FROM information_schema.KEY_COLUMN_USAGE 
+              WHERE TABLE_SCHEMA = DATABASE() 
+              AND TABLE_NAME = 'transactions' 
+              AND REFERENCED_TABLE_NAME IS NOT NULL
+            `);
+            
+            for (const fk of fks) {
+              console.log(`   Dropping FK: ${fk.CONSTRAINT_NAME}`);
+              await connection.query(`ALTER TABLE transactions DROP FOREIGN KEY ${fk.CONSTRAINT_NAME}`);
+            }
+          } catch (fkErr) {
+            console.log('   No FKs to drop');
+          }
+          
+          // Drop the corrupted table
+          console.log('   Dropping corrupted transactions table...');
+          await connection.query("DROP TABLE IF EXISTS transactions");
+          console.log('   ✅ Dropped corrupted table');
+        } else {
+          console.log('   ✅ Table structure looks correct');
+        }
+      } else {
+        console.log('   ℹ️  Transactions table does not exist yet');
       }
     } catch (checkError: any) {
-      console.log('ℹ️  Transactions table does not exist yet (this is fine for first deployment)');
+      console.log(`   ℹ️  Could not check table: ${checkError.message}`);
     }
     
     // Run migrations from the drizzle folder
