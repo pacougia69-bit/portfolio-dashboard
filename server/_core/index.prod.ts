@@ -233,6 +233,64 @@ async function startServer() {
     }
   });
 
+  app.get("/admin/recreate-transactions-table", async (req, res) => {
+    try {
+      const databaseUrl = process.env.DATABASE_URL;
+      if (!databaseUrl) {
+        throw new Error("DATABASE_URL not set");
+      }
+      const connection = await mysql.createConnection(databaseUrl);
+      const logs: string[] = [];
+      
+      logs.push('🔄 Recreating transactions table...\n');
+      
+      // Drop existing table
+      logs.push('1. Dropping existing transactions table...');
+      await connection.query("DROP TABLE IF EXISTS transactions");
+      logs.push('   ✅ Dropped\n');
+      
+      // Create new table with correct schema
+      logs.push('2. Creating new transactions table with correct schema...');
+      await connection.query(`
+        CREATE TABLE transactions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          date TIMESTAMP NOT NULL,
+          type ENUM('Kauf', 'Verkauf', 'Sparplan') NOT NULL,
+          isin VARCHAR(20) NOT NULL,
+          wkn VARCHAR(20),
+          name VARCHAR(255) NOT NULL,
+          quantity DECIMAL(18,8) NOT NULL,
+          price DECIMAL(18,4) NOT NULL,
+          fees DECIMAL(18,4) DEFAULT '0',
+          totalAmount DECIMAL(18,4) NOT NULL,
+          orderNumber VARCHAR(100) NOT NULL UNIQUE,
+          invoiceNumber VARCHAR(100),
+          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      logs.push('   ✅ Created\n');
+      
+      // Verify
+      logs.push('3. Verifying new table structure...');
+      const [columns]: any = await connection.query("DESCRIBE transactions");
+      logs.push(`   ✅ Table has ${columns.length} columns:\n`);
+      columns.forEach((col: any) => {
+        logs.push(`      - ${col.Field} (${col.Type})`);
+      });
+      
+      await connection.end();
+      
+      logs.push('\n✅ SUCCESS! Transactions table recreated with correct schema.');
+      logs.push('\nYou can now upload DKB PDFs.');
+      
+      res.setHeader('Content-Type', 'text/plain');
+      res.send(logs.join('\n'));
+    } catch (error: any) {
+      res.status(500).send(`Error: ${error.message}\n${error.stack}`);
+    }
+  });
+
   // Static file serving - this includes the catch-all
   const distPath = path.resolve(process.cwd(), 'dist', 'public')
   if (fs.existsSync(distPath)) {
