@@ -652,31 +652,57 @@ export async function createTransaction(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   
-  // Check for duplicate by orderNumber
-  const existing = await db.select().from(transactions)
-    .where(eq(transactions.orderNumber, data.orderNumber))
-    .limit(1);
-  
-  if (existing.length > 0) {
-    return { duplicate: true, id: existing[0].id };
+  try {
+    // Check for duplicate by orderNumber (globally, not just for this user)
+    const existing = await db.select().from(transactions)
+      .where(eq(transactions.orderNumber, data.orderNumber))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      return { 
+        duplicate: true, 
+        id: existing[0].id, 
+        orderNumber: data.orderNumber 
+      };
+    }
+    
+    // Insert new transaction
+    const result = await db.insert(transactions).values({
+      userId,
+      date: data.date,
+      type: data.type,
+      isin: data.isin,
+      wkn: data.wkn,
+      name: data.name,
+      quantity: String(data.quantity),
+      price: String(data.price),
+      fees: String(data.fees),
+      totalAmount: String(data.totalAmount),
+      orderNumber: data.orderNumber,
+      invoiceNumber: data.invoiceNumber,
+    });
+    
+    return { 
+      duplicate: false, 
+      id: Number(result[0].insertId),
+      orderNumber: data.orderNumber
+    };
+  } catch (error) {
+    // Catch any database errors (including unique constraint violations)
+    console.error('Database error in createTransaction:', error);
+    
+    // Check if it's a unique constraint violation on orderNumber
+    if (error instanceof Error && error.message.includes('orderNumber')) {
+      return { 
+        duplicate: true, 
+        id: null, 
+        orderNumber: data.orderNumber 
+      };
+    }
+    
+    // Re-throw other errors
+    throw error;
   }
-  
-  const result = await db.insert(transactions).values({
-    userId,
-    date: data.date,
-    type: data.type,
-    isin: data.isin,
-    wkn: data.wkn,
-    name: data.name,
-    quantity: String(data.quantity),
-    price: String(data.price),
-    fees: String(data.fees),
-    totalAmount: String(data.totalAmount),
-    orderNumber: data.orderNumber,
-    invoiceNumber: data.invoiceNumber,
-  });
-  
-  return { duplicate: false, id: Number(result[0].insertId) };
 }
 
 export async function getTransactions(userId: number) {
