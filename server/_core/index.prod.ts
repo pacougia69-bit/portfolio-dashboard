@@ -458,8 +458,13 @@ async function startServer() {
     console.log(`✅ Statische Dateien werden serviert von: ${distPath}`)
     app.use(express.static(distPath))
     
-    // Catch-all for SPA - MUST be last
-    app.get('*', (_req, res) => {
+    // Catch-all for SPA - MUST be last (but exclude admin and API routes)
+    app.get('*', (req, res) => {
+      // Don't serve index.html for admin or API routes
+      if (req.path.startsWith('/admin') || req.path.startsWith('/api')) {
+        return res.status(404).send('Not found');
+      }
+      
       const indexPath = path.resolve(distPath, 'index.html')
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath)

@@ -2888,7 +2888,10 @@ ${error.stack}`);
   if (fs.existsSync(distPath)) {
     console.log(`\u2705 Statische Dateien werden serviert von: ${distPath}`);
     app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
+    app.get("*", (req, res) => {
+      if (req.path.startsWith("/admin") || req.path.startsWith("/api")) {
+        return res.status(404).send("Not found");
+      }
       const indexPath = path.resolve(distPath, "index.html");
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
