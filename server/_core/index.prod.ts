@@ -185,6 +185,10 @@ async function startServer() {
   // Health check endpoint
   app.get('/health', (_req, res) => res.status(200).send('OK'))
 
+  // OAuth and tRPC routes - MUST be before static files
+  registerOAuthRoutes(app)
+  app.use('/api/trpc', createExpressMiddleware({ router: appRouter, createContext }))
+
   // Admin endpoints - must be before static file serving
   app.get("/admin/fix-schema", async (req, res) => {
     try {
@@ -213,10 +217,6 @@ async function startServer() {
     }
   });
 
-  // OAuth and tRPC routes
-  registerOAuthRoutes(app)
-  app.use('/api/trpc', createExpressMiddleware({ router: appRouter, createContext }))
-  
   // Static file serving - this includes the catch-all
   const distPath = path.resolve(process.cwd(), 'dist', 'public')
   if (fs.existsSync(distPath)) {
