@@ -70,14 +70,105 @@ async function fixTransactionsSchema() {
   }
 }
 
+async function repairTransactionsTable() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL environment variable is not set");
+  }
+
+  const connection = await mysql.createConnection(databaseUrl);
+  const logs: string[] = [];
+
+  try {
+    logs.push("🔧 Starting database repair for transactions table...");
+    logs.push("⚠️  WARNING: This will DROP and recreate the transactions table!");
+    logs.push("");
+
+    // Check current state
+    const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
+    if (Array.isArray(tables) && tables.length > 0) {
+      const [columns]: any = await connection.query("DESCRIBE transactions");
+      logs.push("Current table structure:");
+      columns.forEach((col: any) => {
+        logs.push(`  - ${col.Field} (${col.Type})`);
+      });
+      logs.push("");
+    } else {
+      logs.push("ℹ️  Transactions table does not exist yet.");
+      logs.push("");
+    }
+
+    // Drop existing table
+    logs.push("🗑️  Dropping existing transactions table...");
+    await connection.query("DROP TABLE IF EXISTS transactions");
+    logs.push("✅ Table dropped successfully");
+    logs.push("");
+
+    // Create new table with correct schema
+    logs.push("🏗️  Creating new transactions table with correct schema...");
+    const createTableSQL = `
+      CREATE TABLE transactions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        userId INT NOT NULL,
+        date TIMESTAMP NOT NULL,
+        type ENUM('Kauf', 'Verkauf', 'Sparplan') NOT NULL,
+        isin VARCHAR(20) NOT NULL,
+        wkn VARCHAR(20) DEFAULT NULL,
+        name VARCHAR(255) NOT NULL,
+        quantity DECIMAL(18, 8) NOT NULL,
+        price DECIMAL(18, 4) NOT NULL,
+        fees DECIMAL(18, 4) DEFAULT '0' NOT NULL,
+        totalAmount DECIMAL(18, 4) NOT NULL,
+        orderNumber VARCHAR(100) NOT NULL UNIQUE,
+        invoiceNumber VARCHAR(100) DEFAULT NULL,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `;
+    await connection.query(createTableSQL);
+    logs.push("✅ Table created successfully");
+    logs.push("");
+
+    // Verify new structure
+    const [newColumns]: any = await connection.query("DESCRIBE transactions");
+    logs.push("New table structure:");
+    newColumns.forEach((col: any) => {
+      logs.push(`  - ${col.Field} (${col.Type}) ${col.Key ? `[${col.Key}]` : ''}`);
+    });
+    logs.push("");
+
+    logs.push("✅ Database repair completed successfully!");
+    logs.push("ℹ️  The transactions table has been recreated with the correct schema.");
+    logs.push("ℹ️  All previous transaction data has been removed.");
+    
+    return logs;
+  } catch (error: any) {
+    logs.push("");
+    logs.push(`❌ Error during repair: ${error.message}`);
+    throw error;
+  } finally {
+    await connection.end();
+  }
+}
+
 async function startServer() {
   const app = express();
   const server = createServer(app);
 
-  // Admin endpoint to fix database schema
+  // Admin endpoint to fix database schema (adds missing columns)
   app.get("/admin/fix-schema", async (req, res) => {
     try {
       const logs = await fixTransactionsSchema();
+      res.setHeader('Content-Type', 'text/plain');
+      res.send(logs.join('\n'));
+    } catch (error: any) {
+      res.status(500).send(`Error: ${error.message}\n${error.stack}`);
+    }
+  });
+
+  // Admin endpoint to repair database (drops and recreates transactions table)
+  app.get("/admin/repair-db", async (req, res) => {
+    try {
+      const logs = await repairTransactionsTable();
       res.setHeader('Content-Type', 'text/plain');
       res.send(logs.join('\n'));
     } catch (error: any) {
