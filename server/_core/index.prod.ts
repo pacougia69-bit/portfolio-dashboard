@@ -57,6 +57,22 @@ async function runDatabaseMigration() {
     const connection = await mysql.createConnection(DATABASE_URL);
     const db = drizzle(connection);
     
+    // CRITICAL FIX: Drop and recreate transactions table if it has wrong structure
+    try {
+      console.log('🔍 Checking transactions table structure...');
+      const [columns]: any = await connection.query("DESCRIBE transactions");
+      const columnNames = columns.map((col: any) => col.Field);
+      
+      // Check if table has 'world' or other wrong columns instead of 'userId'
+      if (columnNames.includes('world') || !columnNames.includes('userId')) {
+        console.log('⚠️  Detected corrupted transactions table schema! Dropping and recreating...');
+        await connection.query("DROP TABLE IF EXISTS transactions");
+        console.log('✅ Dropped corrupted transactions table');
+      }
+    } catch (checkError: any) {
+      console.log('ℹ️  Transactions table does not exist yet (this is fine for first deployment)');
+    }
+    
     // Run migrations from the drizzle folder
     await migrate(db, { migrationsFolder: './drizzle' });
     
