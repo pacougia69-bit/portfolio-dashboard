@@ -150,7 +150,72 @@ async function repairTransactionsTable() {
   }
 }
 
+async function checkAndRepairDatabase() {
+  try {
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      console.log('[DB Check] DATABASE_URL not set, skipping check');
+      return;
+    }
+
+    const connection = await mysql.createConnection(databaseUrl);
+    
+    try {
+      // Check if transactions table exists and has the correct schema
+      const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
+      if (!Array.isArray(tables) || tables.length === 0) {
+        console.log('[DB Check] Transactions table does not exist yet, will be created later');
+        return;
+      }
+
+      const [columns]: any = await connection.query("DESCRIBE transactions");
+      const columnNames = columns.map((col: any) => col.Field);
+      
+      // Check if we have the corrupted 'world' column or missing 'userId' column
+      if (columnNames.includes('world') || !columnNames.includes('userId')) {
+        console.log('[DB Repair] 🔧 Detected corrupted transactions table! Starting auto-repair...');
+        console.log('[DB Repair] Current columns:', columnNames.join(', '));
+        
+        // Drop and recreate the table
+        await connection.query("DROP TABLE IF EXISTS transactions");
+        console.log('[DB Repair] ✅ Dropped corrupted table');
+        
+        const createTableSQL = `
+          CREATE TABLE transactions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            userId INT NOT NULL,
+            date TIMESTAMP NOT NULL,
+            type ENUM('Kauf', 'Verkauf', 'Sparplan') NOT NULL,
+            isin VARCHAR(20) NOT NULL,
+            wkn VARCHAR(20) DEFAULT NULL,
+            name VARCHAR(255) NOT NULL,
+            quantity DECIMAL(18, 8) NOT NULL,
+            price DECIMAL(18, 4) NOT NULL,
+            fees DECIMAL(18, 4) DEFAULT '0' NOT NULL,
+            totalAmount DECIMAL(18, 4) NOT NULL,
+            orderNumber VARCHAR(100) NOT NULL UNIQUE,
+            invoiceNumber VARCHAR(100) DEFAULT NULL,
+            createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `;
+        await connection.query(createTableSQL);
+        console.log('[DB Repair] ✅ Created new table with correct schema');
+        console.log('[DB Repair] ✅ Auto-repair completed successfully!');
+      } else {
+        console.log('[DB Check] ✅ Transactions table schema is correct');
+      }
+    } finally {
+      await connection.end();
+    }
+  } catch (error: any) {
+    console.error('[DB Check] Error during database check/repair:', error.message);
+  }
+}
+
 async function startServer() {
+  // Run database check and repair on startup
+  await checkAndRepairDatabase();
+  
   const app = express();
   const server = createServer(app);
 
