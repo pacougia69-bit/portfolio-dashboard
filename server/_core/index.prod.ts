@@ -60,6 +60,43 @@ async function runDatabaseMigration() {
     // Run migrations from the drizzle folder
     await migrate(db, { migrationsFolder: './drizzle' });
     
+    // ADDITIONAL FIX: Check and fix transactions table schema if it exists but is incomplete
+    try {
+      console.log('🔍 Checking transactions table schema...');
+      const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
+      
+      if (Array.isArray(tables) && tables.length > 0) {
+        const [columns]: any = await connection.query("DESCRIBE transactions");
+        const existingColumns = new Set(columns.map((col: any) => col.Field));
+        
+        const requiredColumns = [
+          { name: 'wkn', sql: 'wkn VARCHAR(20) DEFAULT NULL AFTER isin' },
+          { name: 'fees', sql: 'fees DECIMAL(18, 4) DEFAULT "0" NOT NULL AFTER price' },
+          { name: 'totalAmount', sql: 'totalAmount DECIMAL(18, 4) NOT NULL AFTER fees' },
+          { name: 'invoiceNumber', sql: 'invoiceNumber VARCHAR(100) DEFAULT NULL AFTER orderNumber' },
+        ];
+        
+        const missingColumns = requiredColumns.filter(col => !existingColumns.has(col.name));
+        
+        if (missingColumns.length > 0) {
+          console.log(`⚠️  Found ${missingColumns.length} missing columns in transactions table`);
+          for (const col of missingColumns) {
+            try {
+              console.log(`  Adding column: ${col.name}`);
+              await connection.query(`ALTER TABLE transactions ADD COLUMN ${col.sql}`);
+              console.log(`  ✅ Added ${col.name}`);
+            } catch (colError: any) {
+              console.error(`  ❌ Failed to add ${col.name}:`, colError.message);
+            }
+          }
+        } else {
+          console.log('✅ All required columns exist in transactions table');
+        }
+      }
+    } catch (schemaError: any) {
+      console.error('⚠️  Error checking/fixing transactions schema:', schemaError.message);
+    }
+    
     await connection.end();
     
     console.log('✅ Database migration completed successfully');
