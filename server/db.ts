@@ -654,8 +654,10 @@ export async function createTransaction(
   
   try {
     // Check for duplicate by orderNumber (globally, not just for this user)
+    // Ensure orderNumber is treated as a string
+    const orderNumberString = String(data.orderNumber);
     const existing = await db.select().from(transactions)
-      .where(eq(transactions.orderNumber, data.orderNumber))
+      .where(eq(transactions.orderNumber, orderNumberString))
       .limit(1);
     
     if (existing.length > 0) {
@@ -678,7 +680,7 @@ export async function createTransaction(
       price: String(data.price),
       fees: String(data.fees),
       totalAmount: String(data.totalAmount),
-      orderNumber: data.orderNumber,
+      orderNumber: orderNumberString,
       invoiceNumber: data.invoiceNumber,
     });
     
