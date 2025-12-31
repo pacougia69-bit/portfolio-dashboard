@@ -661,25 +661,46 @@ async function getUserPinStatus(userId) {
 async function createTransaction(userId, data) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const existing = await db.select().from(transactions).where(eq(transactions.orderNumber, data.orderNumber)).limit(1);
-  if (existing.length > 0) {
-    return { duplicate: true, id: existing[0].id };
+  try {
+    const orderNumberString = String(data.orderNumber);
+    const existing = await db.select().from(transactions).where(eq(transactions.orderNumber, orderNumberString)).limit(1);
+    if (existing.length > 0) {
+      return {
+        duplicate: true,
+        id: existing[0].id,
+        orderNumber: data.orderNumber
+      };
+    }
+    const result = await db.insert(transactions).values({
+      userId,
+      date: data.date,
+      type: data.type,
+      isin: data.isin,
+      wkn: data.wkn,
+      name: data.name,
+      quantity: String(data.quantity),
+      price: String(data.price),
+      fees: String(data.fees),
+      totalAmount: String(data.totalAmount),
+      orderNumber: orderNumberString,
+      invoiceNumber: data.invoiceNumber
+    });
+    return {
+      duplicate: false,
+      id: Number(result[0].insertId),
+      orderNumber: data.orderNumber
+    };
+  } catch (error) {
+    console.error("Database error in createTransaction:", error);
+    if (error instanceof Error && error.message.includes("orderNumber")) {
+      return {
+        duplicate: true,
+        id: null,
+        orderNumber: data.orderNumber
+      };
+    }
+    throw error;
   }
-  const result = await db.insert(transactions).values({
-    userId,
-    date: data.date,
-    type: data.type,
-    isin: data.isin,
-    wkn: data.wkn,
-    name: data.name,
-    quantity: String(data.quantity),
-    price: String(data.price),
-    fees: String(data.fees),
-    totalAmount: String(data.totalAmount),
-    orderNumber: data.orderNumber,
-    invoiceNumber: data.invoiceNumber
-  });
-  return { duplicate: false, id: Number(result[0].insertId) };
 }
 async function getTransactions(userId) {
   const db = await getDb();
@@ -2438,14 +2459,15 @@ Bitte bewerte jeden Watchlist-ETF:
           price: transactionData.price,
           fees: transactionData.fees,
           totalAmount: transactionData.totalAmount,
-          orderNumber: transactionData.orderNumber,
+          orderNumber: String(transactionData.orderNumber),
           invoiceNumber: transactionData.invoiceNumber
         });
         if (result.duplicate) {
           return {
             success: false,
             duplicate: true,
-            message: "Diese Abrechnung wurde bereits importiert (Duplikat erkannt)."
+            message: `Diese DKB-Abrechnung wurde bereits importiert (Auftragsnummer ${result.orderNumber}).
+Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
           };
         }
         await updatePortfolioFromTransaction(
@@ -2540,23 +2562,6 @@ async function createContext(opts) {
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import { drizzle as drizzle2 } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-function serveStatic(app) {
-  const distPath = path.resolve(process.cwd(), "dist", "public");
-  if (!fs.existsSync(distPath)) {
-    console.error(`\u274C Build-Ordner nicht gefunden: ${distPath}`);
-    return;
-  }
-  console.log(`\u2705 Statische Dateien werden serviert von: ${distPath}`);
-  app.use(express.static(distPath));
-  app.use("*", (_req, res) => {
-    const indexPath = path.resolve(distPath, "index.html");
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      res.status(404).send("index.html nicht gefunden");
-    }
-  });
-}
 async function runDatabaseMigration() {
   const DATABASE_URL = process.env.DATABASE_URL;
   if (!DATABASE_URL) {
@@ -2567,12 +2572,192 @@ async function runDatabaseMigration() {
     console.log("\u{1F504} Starting database migration...");
     const connection = await mysql.createConnection(DATABASE_URL);
     const db = drizzle2(connection);
+    console.log("\u{1F527} FORCING transactions table recreation...");
+    try {
+      const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
+      if (Array.isArray(tables) && tables.length > 0) {
+        console.log("   Found existing transactions table, checking structure...");
+        const [columns] = await connection.query("DESCRIBE transactions");
+        const columnNames = columns.map((col) => col.Field);
+        console.log(`   Current columns: ${columnNames.join(", ")}`);
+        if (columnNames.includes("world") || !columnNames.includes("userId")) {
+          console.log('   \u26A0\uFE0F  CORRUPTED SCHEMA DETECTED! Has "world" instead of "userId"');
+          try {
+            const [fks] = await connection.query(`
+              SELECT CONSTRAINT_NAME 
+              FROM information_schema.KEY_COLUMN_USAGE 
+              WHERE TABLE_SCHEMA = DATABASE() 
+              AND TABLE_NAME = 'transactions' 
+              AND REFERENCED_TABLE_NAME IS NOT NULL
+            `);
+            for (const fk of fks) {
+              console.log(`   Dropping FK: ${fk.CONSTRAINT_NAME}`);
+              await connection.query(`ALTER TABLE transactions DROP FOREIGN KEY ${fk.CONSTRAINT_NAME}`);
+            }
+          } catch (fkErr) {
+            console.log("   No FKs to drop");
+          }
+          console.log("   Dropping corrupted transactions table...");
+          await connection.query("DROP TABLE IF EXISTS transactions");
+          console.log("   \u2705 Dropped corrupted table");
+        } else {
+          console.log("   \u2705 Table structure looks correct");
+        }
+      } else {
+        console.log("   \u2139\uFE0F  Transactions table does not exist yet");
+      }
+    } catch (checkError) {
+      console.log(`   \u2139\uFE0F  Could not check table: ${checkError.message}`);
+    }
     await migrate(db, { migrationsFolder: "./drizzle" });
+    try {
+      console.log("\u{1F50D} Checking transactions table schema...");
+      const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
+      if (Array.isArray(tables) && tables.length > 0) {
+        const [columns] = await connection.query("DESCRIBE transactions");
+        const existingColumns = new Set(columns.map((col) => col.Field));
+        const requiredColumns = [
+          { name: "wkn", sql: "wkn VARCHAR(20) DEFAULT NULL AFTER isin" },
+          { name: "fees", sql: 'fees DECIMAL(18, 4) DEFAULT "0" NOT NULL AFTER price' },
+          { name: "totalAmount", sql: "totalAmount DECIMAL(18, 4) NOT NULL AFTER fees" },
+          { name: "invoiceNumber", sql: "invoiceNumber VARCHAR(100) DEFAULT NULL AFTER orderNumber" }
+        ];
+        const missingColumns = requiredColumns.filter((col) => !existingColumns.has(col.name));
+        if (missingColumns.length > 0) {
+          console.log(`\u26A0\uFE0F  Found ${missingColumns.length} missing columns in transactions table`);
+          for (const col of missingColumns) {
+            try {
+              console.log(`  Adding column: ${col.name}`);
+              await connection.query(`ALTER TABLE transactions ADD COLUMN ${col.sql}`);
+              console.log(`  \u2705 Added ${col.name}`);
+            } catch (colError) {
+              console.error(`  \u274C Failed to add ${col.name}:`, colError.message);
+            }
+          }
+        } else {
+          console.log("\u2705 All required columns exist in transactions table");
+        }
+      }
+    } catch (schemaError) {
+      console.error("\u26A0\uFE0F  Error checking/fixing transactions schema:", schemaError.message);
+    }
     await connection.end();
     console.log("\u2705 Database migration completed successfully");
   } catch (error) {
     console.error("\u274C Database migration failed:", error);
     console.error("\u26A0\uFE0F  Server will continue, but database may be out of sync");
+  }
+}
+async function repairTransactionsTable() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL environment variable is not set");
+  }
+  const connection = await mysql.createConnection(databaseUrl);
+  const logs = [];
+  try {
+    logs.push("\u{1F527} Starting database repair for transactions table...");
+    logs.push("\u26A0\uFE0F  WARNING: This will DROP and recreate the transactions table!");
+    logs.push("");
+    const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
+    if (Array.isArray(tables) && tables.length > 0) {
+      const [columns] = await connection.query("DESCRIBE transactions");
+      logs.push("Current table structure:");
+      columns.forEach((col) => {
+        logs.push(`  - ${col.Field} (${col.Type})`);
+      });
+      logs.push("");
+    } else {
+      logs.push("\u2139\uFE0F  Transactions table does not exist yet.");
+      logs.push("");
+    }
+    logs.push("\u{1F5D1}\uFE0F  Dropping existing transactions table...");
+    await connection.query("DROP TABLE IF EXISTS transactions");
+    logs.push("\u2705 Table dropped successfully");
+    logs.push("");
+    logs.push("\u{1F3D7}\uFE0F  Creating new transactions table with correct schema...");
+    const createTableSQL = `
+      CREATE TABLE transactions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        userId INT NOT NULL,
+        date TIMESTAMP NOT NULL,
+        type ENUM('Kauf', 'Verkauf', 'Sparplan') NOT NULL,
+        isin VARCHAR(20) NOT NULL,
+        wkn VARCHAR(20) DEFAULT NULL,
+        name VARCHAR(255) NOT NULL,
+        quantity DECIMAL(18, 8) NOT NULL,
+        price DECIMAL(18, 4) NOT NULL,
+        fees DECIMAL(18, 4) DEFAULT '0' NOT NULL,
+        totalAmount DECIMAL(18, 4) NOT NULL,
+        orderNumber VARCHAR(100) NOT NULL UNIQUE,
+        invoiceNumber VARCHAR(100) DEFAULT NULL,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `;
+    await connection.query(createTableSQL);
+    logs.push("\u2705 Table created successfully");
+    logs.push("");
+    const [newColumns] = await connection.query("DESCRIBE transactions");
+    logs.push("New table structure:");
+    newColumns.forEach((col) => {
+      logs.push(`  - ${col.Field} (${col.Type}) ${col.Key ? `[${col.Key}]` : ""}`);
+    });
+    logs.push("");
+    logs.push("\u2705 Database repair completed successfully!");
+    logs.push("\u2139\uFE0F  The transactions table has been recreated with the correct schema.");
+    logs.push("\u2139\uFE0F  All previous transaction data has been removed.");
+    return logs;
+  } finally {
+    await connection.end();
+  }
+}
+async function fixTransactionsSchema() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL environment variable is not set");
+  }
+  const connection = await mysql.createConnection(databaseUrl);
+  const logs = [];
+  try {
+    logs.push("\u{1F4CB} Checking transactions table schema...");
+    const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
+    if (!Array.isArray(tables) || tables.length === 0) {
+      logs.push("\u274C Transactions table does not exist!");
+      return logs;
+    }
+    const [columns] = await connection.query("DESCRIBE transactions");
+    logs.push("\nCurrent columns:");
+    columns.forEach((col) => {
+      logs.push(`  - ${col.Field} (${col.Type})`);
+    });
+    const existingColumns = new Set(columns.map((col) => col.Field));
+    const requiredColumns = [
+      { name: "wkn", sql: "wkn VARCHAR(20) DEFAULT NULL AFTER isin" },
+      { name: "fees", sql: 'fees DECIMAL(18, 4) DEFAULT "0" NOT NULL AFTER price' },
+      { name: "totalAmount", sql: "totalAmount DECIMAL(18, 4) NOT NULL AFTER fees" },
+      { name: "invoiceNumber", sql: "invoiceNumber VARCHAR(100) DEFAULT NULL AFTER orderNumber" }
+    ];
+    const missingColumns = requiredColumns.filter((col) => !existingColumns.has(col.name));
+    if (missingColumns.length === 0) {
+      logs.push("\n\u2705 All required columns already exist!");
+      return logs;
+    }
+    logs.push(`
+\u26A0\uFE0F  Found ${missingColumns.length} missing columns: ${missingColumns.map((c) => c.name).join(", ")}`);
+    logs.push("\n\u{1F527} Adding missing columns...");
+    for (const col of missingColumns) {
+      try {
+        logs.push(`  Adding: ${col.name}`);
+        await connection.query(`ALTER TABLE transactions ADD COLUMN ${col.sql}`);
+        logs.push(`  \u2705 Successfully added ${col.name}`);
+      } catch (error) {
+        logs.push(`  \u274C Failed to add ${col.name}: ${error.message}`);
+      }
+    }
+    logs.push("\n\u2705 Schema fix completed!");
+    return logs;
+  } finally {
+    await connection.end();
   }
 }
 async function startServer() {
@@ -2583,7 +2768,137 @@ async function startServer() {
   app.get("/health", (_req, res) => res.status(200).send("OK"));
   registerOAuthRoutes(app);
   app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));
-  serveStatic(app);
+  app.get("/admin/fix-schema", async (req, res) => {
+    try {
+      const logs = await fixTransactionsSchema();
+      res.setHeader("Content-Type", "text/plain");
+      res.send(logs.join("\n"));
+    } catch (error) {
+      res.status(500).send(`Error: ${error.message}
+${error.stack}`);
+    }
+  });
+  app.get("/admin/repair-db", async (req, res) => {
+    try {
+      const logs = await repairTransactionsTable();
+      res.setHeader("Content-Type", "text/plain");
+      res.send(logs.join("\n"));
+    } catch (error) {
+      res.status(500).send(`Error: ${error.message}
+${error.stack}`);
+    }
+  });
+  app.get("/admin/check-schema", async (req, res) => {
+    try {
+      const databaseUrl = process.env.DATABASE_URL;
+      if (!databaseUrl) {
+        throw new Error("DATABASE_URL not set");
+      }
+      const connection = await mysql.createConnection(databaseUrl);
+      const [columns] = await connection.query("DESCRIBE transactions");
+      await connection.end();
+      res.setHeader("Content-Type", "application/json");
+      res.json({ columns });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+  app.post("/api/admin/fix-db-table", async (req, res) => {
+    try {
+      const databaseUrl = process.env.DATABASE_URL;
+      if (!databaseUrl) {
+        throw new Error("DATABASE_URL not set");
+      }
+      const connection = await mysql.createConnection(databaseUrl);
+      const logs = [];
+      logs.push("\u{1F527} FIXING DATABASE TABLE\n");
+      logs.push("=".repeat(50) + "\n");
+      logs.push("1. Checking current table structure...");
+      try {
+        const [columns] = await connection.query("DESCRIBE transactions");
+        logs.push(`   Current columns: ${columns.map((c) => c.Field).join(", ")}
+`);
+        const hasWorld = columns.some((c) => c.Field === "world");
+        if (hasWorld) {
+          logs.push('   \u26A0\uFE0F  DETECTED: Table has "world" column (CORRUPTED!)\n');
+        }
+      } catch (err) {
+        logs.push(`   Table doesn't exist or error: ${err.message}
+`);
+      }
+      logs.push("2. Removing foreign key constraints...");
+      try {
+        const [fks] = await connection.query(`
+          SELECT CONSTRAINT_NAME 
+          FROM information_schema.KEY_COLUMN_USAGE 
+          WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'transactions' 
+          AND REFERENCED_TABLE_NAME IS NOT NULL
+        `);
+        for (const fk of fks) {
+          await connection.query(`ALTER TABLE transactions DROP FOREIGN KEY ${fk.CONSTRAINT_NAME}`);
+          logs.push(`   Dropped FK: ${fk.CONSTRAINT_NAME}`);
+        }
+        logs.push("   \u2705 All FKs removed\n");
+      } catch (err) {
+        logs.push(`   No FKs or error: ${err.message}
+`);
+      }
+      logs.push("3. Dropping transactions table...");
+      await connection.query("DROP TABLE IF EXISTS transactions");
+      logs.push("   \u2705 Dropped\n");
+      logs.push("4. Creating new transactions table...");
+      await connection.query(`
+        CREATE TABLE transactions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          date TIMESTAMP NOT NULL,
+          type ENUM('Kauf', 'Verkauf', 'Sparplan') NOT NULL,
+          isin VARCHAR(20) NOT NULL,
+          wkn VARCHAR(20),
+          name VARCHAR(255) NOT NULL,
+          quantity DECIMAL(18,8) NOT NULL,
+          price DECIMAL(18,4) NOT NULL,
+          fees DECIMAL(18,4) DEFAULT '0',
+          totalAmount DECIMAL(18,4) NOT NULL,
+          orderNumber VARCHAR(100) NOT NULL UNIQUE,
+          invoiceNumber VARCHAR(100),
+          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      logs.push("   \u2705 Created\n");
+      logs.push("5. Verifying new table structure...");
+      const [newColumns] = await connection.query("DESCRIBE transactions");
+      logs.push(`   \u2705 Table has ${newColumns.length} columns:
+`);
+      newColumns.forEach((col) => {
+        logs.push(`      - ${col.Field} (${col.Type})`);
+      });
+      await connection.end();
+      logs.push("\n" + "=".repeat(50));
+      logs.push("\n\u2705 SUCCESS! Database fixed!\n");
+      logs.push("The transactions table now has the correct schema.");
+      logs.push("You can now upload DKB PDFs without errors.");
+      res.json({ success: true, logs: logs.join("\n") });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message, stack: error.stack });
+    }
+  });
+  const distPath = path.resolve(process.cwd(), "dist", "public");
+  if (fs.existsSync(distPath)) {
+    console.log(`\u2705 Statische Dateien werden serviert von: ${distPath}`);
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => {
+      const indexPath = path.resolve(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send("index.html nicht gefunden");
+      }
+    });
+  } else {
+    console.error(`\u274C Build-Ordner nicht gefunden: ${distPath}`);
+  }
   const httpServer = createServer(app);
   httpServer.listen(port, host, () => {
     console.log(`\u2705 Server l\xE4uft auf http://${host}:${port}`);
