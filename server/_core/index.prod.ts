@@ -145,9 +145,10 @@ async function startServer() {
   const port = Number(process.env.PORT || 3000)
   const host = '0.0.0.0'
 
+  // Health check endpoint
   app.get('/health', (_req, res) => res.status(200).send('OK'))
 
-  // Admin endpoint to fix database schema
+  // Admin endpoints - must be before static file serving
   app.get("/admin/fix-schema", async (req, res) => {
     try {
       const logs = await fixTransactionsSchema();
@@ -158,7 +159,6 @@ async function startServer() {
     }
   });
 
-  // Admin endpoint to check current schema
   app.get("/admin/check-schema", async (req, res) => {
     try {
       const databaseUrl = process.env.DATABASE_URL;
@@ -176,10 +176,28 @@ async function startServer() {
     }
   });
 
+  // OAuth and tRPC routes
   registerOAuthRoutes(app)
   app.use('/api/trpc', createExpressMiddleware({ router: appRouter, createContext }))
   
-  serveStatic(app)
+  // Static file serving - this includes the catch-all
+  const distPath = path.resolve(process.cwd(), 'dist', 'public')
+  if (fs.existsSync(distPath)) {
+    console.log(`✅ Statische Dateien werden serviert von: ${distPath}`)
+    app.use(express.static(distPath))
+    
+    // Catch-all for SPA - MUST be last
+    app.get('*', (_req, res) => {
+      const indexPath = path.resolve(distPath, 'index.html')
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath)
+      } else {
+        res.status(404).send('index.html nicht gefunden')
+      }
+    })
+  } else {
+    console.error(`❌ Build-Ordner nicht gefunden: ${distPath}`)
+  }
 
   const httpServer = createServer(app)
   httpServer.listen(port, host, () => {
