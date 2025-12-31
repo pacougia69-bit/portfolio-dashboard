@@ -244,13 +244,38 @@ async function startServer() {
       
       logs.push('🔄 Recreating transactions table...\n');
       
+      // First, check for and remove foreign key constraints
+      logs.push('1. Checking for foreign key constraints...');
+      try {
+        const [fks]: any = await connection.query(`
+          SELECT CONSTRAINT_NAME 
+          FROM information_schema.KEY_COLUMN_USAGE 
+          WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'transactions' 
+          AND REFERENCED_TABLE_NAME IS NOT NULL
+        `);
+        
+        if (fks.length > 0) {
+          logs.push(`   Found ${fks.length} foreign key constraint(s)`);
+          for (const fk of fks) {
+            logs.push(`   Dropping FK: ${fk.CONSTRAINT_NAME}`);
+            await connection.query(`ALTER TABLE transactions DROP FOREIGN KEY ${fk.CONSTRAINT_NAME}`);
+          }
+          logs.push('   ✅ All foreign keys removed\n');
+        } else {
+          logs.push('   No foreign keys found\n');
+        }
+      } catch (fkError: any) {
+        logs.push(`   ℹ️  Could not check foreign keys: ${fkError.message}\n`);
+      }
+      
       // Drop existing table
-      logs.push('1. Dropping existing transactions table...');
+      logs.push('2. Dropping existing transactions table...');
       await connection.query("DROP TABLE IF EXISTS transactions");
       logs.push('   ✅ Dropped\n');
       
-      // Create new table with correct schema
-      logs.push('2. Creating new transactions table with correct schema...');
+      // Create new table with correct schema (NO FOREIGN KEYS)
+      logs.push('3. Creating new transactions table with correct schema...');
       await connection.query(`
         CREATE TABLE transactions (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -269,10 +294,10 @@ async function startServer() {
           createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      logs.push('   ✅ Created\n');
+      logs.push('   ✅ Created (without foreign keys)\n');
       
       // Verify
-      logs.push('3. Verifying new table structure...');
+      logs.push('4. Verifying new table structure...');
       const [columns]: any = await connection.query("DESCRIBE transactions");
       logs.push(`   ✅ Table has ${columns.length} columns:\n`);
       columns.forEach((col: any) => {
