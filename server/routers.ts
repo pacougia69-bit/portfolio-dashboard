@@ -492,6 +492,7 @@ export const appRouter = router({
           const transactionData = await parseDKBPDF(pdfBuffer);
           
           // Create transaction record (with duplicate check)
+          // Ensure orderNumber is ALWAYS a string to prevent type coercion issues
           const result = await createTransaction(ctx.user.id, {
             date: transactionData.date,
             type: transactionData.type,
@@ -502,7 +503,7 @@ export const appRouter = router({
             price: transactionData.price,
             fees: transactionData.fees,
             totalAmount: transactionData.totalAmount,
-            orderNumber: transactionData.orderNumber,
+            orderNumber: String(transactionData.orderNumber),
             invoiceNumber: transactionData.invoiceNumber,
           });
           
