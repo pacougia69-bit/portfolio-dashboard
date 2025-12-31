@@ -203,10 +203,11 @@ async function startServer() {
   // 2) Nur HTML‑Routen auf index.html umleiten
   app.get("*", (req, res, next) => {
     if (
+      req.path.startsWith("/admin") ||
       req.path.startsWith("/assets") ||
       req.path.match(/.(js|css|png|jpg|jpeg|svg|ico|webp|map)$/)
     ) {
-      return next(); // das sind Dateien, nicht index.html
+      return next(); // das sind Dateien oder Admin-Routen, nicht index.html
     }
     res.sendFile(path.join(staticPath, "index.html"));
   });
