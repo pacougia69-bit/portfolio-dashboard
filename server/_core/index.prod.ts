@@ -22,7 +22,13 @@ function serveStatic(app: express.Express) {
   console.log(`✅ Statische Dateien werden serviert von: ${distPath}`)
   app.use(express.static(distPath))
 
-  app.use('*', (_req, res) => {
+  // Catch-all route for SPA - but exclude admin and API routes
+  app.use('*', (req, res) => {
+    // Don't serve index.html for API or admin routes
+    if (req.originalUrl.startsWith('/admin') || req.originalUrl.startsWith('/api')) {
+      return res.status(404).send('Not found');
+    }
+    
     const indexPath = path.resolve(distPath, 'index.html')
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath)
