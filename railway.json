@@ -1,7 +1,7 @@
 {
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "pnpm install --frozen-lockfile && pnpm build"
+    "buildCommand": "rm -rf dist node_modules/.vite && pnpm install --frozen-lockfile && pnpm build"
   },
   "deploy": {
     "startCommand": "pnpm start",

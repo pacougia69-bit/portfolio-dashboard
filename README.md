@@ -65,7 +65,7 @@ pnpm db:push
 pnpm dev
 ```
 
-Die App ist dann unter `http://localhost:3000` erreichbar.
+Die App ist dann unter `https://portfolio-dashboard-production-e5c1.up.railway.app` erreichbar.
 
 ## Docker Deployment
 
@@ -153,3 +153,4 @@ MIT License
 ## Support
 
 Bei Fragen oder Problemen erstellen Sie bitte ein Issue im Repository.
+# Force rebuild Mon Dec 29 13:47:36 UTC 2025

@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, 
@@ -11,12 +11,14 @@ import {
   priceCache,
   aiAnalyses,
   userSettings,
+  transactions,
   InsertPortfolioPosition,
   InsertWatchlistItem,
   InsertDividend,
   InsertNote,
   InsertSavingsPlan,
   InsertPriceCache,
+  InsertTransaction,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -434,10 +436,13 @@ export async function importPortfolioData(userId: number, portfolio: any[], watc
       category: item.category || null,
       amount: String(item.amount),
       buyPrice: String(item.buyPrice),
-      currentPrice: item.value ? String(item.value / item.amount) : null,
+      // Support both legacy (item.value/item.amount) and version 2.0 (item.currentPrice) formats
+      currentPrice: item.currentPrice !== undefined && item.currentPrice !== null
+        ? String(item.currentPrice)
+        : item.value ? String(item.value / item.amount) : null,
       status: item.status || "Halten",
       autoUpdate: item.autoUpdate ?? true,
-      notes: null,
+      notes: item.notes || null,
     });
   }
   
@@ -446,8 +451,12 @@ export async function importPortfolioData(userId: number, portfolio: any[], watc
     await db.insert(watchlistItems).values({
       userId,
       ticker: item.ticker,
+      wkn: item.wkn || null,
       name: item.name || item.ticker,
-      currentPrice: item.price ? String(item.price) : null,
+      // Support both legacy (item.price) and version 2.0 (item.currentPrice) formats
+      currentPrice: item.currentPrice !== undefined && item.currentPrice !== null
+        ? String(item.currentPrice)
+        : item.price ? String(item.price) : null,
       targetPrice: item.targetPrice ? String(item.targetPrice) : null,
       notes: item.notes || null,
     });
@@ -628,4 +637,188 @@ export async function getUserPinStatus(userId: number): Promise<{ enabled: boole
     enabled: result[0].pinEnabled || false,
     autoLockMinutes: result[0].autoLockMinutes || 5,
   };
+}
+
+// Transaction functions for DKB PDF import
+export async function createTransaction(
+  userId: number, 
+  data: Omit<InsertTransaction, 'userId' | 'quantity' | 'price' | 'fees' | 'totalAmount'> & {
+    quantity: number;
+    price: number;
+    fees: number;
+    totalAmount: number;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  try {
+    // Check for duplicate by orderNumber (globally, not just for this user)
+    // Ensure orderNumber is treated as a string
+    const orderNumberString = String(data.orderNumber);
+    const existing = await db.select().from(transactions)
+      .where(eq(transactions.orderNumber, orderNumberString))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      return { 
+        duplicate: true, 
+        id: existing[0].id, 
+        orderNumber: data.orderNumber 
+      };
+    }
+    
+    // Insert new transaction
+    const result = await db.insert(transactions).values({
+      userId,
+      date: data.date,
+      type: data.type,
+      isin: data.isin,
+      wkn: data.wkn,
+      name: data.name,
+      quantity: String(data.quantity),
+      price: String(data.price),
+      fees: String(data.fees),
+      totalAmount: String(data.totalAmount),
+      orderNumber: orderNumberString,
+      invoiceNumber: data.invoiceNumber,
+    });
+    
+    return { 
+      duplicate: false, 
+      id: Number(result[0].insertId),
+      orderNumber: data.orderNumber
+    };
+  } catch (error) {
+    // Catch any database errors (including unique constraint violations)
+    console.error('Database error in createTransaction:', error);
+    
+    // Check if it's a unique constraint violation on orderNumber
+    if (error instanceof Error && error.message.includes('orderNumber')) {
+      return { 
+        duplicate: true, 
+        id: null, 
+        orderNumber: data.orderNumber 
+      };
+    }
+    
+    // Re-throw other errors
+    throw error;
+  }
+}
+
+export async function getTransactions(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db.select().from(transactions)
+    .where(eq(transactions.userId, userId))
+    .orderBy(desc(transactions.date));
+  
+  return result.map(t => ({
+    ...t,
+    quantity: Number(t.quantity),
+    price: Number(t.price),
+    fees: Number(t.fees),
+    totalAmount: Number(t.totalAmount),
+  }));
+}
+
+export async function getTransactionsByISIN(userId: number, isin: string) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db.select().from(transactions)
+    .where(and(eq(transactions.userId, userId), eq(transactions.isin, isin)))
+    .orderBy(desc(transactions.date));
+  
+  return result.map(t => ({
+    ...t,
+    quantity: Number(t.quantity),
+    price: Number(t.price),
+    fees: Number(t.fees),
+    totalAmount: Number(t.totalAmount),
+  }));
+}
+
+/**
+ * Update portfolio position based on transaction
+ * Calculates total quantity, invested capital, and average price
+ */
+export async function updatePortfolioFromTransaction(
+  userId: number,
+  isin: string,
+  wkn: string | undefined,
+  name: string,
+  transactionType: 'Kauf' | 'Verkauf' | 'Sparplan',
+  quantity: number,
+  totalAmount: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Find existing position by ISIN or WKN
+  let existingPosition = null;
+  if (isin) {
+    // We need to search by ISIN - but we don't have ISIN in portfolioPositions
+    // Let's search by WKN if available
+    if (wkn) {
+      const positions = await db.select().from(portfolioPositions)
+        .where(and(eq(portfolioPositions.userId, userId), eq(portfolioPositions.wkn, wkn)))
+        .limit(1);
+      if (positions.length > 0) {
+        existingPosition = positions[0];
+      }
+    }
+  }
+  
+  if (existingPosition) {
+    // Update existing position
+    const oldQuantity = Number(existingPosition.amount);
+    const oldBuyPrice = Number(existingPosition.buyPrice);
+    const oldInvestedCapital = oldQuantity * oldBuyPrice;
+    
+    let newQuantity: number;
+    let newInvestedCapital: number;
+    
+    if (transactionType === 'Verkauf') {
+      // Selling - reduce quantity and invested capital proportionally
+      newQuantity = oldQuantity - quantity;
+      if (newQuantity < 0) newQuantity = 0;
+      newInvestedCapital = newQuantity > 0 ? oldInvestedCapital * (newQuantity / oldQuantity) : 0;
+    } else {
+      // Buying - add quantity and invested capital
+      newQuantity = oldQuantity + quantity;
+      newInvestedCapital = oldInvestedCapital + totalAmount;
+    }
+    
+    const newAvgPrice = newQuantity > 0 ? newInvestedCapital / newQuantity : 0;
+    
+    await db.update(portfolioPositions)
+      .set({
+        amount: String(newQuantity),
+        buyPrice: String(newAvgPrice),
+      })
+      .where(eq(portfolioPositions.id, existingPosition.id));
+    
+    return { updated: true, positionId: existingPosition.id };
+  } else {
+    // Create new position
+    const result = await db.insert(portfolioPositions).values({
+      userId,
+      wkn: wkn || null,
+      ticker: isin, // Use ISIN as ticker for now
+      name,
+      type: 'ETF', // Default to ETF, can be changed by user
+      category: null,
+      amount: String(quantity),
+      buyPrice: String(totalAmount / quantity),
+      currentPrice: null,
+      status: 'Halten',
+      autoUpdate: true,
+      notes: `Importiert aus DKB-Abrechnung am ${new Date().toLocaleDateString('de-DE')}`,
+    });
+    
+    return { updated: false, positionId: Number(result[0].insertId) };
+  }
 }

@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/_core/hooks/useAuth';
 import {
   Settings, Upload, Download, Trash2, FileJson, Database,
-  AlertTriangle, RefreshCw, User, Lock, Shield, Eye, EyeOff
+  AlertTriangle, RefreshCw, User, Lock, Shield, Eye, EyeOff, FileText, History
 } from 'lucide-react';
 
 export default function EinstellungenPage() {
@@ -27,6 +27,9 @@ export default function EinstellungenPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
   const [jsonInput, setJsonInput] = useState('');
+  
+  // DKB PDF Import State
+  const [isPdfUploading, setIsPdfUploading] = useState(false);
   
   // PIN State
   const [newPin, setNewPin] = useState('');
@@ -39,17 +42,37 @@ export default function EinstellungenPage() {
   const { data: watchlist = [], refetch: refetchWatchlist } = trpc.watchlist.list.useQuery();
   const { data: dividends = [], refetch: refetchDividends } = trpc.dividends.list.useQuery({});
   const { data: pinStatus, refetch: refetchPinStatus } = trpc.settings.getPinStatus.useQuery();
+  const { data: transactions = [] } = trpc.transactions.list.useQuery();
   
   // Mutations
   const importPortfolio = trpc.portfolio.import.useMutation({
     onSuccess: (data) => {
-      toast.success(`${data.imported} Positionen importiert`);
+      const total = (data.imported?.portfolio || 0) + (data.imported?.watchlist || 0);
+      toast.success(`Import erfolgreich: ${data.imported?.portfolio || 0} Portfolio, ${data.imported?.watchlist || 0} Watchlist (${total} gesamt)`);
       setIsImportDialogOpen(false);
       setJsonInput('');
       refetchPortfolio();
       refetchWatchlist();
     },
     onError: (error) => toast.error(error.message),
+  });
+  
+  const uploadDKBPDF = trpc.transactions.uploadDKBPDF.useMutation({
+    onSuccess: (data) => {
+      setIsPdfUploading(false);
+      if (data.duplicate) {
+        toast.warning(data.message);
+      } else if (data.success) {
+        toast.success(data.message);
+        refetchPortfolio();
+      } else {
+        toast.error(data.message);
+      }
+    },
+    onError: (error) => {
+      setIsPdfUploading(false);
+      toast.error(error.message || 'Fehler beim Importieren der PDF');
+    },
   });
   
   const setPin = trpc.settings.setPin.useMutation({
@@ -80,6 +103,39 @@ export default function EinstellungenPage() {
       setJsonInput(event.target?.result as string);
     };
     reader.readAsText(file);
+  };
+  
+  const handlePDFUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Bitte wählen Sie eine PDF-Datei aus');
+      return;
+    }
+    
+    setIsPdfUploading(true);
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const arrayBuffer = event.target?.result as ArrayBuffer;
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64 = btoa(binary);
+      
+      uploadDKBPDF.mutate({ pdfBase64: base64 });
+    };
+    reader.onerror = () => {
+      setIsPdfUploading(false);
+      toast.error('Fehler beim Lesen der PDF-Datei');
+    };
+    reader.readAsArrayBuffer(file);
+    
+    // Reset input
+    e.target.value = '';
   };
   
   const handleImportJSON = () => {
@@ -449,6 +505,150 @@ export default function EinstellungenPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* DKB PDF Import */}
+        <Card className="glass-card">
+          <CardHeader className="p-3 sm:p-6 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+              <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+              Käufe & Verkäufe (DKB-PDF Import)
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              DKB-Abrechnungen importieren und Portfolio automatisch aktualisieren
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-6 pt-0 space-y-4">
+            <div className="space-y-3">
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Laden Sie Ihre DKB-Wertpapierabrechnungen (PDF) hoch. Das System erkennt automatisch Käufe und Verkäufe, 
+                aktualisiert Ihre Portfolio-Positionen und berechnet Durchschnittseinkaufspreise.
+              </p>
+              <div className="flex flex-col gap-3">
+                <label className="cursor-pointer">
+                  <div className={`flex items-center justify-center w-full h-20 border-2 border-dashed rounded-lg transition-colors ${
+                    isPdfUploading 
+                      ? 'border-primary bg-primary/10 cursor-not-allowed' 
+                      : 'border-primary/30 hover:border-primary/60 bg-primary/5'
+                  }`}>
+                    <div className="text-center">
+                      {isPdfUploading ? (
+                        <>
+                          <RefreshCw className="w-6 h-6 mx-auto mb-2 text-primary animate-spin" />
+                          <p className="text-sm text-muted-foreground">Wird importiert...</p>
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-6 h-6 mx-auto mb-2 text-primary/60" />
+                          <p className="text-sm font-medium">DKB-PDF hochladen</p>
+                          <p className="text-xs text-muted-foreground">Wertpapierabrechnung (Kauf/Verkauf)</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={handlePDFUpload}
+                    disabled={isPdfUploading}
+                    className="hidden"
+                  />
+                </label>
+                <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg">
+                  <p className="font-medium mb-1">💡 So funktioniert's:</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li>PDF-Abrechnung von DKB hochladen</li>
+                    <li>System erkennt automatisch Duplikate</li>
+                    <li>Portfolio wird automatisch aktualisiert</li>
+                    <li>Durchschnittseinkaufspreis wird neu berechnet</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Transaction History */}
+        {transactions.length > 0 && (
+          <Card className="glass-card">
+            <CardHeader className="p-3 sm:p-6 pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                <History className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                Transaktionshistorie
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Importierte Käufe und Verkäufe ({transactions.length})
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-3 sm:p-6 pt-0">
+              <div className="space-y-2">
+                {transactions.map((transaction: any) => (
+                  <div
+                    key={transaction.id}
+                    className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                      transaction.type === 'Kauf' || transaction.type === 'Sparplan'
+                        ? 'bg-green-500/20 text-green-600'
+                        : 'bg-red-500/20 text-red-600'
+                    }`}>
+                      {transaction.type === 'Kauf' || transaction.type === 'Sparplan' ? '↑' : '↓'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm truncate">{transaction.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {transaction.wkn && `WKN: ${transaction.wkn} • `}
+                            ISIN: {transaction.isin}
+                          </p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className={`font-medium text-sm ${
+                            transaction.type === 'Kauf' || transaction.type === 'Sparplan'
+                              ? 'text-green-600'
+                              : 'text-red-600'
+                          }`}>
+                            {transaction.type === 'Kauf' || transaction.type === 'Sparplan' ? '+' : '-'}
+                            {transaction.quantity.toFixed(4)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {transaction.totalAmount.toFixed(2)} €
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          transaction.type === 'Sparplan'
+                            ? 'bg-blue-500/20 text-blue-600'
+                            : transaction.type === 'Kauf'
+                            ? 'bg-green-500/20 text-green-600'
+                            : 'bg-red-500/20 text-red-600'
+                        }`}>
+                          {transaction.type}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(transaction.date).toLocaleDateString('de-DE', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span>Kurs: {transaction.price.toFixed(2)} €</span>
+                        {transaction.fees > 0 && (
+                          <span>Gebühren: {transaction.fees.toFixed(2)} €</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Danger Zone */}
         <Card className="border-destructive/50">

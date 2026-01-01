@@ -360,24 +360,32 @@ Antworte immer auf Deutsch.`;
 4. Vorschläge für Rebalancing falls nötig`;
 
   try {
-    const response = await invokeLLM({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-    
-    const content = response.choices[0]?.message?.content;
-    const analysis = typeof content === 'string' ? content : "Analyse konnte nicht erstellt werden.";
+    const analysis = await invokeLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ]);
     
     // Save analysis to database
-    await saveAiAnalysis(userId, "portfolio", analysis);
+    await saveAiAnalysis(userId, "portfolio", analysis || "Analyse konnte nicht erstellt werden.");
     
-    return { analysis, type: "portfolio" };
-  } catch (error) {
-    console.error("Error analyzing portfolio:", error);
+    return { analysis: analysis || "Analyse konnte nicht erstellt werden.", type: "portfolio" };
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    console.error("Error analyzing portfolio:", {
+      message: errorMessage,
+      error: error,
+      stack: error?.stack,
+    });
+    
+    // Return detailed error message for debugging
+    const userMessage = errorMessage.includes("API key") 
+      ? "OpenAI API-Schlüssel fehlt oder ist ungültig. Bitte überprüfen Sie die Konfiguration."
+      : errorMessage.includes("quota") || errorMessage.includes("rate_limit")
+      ? "OpenAI API-Limit erreicht. Bitte versuchen Sie es später erneut."
+      : `Die KI-Analyse ist derzeit nicht verfügbar. Fehler: ${errorMessage}`;
+    
     return { 
-      analysis: "Die KI-Analyse ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.", 
+      analysis: userMessage, 
       type: "error" 
     };
   }
@@ -416,19 +424,14 @@ Bitte gib mir eine Einschätzung zu ${name} (${ticker}):
 4. Falls Kaufen: Welcher Anteil am Portfolio wäre sinnvoll?`;
 
   try {
-    const response = await invokeLLM({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-    
-    const recContent = response.choices[0]?.message?.content;
-    const recommendation = typeof recContent === 'string' ? recContent : "Empfehlung konnte nicht erstellt werden.";
+    const recommendation = await invokeLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ]);
     
     // Determine action from response
     let action = "Halten";
-    const lowerRec = recommendation.toLowerCase();
+    const lowerRec = (recommendation || "").toLowerCase();
     if (lowerRec.includes("kaufen") && !lowerRec.includes("nicht kaufen")) {
       action = "Kaufen";
     } else if (lowerRec.includes("verkaufen")) {
@@ -436,13 +439,26 @@ Bitte gib mir eine Einschätzung zu ${name} (${ticker}):
     }
     
     // Save analysis
-    await saveAiAnalysis(userId, "recommendation", recommendation, ticker);
+    await saveAiAnalysis(userId, "recommendation", recommendation || "Empfehlung konnte nicht erstellt werden.", ticker);
     
-    return { recommendation, action };
-  } catch (error) {
-    console.error("Error generating recommendation:", error);
+    return { recommendation: recommendation || "Empfehlung konnte nicht erstellt werden.", action };
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    console.error("Error generating recommendation:", {
+      message: errorMessage,
+      error: error,
+      stack: error?.stack,
+    });
+    
+    // Return detailed error message for debugging
+    const userMessage = errorMessage.includes("API key") 
+      ? "OpenAI API-Schlüssel fehlt oder ist ungültig. Bitte überprüfen Sie die Konfiguration."
+      : errorMessage.includes("quota") || errorMessage.includes("rate_limit")
+      ? "OpenAI API-Limit erreicht. Bitte versuchen Sie es später erneut."
+      : `Die KI-Empfehlung ist derzeit nicht verfügbar. Fehler: ${errorMessage}`;
+    
     return { 
-      recommendation: "Die KI-Empfehlung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.", 
+      recommendation: userMessage, 
       action: "Halten" 
     };
   }
