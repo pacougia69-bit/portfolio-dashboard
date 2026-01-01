@@ -160,10 +160,5 @@ Railway-Projekt: https://railway.com/project/12e48c2d-c1aa-49cd-8b84-4b9bd6f2351
 Live-App: https://portfolio-dashboard-production-e5c1.up.railway.app
 ChatLLM Teams: https://apps.abacus.ai/chatllm
 OpenAI Platform: https://platform.openai.com7. Wichtige Links & Ressourcen
-GitHub-Repo: https://github.com/pacougia69-bit/portfolio-dashboard
-Railway-Projekt: https://railway.com/project/12e48c2d-c1aa-49cd-8b84-4b9bd6f23511
-Live-App: https://portfolio-dashboard-production-e5c1.up.railway.app
-ChatLLM Teams: https://apps.abacus.ai/chatllm
-OpenAI Platform: https://platform.openai.com
 
 Letzte Aktualisierung: 01.01.2026
