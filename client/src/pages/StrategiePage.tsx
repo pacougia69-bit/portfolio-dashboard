@@ -122,21 +122,46 @@ export default function StrategiePage() {
     }
   }, [settings]);
   
-  // Load savings plans into etfSparRates
-  useEffect(() => {
-    if (savingsPlans.length > 0) {
-      const rates: Record<string, number> = {};
-      savingsPlans.forEach(plan => {
-        rates[plan.ticker] = Number(plan.monthlyAmount);
-      });
-      setEtfSparRates(rates);
-    }
-  }, [savingsPlans]);
-  
   // Filter ETF positions
   const etfPositions = useMemo(() => {
     return portfolio.filter(p => p.type === 'ETF');
   }, [portfolio]);
+  
+  // Load savings plans into etfSparRates
+  useEffect(() => {
+    if (savingsPlans.length > 0) {
+      const rates: Record<string, number> = {};
+      const etfTickers = etfPositions.map(etf => etf.ticker);
+      
+      // Debug: Log all savings plans
+      console.log('🔍 DEBUG: All savings plans from DB:', savingsPlans.map(p => ({
+        ticker: p.ticker,
+        name: p.name,
+        amount: p.monthlyAmount
+      })));
+      
+      // Debug: Log current ETF positions
+      console.log('🔍 DEBUG: Current ETF positions:', etfPositions.map(e => ({
+        ticker: e.ticker,
+        name: e.name
+      })));
+      
+      // Only load rates for ETFs that are currently in portfolio
+      savingsPlans.forEach(plan => {
+        if (etfTickers.includes(plan.ticker)) {
+          rates[plan.ticker] = Number(plan.monthlyAmount);
+        } else {
+          console.warn(`⚠️ Found orphaned savings plan for ticker "${plan.ticker}" (${plan.name}) with ${plan.monthlyAmount}€ - will be cleaned up on next save`);
+        }
+      });
+      
+      // Debug: Log filtered rates
+      console.log('🔍 DEBUG: Filtered etfSparRates:', rates);
+      console.log('🔍 DEBUG: Total of filtered rates:', Object.values(rates).reduce((sum, val) => sum + val, 0));
+      
+      setEtfSparRates(rates);
+    }
+  }, [savingsPlans, etfPositions]);
   
   // Calculate totals
   const totalValue = useMemo(() => {
@@ -228,7 +253,20 @@ export default function StrategiePage() {
     try {
       // Get existing plans
       const existingPlans = savingsPlans;
+      const etfTickers = etfPositions.map(etf => etf.ticker);
       
+      console.log('💾 Saving rates - Current ETF tickers:', etfTickers);
+      
+      // Step 1: Clean up orphaned savings plans (ETFs not in portfolio anymore)
+      const orphanedPlans = existingPlans.filter(plan => !etfTickers.includes(plan.ticker));
+      console.log('🗑️ Cleaning up orphaned plans:', orphanedPlans.map(p => `${p.ticker} (${p.monthlyAmount}€)`));
+      
+      for (const orphan of orphanedPlans) {
+        await deleteSavingsPlan.mutateAsync({ id: orphan.id });
+        console.log(`✓ Deleted orphaned plan: ${orphan.ticker} with ${orphan.monthlyAmount}€`);
+      }
+      
+      // Step 2: Update/create plans for current ETFs
       for (const etf of etfPositions) {
         const rate = etfSparRates[etf.ticker] || 0;
         const existingPlan = existingPlans.find(p => p.ticker === etf.ticker);
@@ -257,7 +295,14 @@ export default function StrategiePage() {
       // Invalidate and refetch
       await utils.savingsPlans.list.invalidate();
       setHasUnsavedChanges(false);
-      toast.success('Sparraten gespeichert');
+      
+      const cleanedCount = orphanedPlans.length;
+      const message = cleanedCount > 0 
+        ? `Sparraten gespeichert (${cleanedCount} alte Einträge bereinigt)`
+        : 'Sparraten gespeichert';
+      toast.success(message);
+      
+      console.log('✅ Save complete - all orphaned plans cleaned up');
     } catch (error) {
       toast.error('Fehler beim Speichern der Sparraten');
       console.error(error);
