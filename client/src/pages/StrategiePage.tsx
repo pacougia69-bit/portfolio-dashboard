@@ -155,10 +155,10 @@ export default function StrategiePage() {
   
   const etfPercent = totalPortfolioValue > 0 ? (totalValue / totalPortfolioValue) * 100 : 0;
   
-  // Summe der eingetragenen Sparraten
+  // Summe der eingetragenen Sparraten (nur für sichtbare ETFs)
   const totalSparRate = useMemo(() => {
-    return Object.values(etfSparRates).reduce((sum, rate) => sum + (rate || 0), 0);
-  }, [etfSparRates]);
+    return etfPositions.reduce((sum, etf) => sum + (etfSparRates[etf.ticker] || 0), 0);
+  }, [etfPositions, etfSparRates]);
   
   // Differenz zur Ziel-Sparrate
   const sparRateDifference = monthlyBudget - totalSparRate;
