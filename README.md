@@ -20,7 +20,7 @@ Ein umfassendes Portfolio-Management-Dashboard mit KI-gestützter Analyse, Live-
 - **Frontend**: React 19, TypeScript, Tailwind CSS 4, shadcn/ui
 - **Backend**: Node.js, tRPC, Express
 - **Datenbank**: PostgreSQL mit Drizzle ORM
-- **KI**: OpenAI GPT API (via Manus Forge)
+- **KI**: OpenAI GPT API (GPT-4o, GPT-4o Mini, GPT-4 Turbo)
 - **Kursdaten**: Yahoo Finance, Twelve Data API
 
 ## Voraussetzungen
@@ -101,8 +101,7 @@ docker run -d \
 |----------|--------------|--------------|
 | `DATABASE_URL` | PostgreSQL Connection String | Ja |
 | `JWT_SECRET` | Secret für JWT-Token | Ja |
-| `BUILT_IN_FORGE_API_KEY` | Manus Forge API Key für KI | Ja |
-| `BUILT_IN_FORGE_API_URL` | Manus Forge API URL | Ja |
+| `OPENAI_API_KEY` | OpenAI API Key für KI-Analysen | Ja |
 | `TWELVE_DATA_API_KEY` | Twelve Data API Key für Kurse | Optional |
 | `VITE_APP_TITLE` | App-Titel | Optional |
 
