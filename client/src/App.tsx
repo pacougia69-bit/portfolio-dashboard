@@ -179,7 +179,8 @@ function AppWithPinLock() {
 
       return false;
     } catch (error) {
-      console.error('PIN verification error:', error);
+      console.error('PIN-Verifizierung fehlgeschlagen:', error);
+      // Return false to show error in PinLock component
       return false;
     }
   };
@@ -200,8 +201,8 @@ function AppWithPinLock() {
     return (
       <PinLock
         onUnlock={() => setIsUnlocked(true)}
-        title="Portfolio Dashboard"
-        subtitle="Geben Sie Ihren PIN ein um fortzufahren"
+        title="Dashboard gesperrt"
+        subtitle="Geben Sie Ihren PIN ein, um fortzufahren"
         pinLength={4}
         verifyPin={handleUnlock}
       />

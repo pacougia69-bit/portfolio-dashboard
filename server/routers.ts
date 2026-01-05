@@ -572,9 +572,15 @@ export const appRouter = router({
     // PIN-Sperre Funktionen
     setPin: protectedProcedure
       .input(z.object({
-        pin: z.string().min(4).max(6),
+        pin: z.string()
+          .min(4, { message: "Der PIN muss mindestens 4 Zeichen lang sein" })
+          .max(6, { message: "Der PIN darf maximal 6 Zeichen lang sein" })
+          .regex(/^\d+$/, { message: "Der PIN darf nur Ziffern enthalten" }),
         enabled: z.boolean(),
-        autoLockMinutes: z.number().min(1).max(60).optional(),
+        autoLockMinutes: z.number()
+          .min(1, { message: "Auto-Sperre muss mindestens 1 Minute sein" })
+          .max(60, { message: "Auto-Sperre darf maximal 60 Minuten sein" })
+          .optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const { setUserPin } = await import('./db');
@@ -583,11 +589,18 @@ export const appRouter = router({
     
     verifyPin: protectedProcedure
       .input(z.object({
-        pin: z.string(),
+        pin: z.string()
+          .min(1, { message: "Bitte PIN eingeben" }),
       }))
       .mutation(async ({ ctx, input }) => {
         const { verifyUserPin } = await import('./db');
-        return verifyUserPin(ctx.user.id, input.pin);
+        const result = await verifyUserPin(ctx.user.id, input.pin);
+
+        if (!result.valid) {
+          throw new Error("Der PIN ist falsch");
+        }
+
+        return result;
       }),
     
     removePin: protectedProcedure
