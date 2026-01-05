@@ -573,9 +573,16 @@ export const appRouter = router({
     setPin: protectedProcedure
       .input(z.object({
         pin: z.string()
-          .min(4, { message: "Der PIN muss mindestens 4 Zeichen lang sein" })
-          .max(6, { message: "Der PIN darf maximal 6 Zeichen lang sein" })
-          .regex(/^\d+$/, { message: "Der PIN darf nur Ziffern enthalten" }),
+          .optional()
+          .refine((val) => {
+            // PIN is optional, but if provided and not empty, must be valid
+            if (val && val.length > 0) {
+              return val.length >= 4 && val.length <= 6 && /^\d+$/.test(val);
+            }
+            return true;
+          }, {
+            message: "Der PIN muss 4-6 Ziffern enthalten"
+          }),
         enabled: z.boolean(),
         autoLockMinutes: z.number()
           .min(1, { message: "Auto-Sperre muss mindestens 1 Minute sein" })
@@ -583,8 +590,37 @@ export const appRouter = router({
           .optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const { setUserPin } = await import('./db');
-        return setUserPin(ctx.user.id, input.pin, input.enabled, input.autoLockMinutes);
+        const { setUserPin, getUserSettings } = await import('./db');
+
+        // If PIN is provided and not empty, update PIN
+        if (input.pin && input.pin.length > 0) {
+          return setUserPin(ctx.user.id, input.pin, input.enabled, input.autoLockMinutes);
+        }
+
+        // Otherwise, just update autoLockMinutes and/or enabled status
+        const existing = await getUserSettings(ctx.user.id);
+
+        if (!existing) {
+          throw new Error("Bitte setzen Sie zuerst einen PIN");
+        }
+
+        // Update only settings, keep existing PIN hash
+        const db = await import('./db').then(m => m.getDb());
+        const dbInstance = await db();
+        if (!dbInstance) throw new Error("Database not available");
+
+        const { userSettings } = await import('../drizzle/schema');
+        const { eq } = await import('drizzle-orm');
+
+        const updateData: Record<string, unknown> = {};
+        if (input.enabled !== undefined) updateData.pinEnabled = input.enabled;
+        if (input.autoLockMinutes !== undefined) updateData.autoLockMinutes = input.autoLockMinutes;
+
+        await dbInstance.update(userSettings)
+          .set(updateData)
+          .where(eq(userSettings.userId, ctx.user.id));
+
+        return { success: true };
       }),
     
     verifyPin: protectedProcedure
