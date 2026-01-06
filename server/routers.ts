@@ -1331,9 +1331,15 @@ export const appRouter = router({
           }
 
           // Build full URL for the image
+          // Priority: PUBLIC_URL > RAILWAY_PUBLIC_DOMAIN > OAUTH_SERVER_URL > localhost
+          const baseUrl = process.env.PUBLIC_URL
+            || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
+            || process.env.OAUTH_SERVER_URL
+            || 'http://localhost:5000';
+
           const fullUrl = imageUrl.startsWith('http')
             ? imageUrl
-            : `${process.env.APP_URL || 'http://localhost:5000'}${imageUrl}`;
+            : `${baseUrl}${imageUrl}`;
 
           // Default prompt for financial document analysis
           const systemPrompt = `Du bist ein Experte für Finanzanalyse und analysierst Dokumente aus Börsenzeitschriften.

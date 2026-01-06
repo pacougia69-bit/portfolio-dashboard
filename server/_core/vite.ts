@@ -20,6 +20,12 @@ export async function setupVite(app: Express, server: Server) {
     appType: "custom",
   });
 
+  // Serve uploaded files statically in development mode
+  const uploadsPath = path.resolve(import.meta.dirname, "../..", "dist", "public", "uploads");
+  if (fs.existsSync(uploadsPath)) {
+    app.use("/uploads", express.static(uploadsPath));
+  }
+
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
