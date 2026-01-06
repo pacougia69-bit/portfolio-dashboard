@@ -132,6 +132,14 @@ export default function EinstellungenPage() {
     },
     onError: (error) => toast.error(error.message),
   });
+
+  const resetTemplates = trpc.ai.resetTemplates.useMutation({
+    onSuccess: () => {
+      toast.success('Vorlagen wurden zurückgesetzt');
+      refetchTemplates();
+    },
+    onError: (error) => toast.error(error.message),
+  });
   
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -305,6 +313,12 @@ export default function EinstellungenPage() {
   const handleDeleteTemplate = (id: number) => {
     if (confirm('Möchten Sie diese Vorlage wirklich löschen?')) {
       deleteTemplate.mutate({ id });
+    }
+  };
+
+  const handleResetTemplates = () => {
+    if (confirm('Möchten Sie alle Vorlagen auf die Standardwerte zurücksetzen? Dies löscht alle benutzerdefinierten Vorlagen!')) {
+      resetTemplates.mutate();
     }
   };
 
@@ -503,10 +517,16 @@ export default function EinstellungenPage() {
                   Verwalten Sie Ihre KI-Assistenten Vorlagen
                 </CardDescription>
               </div>
-              <Button size="sm" onClick={() => handleOpenTemplateDialog()}>
-                <Plus className="w-4 h-4 mr-2" />
-                Neue Vorlage
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={handleResetTemplates} disabled={resetTemplates.isPending}>
+                  <RefreshCw className={`w-4 h-4 mr-2 ${resetTemplates.isPending ? 'animate-spin' : ''}`} />
+                  Zurücksetzen
+                </Button>
+                <Button size="sm" onClick={() => handleOpenTemplateDialog()}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Neue Vorlage
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-3 sm:p-6 pt-0">
