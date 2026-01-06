@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   HelpCircle,
+  Scale,
 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ const navItems = [
   { path: '/portfolio', label: 'Portfolio', icon: Briefcase },
   { path: '/watchlist', label: 'Watchlist', icon: Eye },
   { path: '/strategie', label: 'Strategie', icon: Target },
+  { path: '/rebalancing', label: 'Rebalancing', icon: Scale },
   { path: '/dividenden', label: 'Dividenden', icon: Coins },
   { path: '/simulator', label: 'Simulator', icon: Calculator },
   { path: '/notizen', label: 'Notizen', icon: StickyNote },

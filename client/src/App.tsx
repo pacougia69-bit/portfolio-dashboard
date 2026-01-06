@@ -19,6 +19,7 @@ import NotizenPage from "./pages/NotizenPage";
 import EinstellungenPage from "./pages/EinstellungenPage";
 import AIAssistantPage from "./pages/AIAssistantPage";
 import HilfePage from "./pages/HilfePage";
+import RebalancingPage from "./pages/RebalancingPage";
 
 function Router() {
   return (
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/dividenden" component={DividendenPage} />
       <Route path="/simulator" component={SimulatorPage} />
       <Route path="/notizen" component={NotizenPage} />
+      <Route path="/rebalancing" component={RebalancingPage} />
       <Route path="/einstellungen" component={EinstellungenPage} />
       <Route path="/ki-assistent" component={AIAssistantPage} />
       <Route path="/hilfe" component={HilfePage} />

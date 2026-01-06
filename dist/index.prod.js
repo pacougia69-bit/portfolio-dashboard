@@ -9,6 +9,19 @@ var __export = (target, all) => {
 };
 
 // drizzle/schema.ts
+var schema_exports = {};
+__export(schema_exports, {
+  aiAnalyses: () => aiAnalyses,
+  dividends: () => dividends,
+  notes: () => notes,
+  portfolioPositions: () => portfolioPositions,
+  priceCache: () => priceCache,
+  savingsPlans: () => savingsPlans,
+  transactions: () => transactions,
+  userSettings: () => userSettings,
+  users: () => users,
+  watchlistItems: () => watchlistItems
+});
 import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, json, boolean } from "drizzle-orm/mysql-core";
 var users, portfolioPositions, watchlistItems, dividends, savingsPlans, notes, priceCache, aiAnalyses, userSettings, transactions;
 var init_schema = __esm({
@@ -2513,18 +2526,45 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
     }),
     // PIN-Sperre Funktionen
     setPin: protectedProcedure.input(z2.object({
-      pin: z2.string().min(4).max(6),
+      pin: z2.string().optional().refine((val) => {
+        if (val && val.length > 0) {
+          return val.length >= 4 && val.length <= 6 && /^\d+$/.test(val);
+        }
+        return true;
+      }, {
+        message: "Der PIN muss 4-6 Ziffern enthalten"
+      }),
       enabled: z2.boolean(),
-      autoLockMinutes: z2.number().min(1).max(60).optional()
+      autoLockMinutes: z2.number().min(1, { message: "Auto-Sperre muss mindestens 1 Minute sein" }).max(60, { message: "Auto-Sperre darf maximal 60 Minuten sein" }).optional()
     })).mutation(async ({ ctx, input }) => {
-      const { setUserPin: setUserPin2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      return setUserPin2(ctx.user.id, input.pin, input.enabled, input.autoLockMinutes);
+      const { setUserPin: setUserPin2, getUserSettings: getUserSettings2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      if (input.pin && input.pin.length > 0) {
+        return setUserPin2(ctx.user.id, input.pin, input.enabled, input.autoLockMinutes);
+      }
+      const existing = await getUserSettings2(ctx.user.id);
+      if (!existing) {
+        throw new Error("Bitte setzen Sie zuerst einen PIN");
+      }
+      const db = await Promise.resolve().then(() => (init_db(), db_exports)).then((m) => m.getDb());
+      const dbInstance = await db();
+      if (!dbInstance) throw new Error("Database not available");
+      const { userSettings: userSettings2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { eq: eq2 } = await import("drizzle-orm");
+      const updateData = {};
+      if (input.enabled !== void 0) updateData.pinEnabled = input.enabled;
+      if (input.autoLockMinutes !== void 0) updateData.autoLockMinutes = input.autoLockMinutes;
+      await dbInstance.update(userSettings2).set(updateData).where(eq2(userSettings2.userId, ctx.user.id));
+      return { success: true };
     }),
     verifyPin: protectedProcedure.input(z2.object({
-      pin: z2.string()
+      pin: z2.string().min(1, { message: "Bitte PIN eingeben" })
     })).mutation(async ({ ctx, input }) => {
       const { verifyUserPin: verifyUserPin2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      return verifyUserPin2(ctx.user.id, input.pin);
+      const result = await verifyUserPin2(ctx.user.id, input.pin);
+      if (!result.valid) {
+        throw new Error("Der PIN ist falsch");
+      }
+      return result;
     }),
     removePin: protectedProcedure.mutation(async ({ ctx }) => {
       const { removeUserPin: removeUserPin2 } = await Promise.resolve().then(() => (init_db(), db_exports));
@@ -2533,6 +2573,99 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
     getPinStatus: protectedProcedure.query(async ({ ctx }) => {
       const { getUserPinStatus: getUserPinStatus2 } = await Promise.resolve().then(() => (init_db(), db_exports));
       return getUserPinStatus2(ctx.user.id);
+    })
+  }),
+  // Portfolio Rebalancing
+  rebalancing: router({
+    analyze: protectedProcedure.input(z2.object({
+      amount: z2.number().min(0, { message: "Betrag muss mindestens 0 \u20AC sein" })
+    })).query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+      const availableCapital = input.amount;
+      const positions = await getPortfolioPositions(userId);
+      if (positions.length === 0) {
+        return {
+          success: false,
+          error: "Keine Portfolio-Positionen gefunden",
+          totalPortfolioValue: 0,
+          groups: [],
+          underweightGroups: [],
+          overweightGroups: [],
+          allocation: []
+        };
+      }
+      const settings = await getUserSettings(userId);
+      if (!settings || !settings.targetAllocations) {
+        return {
+          success: false,
+          error: "Keine Ziel-Allokation in Einstellungen gefunden. Bitte setzen Sie Ihre Strategie.",
+          totalPortfolioValue: 0,
+          groups: [],
+          underweightGroups: [],
+          overweightGroups: [],
+          allocation: []
+        };
+      }
+      const targetAllocations = settings.targetAllocations;
+      const totalValue = positions.reduce((sum, pos) => {
+        const price = pos.currentPrice || pos.buyPrice;
+        return sum + pos.amount * price;
+      }, 0);
+      const groupedByCategory = /* @__PURE__ */ new Map();
+      positions.forEach((pos) => {
+        const category = pos.category || "Ohne Kategorie";
+        const price = pos.currentPrice || pos.buyPrice;
+        const value = pos.amount * price;
+        groupedByCategory.set(
+          category,
+          (groupedByCategory.get(category) || 0) + value
+        );
+      });
+      const groups = targetAllocations.map((target) => {
+        const currentValue = groupedByCategory.get(target.category) || 0;
+        const currentPercent = totalValue > 0 ? currentValue / totalValue * 100 : 0;
+        const targetPercent = target.target || target.targetPercent || 0;
+        const difference = currentPercent - targetPercent;
+        return {
+          category: target.category,
+          currentValue,
+          currentPercent,
+          targetPercent,
+          difference,
+          isUnderweight: difference < 0
+        };
+      });
+      const underweightGroups = groups.filter((g) => g.isUnderweight).sort((a, b) => a.difference - b.difference);
+      const overweightGroups = groups.filter((g) => !g.isUnderweight).sort((a, b) => b.difference - a.difference);
+      const allocation = [];
+      if (underweightGroups.length > 0 && availableCapital > 0) {
+        const totalUnderweight = underweightGroups.reduce((sum, g) => sum + Math.abs(g.difference), 0);
+        underweightGroups.forEach((group) => {
+          const proportion = Math.abs(group.difference) / totalUnderweight;
+          const amount = availableCapital * proportion;
+          allocation.push({
+            category: group.category,
+            amount,
+            proportion: proportion * 100,
+            reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`
+          });
+        });
+      }
+      return {
+        success: true,
+        totalPortfolioValue: totalValue,
+        availableCapital,
+        groups,
+        underweightGroups,
+        overweightGroups,
+        allocation,
+        summary: {
+          totalInvested: allocation.reduce((sum, a) => sum + a.amount, 0),
+          numberOfUnderweightGroups: underweightGroups.length,
+          numberOfOverweightGroups: overweightGroups.length,
+          largestUnderweight: underweightGroups[0]?.category || "Keine"
+        }
+      };
     })
   })
 });

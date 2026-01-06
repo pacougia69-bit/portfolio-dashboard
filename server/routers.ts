@@ -651,6 +651,133 @@ export const appRouter = router({
         return getUserPinStatus(ctx.user.id);
       }),
   }),
+
+  // Portfolio Rebalancing
+  rebalancing: router({
+    analyze: protectedProcedure
+      .input(z.object({
+        amount: z.number().min(0, { message: "Betrag muss mindestens 0 € sein" }),
+      }))
+      .query(async ({ ctx, input }) => {
+        const userId = ctx.user.id;
+        const availableCapital = input.amount;
+
+        // 1. Get portfolio positions
+        const positions = await getPortfolioPositions(userId);
+
+        if (positions.length === 0) {
+          return {
+            success: false,
+            error: 'Keine Portfolio-Positionen gefunden',
+            totalPortfolioValue: 0,
+            groups: [],
+            underweightGroups: [],
+            overweightGroups: [],
+            allocation: [],
+          };
+        }
+
+        // 2. Get target allocations
+        const settings = await getUserSettings(userId);
+
+        if (!settings || !settings.targetAllocations) {
+          return {
+            success: false,
+            error: 'Keine Ziel-Allokation in Einstellungen gefunden. Bitte setzen Sie Ihre Strategie.',
+            totalPortfolioValue: 0,
+            groups: [],
+            underweightGroups: [],
+            overweightGroups: [],
+            allocation: [],
+          };
+        }
+
+        const targetAllocations = settings.targetAllocations as any[];
+
+        // 3. Calculate current portfolio value
+        const totalValue = positions.reduce((sum, pos) => {
+          const price = pos.currentPrice || pos.buyPrice;
+          return sum + (pos.amount * price);
+        }, 0);
+
+        // 4. Group positions by category
+        const groupedByCategory = new Map<string, number>();
+
+        positions.forEach(pos => {
+          const category = pos.category || 'Ohne Kategorie';
+          const price = pos.currentPrice || pos.buyPrice;
+          const value = pos.amount * price;
+
+          groupedByCategory.set(
+            category,
+            (groupedByCategory.get(category) || 0) + value
+          );
+        });
+
+        // 5. Calculate IST vs SOLL percentages
+        const groups = targetAllocations.map(target => {
+          const currentValue = groupedByCategory.get(target.category) || 0;
+          const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
+          const targetPercent = target.target || target.targetPercent || 0;
+          const difference = currentPercent - targetPercent;
+
+          return {
+            category: target.category,
+            currentValue,
+            currentPercent,
+            targetPercent,
+            difference,
+            isUnderweight: difference < 0,
+          };
+        });
+
+        // 6. Sort into underweight and overweight
+        const underweightGroups = groups
+          .filter(g => g.isUnderweight)
+          .sort((a, b) => a.difference - b.difference);
+
+        const overweightGroups = groups
+          .filter(g => !g.isUnderweight)
+          .sort((a, b) => b.difference - a.difference);
+
+        // 7. Calculate allocation
+        const allocation: any[] = [];
+
+        if (underweightGroups.length > 0 && availableCapital > 0) {
+          // Calculate total underweight
+          const totalUnderweight = underweightGroups.reduce((sum, g) => sum + Math.abs(g.difference), 0);
+
+          // Distribute proportionally
+          underweightGroups.forEach(group => {
+            const proportion = Math.abs(group.difference) / totalUnderweight;
+            const amount = availableCapital * proportion;
+
+            allocation.push({
+              category: group.category,
+              amount,
+              proportion: proportion * 100,
+              reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`,
+            });
+          });
+        }
+
+        return {
+          success: true,
+          totalPortfolioValue: totalValue,
+          availableCapital,
+          groups,
+          underweightGroups,
+          overweightGroups,
+          allocation,
+          summary: {
+            totalInvested: allocation.reduce((sum, a) => sum + a.amount, 0),
+            numberOfUnderweightGroups: underweightGroups.length,
+            numberOfOverweightGroups: overweightGroups.length,
+            largestUnderweight: underweightGroups[0]?.category || 'Keine',
+          },
+        };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
