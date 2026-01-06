@@ -478,7 +478,13 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const { aiQuestionTemplates } = await import('../drizzle/schema');
-        const { db } = await import('./db');
+        const { getDb } = await import('./db');
+
+        const db = await getDb();
+        if (!db) {
+          throw new Error('Database connection not available. Please try again.');
+        }
+
         return db.insert(aiQuestionTemplates).values(input);
       }),
 
@@ -494,7 +500,14 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const { aiQuestionTemplates } = await import('../drizzle/schema');
-        const { db } = await import('./db');
+        const { getDb } = await import('./db');
+        const { eq } = await import('drizzle-orm');
+
+        const db = await getDb();
+        if (!db) {
+          throw new Error('Database connection not available. Please try again.');
+        }
+
         const { id, ...updates } = input;
         return db.update(aiQuestionTemplates).set(updates).where(eq(aiQuestionTemplates.id, id));
       }),
@@ -503,7 +516,14 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { aiQuestionTemplates } = await import('../drizzle/schema');
-        const { db } = await import('./db');
+        const { getDb } = await import('./db');
+        const { eq } = await import('drizzle-orm');
+
+        const db = await getDb();
+        if (!db) {
+          throw new Error('Database connection not available. Please try again.');
+        }
+
         return db.update(aiQuestionTemplates).set({ isActive: false }).where(eq(aiQuestionTemplates.id, input.id));
       }),
 
@@ -512,7 +532,15 @@ export const appRouter = router({
       .input(z.object({ sessionId: z.string().optional() }))
       .query(async ({ ctx, input }) => {
         const { aiChatHistory } = await import('../drizzle/schema');
-        const { db } = await import('./db');
+        const { getDb } = await import('./db');
+        const { eq, and } = await import('drizzle-orm');
+
+        const db = await getDb();
+        if (!db) {
+          console.error('❌ getChatHistory: Database not available');
+          return [];
+        }
+
         const conditions = [eq(aiChatHistory.userId, ctx.user.id)];
         if (input.sessionId) {
           conditions.push(eq(aiChatHistory.sessionId, input.sessionId));
@@ -529,7 +557,13 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { aiChatHistory } = await import('../drizzle/schema');
-        const { db } = await import('./db');
+        const { getDb } = await import('./db');
+
+        const db = await getDb();
+        if (!db) {
+          throw new Error('Database connection not available. Please try again.');
+        }
+
         return db.insert(aiChatHistory).values({
           userId: ctx.user.id,
           ...input,
