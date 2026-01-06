@@ -6,6 +6,7 @@
 
 import { ReactNode, useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
+import FloatingAIButton from './FloatingAIButton';
 
 interface LayoutProps {
   children: ReactNode;
@@ -52,7 +53,7 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main 
+      <main
         className="min-h-screen transition-all duration-300"
         style={{ marginLeft }}
       >
@@ -60,6 +61,7 @@ export default function Layout({ children }: LayoutProps) {
           {children}
         </div>
       </main>
+      <FloatingAIButton />
     </div>
   );
 }

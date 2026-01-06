@@ -18,7 +18,8 @@ import { toast } from 'sonner';
 import { useAuth } from '@/_core/hooks/useAuth';
 import {
   Settings, Upload, Download, Trash2, FileJson, Database,
-  AlertTriangle, RefreshCw, User, Lock, Shield, Eye, EyeOff, FileText, History
+  AlertTriangle, RefreshCw, User, Lock, Shield, Eye, EyeOff, FileText, History,
+  Sparkles, Plus, Edit, Trash, GripVertical
 } from 'lucide-react';
 
 export default function EinstellungenPage() {
@@ -36,6 +37,15 @@ export default function EinstellungenPage() {
   const [confirmPin, setConfirmPin] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [autoLockMinutes, setAutoLockMinutes] = useState('5');
+
+  // Template State
+  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+  const [templateTitle, setTemplateTitle] = useState('');
+  const [templatePrompt, setTemplatePrompt] = useState('');
+  const [templateCategory, setTemplateCategory] = useState('');
+  const [templateIcon, setTemplateIcon] = useState('');
+  const [templateSortOrder, setTemplateSortOrder] = useState('0');
   
   // Fetch data
   const { data: portfolio = [], refetch: refetchPortfolio } = trpc.portfolio.list.useQuery();
@@ -43,6 +53,7 @@ export default function EinstellungenPage() {
   const { data: dividends = [], refetch: refetchDividends } = trpc.dividends.list.useQuery({});
   const { data: pinStatus, refetch: refetchPinStatus } = trpc.settings.getPinStatus.useQuery();
   const { data: transactions = [] } = trpc.transactions.list.useQuery();
+  const { data: templates = [], refetch: refetchTemplates } = trpc.ai.listTemplates.useQuery();
   
   // Mutations
   const importPortfolio = trpc.portfolio.import.useMutation({
@@ -90,6 +101,34 @@ export default function EinstellungenPage() {
     onSuccess: () => {
       toast.success('PIN wurde deaktiviert');
       refetchPinStatus();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const createTemplate = trpc.ai.createTemplate.useMutation({
+    onSuccess: () => {
+      toast.success('Vorlage wurde erstellt');
+      setIsTemplateDialogOpen(false);
+      resetTemplateForm();
+      refetchTemplates();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const updateTemplate = trpc.ai.updateTemplate.useMutation({
+    onSuccess: () => {
+      toast.success('Vorlage wurde aktualisiert');
+      setIsTemplateDialogOpen(false);
+      resetTemplateForm();
+      refetchTemplates();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const deleteTemplate = trpc.ai.deleteTemplate.useMutation({
+    onSuccess: () => {
+      toast.success('Vorlage wurde gelöscht');
+      refetchTemplates();
     },
     onError: (error) => toast.error(error.message),
   });
@@ -216,6 +255,56 @@ export default function EinstellungenPage() {
       setIsPinDialogOpen(true);
     } else {
       removePin.mutate();
+    }
+  };
+
+  const resetTemplateForm = () => {
+    setEditingTemplate(null);
+    setTemplateTitle('');
+    setTemplatePrompt('');
+    setTemplateCategory('');
+    setTemplateIcon('');
+    setTemplateSortOrder('0');
+  };
+
+  const handleOpenTemplateDialog = (template?: any) => {
+    if (template) {
+      setEditingTemplate(template);
+      setTemplateTitle(template.title);
+      setTemplatePrompt(template.prompt);
+      setTemplateCategory(template.category || '');
+      setTemplateIcon(template.icon || '');
+      setTemplateSortOrder(String(template.sortOrder || 0));
+    } else {
+      resetTemplateForm();
+    }
+    setIsTemplateDialogOpen(true);
+  };
+
+  const handleSaveTemplate = () => {
+    if (!templateTitle.trim() || !templatePrompt.trim()) {
+      toast.error('Titel und Prompt sind erforderlich');
+      return;
+    }
+
+    const data = {
+      title: templateTitle,
+      prompt: templatePrompt,
+      category: templateCategory || undefined,
+      icon: templateIcon || undefined,
+      sortOrder: parseInt(templateSortOrder) || 0,
+    };
+
+    if (editingTemplate) {
+      updateTemplate.mutate({ id: editingTemplate.id, ...data });
+    } else {
+      createTemplate.mutate(data);
+    }
+  };
+
+  const handleDeleteTemplate = (id: number) => {
+    if (confirm('Möchten Sie diese Vorlage wirklich löschen?')) {
+      deleteTemplate.mutate({ id });
     }
   };
 
@@ -396,6 +485,176 @@ export default function EinstellungenPage() {
                   <Lock className="w-4 h-4 mr-2" />
                 )}
                 Speichern
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* KI-Vorlagen */}
+        <Card className="glass-card">
+          <CardHeader className="p-3 sm:p-6 pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                  <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                  KI-Vorlagen
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Verwalten Sie Ihre KI-Assistenten Vorlagen
+                </CardDescription>
+              </div>
+              <Button size="sm" onClick={() => handleOpenTemplateDialog()}>
+                <Plus className="w-4 h-4 mr-2" />
+                Neue Vorlage
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-6 pt-0">
+            {templates.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p className="text-sm">Keine Vorlagen vorhanden</p>
+                <p className="text-xs mt-1">Erstellen Sie Ihre erste KI-Vorlage</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {templates
+                  .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                  .map((template: any) => (
+                    <div
+                      key={template.id}
+                      className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center text-xl">
+                        {template.icon || '💡'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm">{template.title}</p>
+                            {template.category && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary">
+                                {template.category}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleOpenTemplateDialog(template)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDeleteTemplate(template.id)}
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                              disabled={deleteTemplate.isPending}
+                            >
+                              <Trash className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {template.prompt}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <GripVertical className="w-3 h-3" />
+                            Reihenfolge: {template.sortOrder || 0}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Template Dialog */}
+        <Dialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                {editingTemplate ? 'Vorlage bearbeiten' : 'Neue Vorlage erstellen'}
+              </DialogTitle>
+              <DialogDescription>
+                Erstellen Sie eine Vorlage für häufige KI-Anfragen
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2 col-span-2">
+                  <Label>Titel *</Label>
+                  <Input
+                    value={templateTitle}
+                    onChange={(e) => setTemplateTitle(e.target.value)}
+                    placeholder="z.B. Portfolio-Analyse"
+                  />
+                </div>
+                <div className="space-y-2 col-span-2">
+                  <Label>Prompt *</Label>
+                  <Textarea
+                    value={templatePrompt}
+                    onChange={(e) => setTemplatePrompt(e.target.value)}
+                    placeholder="Der vollständige Prompt für den KI-Assistenten..."
+                    rows={5}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Kategorie</Label>
+                  <Input
+                    value={templateCategory}
+                    onChange={(e) => setTemplateCategory(e.target.value)}
+                    placeholder="z.B. Analyse, Investition"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Icon (Emoji)</Label>
+                  <Input
+                    value={templateIcon}
+                    onChange={(e) => setTemplateIcon(e.target.value)}
+                    placeholder="📊"
+                    maxLength={2}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Sortierung</Label>
+                  <Input
+                    type="number"
+                    value={templateSortOrder}
+                    onChange={(e) => setTemplateSortOrder(e.target.value)}
+                    placeholder="0"
+                    min="0"
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsTemplateDialogOpen(false);
+                  resetTemplateForm();
+                }}
+              >
+                Abbrechen
+              </Button>
+              <Button
+                onClick={handleSaveTemplate}
+                disabled={createTemplate.isPending || updateTemplate.isPending}
+              >
+                {(createTemplate.isPending || updateTemplate.isPending) ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 mr-2" />
+                )}
+                {editingTemplate ? 'Aktualisieren' : 'Erstellen'}
               </Button>
             </DialogFooter>
           </DialogContent>
