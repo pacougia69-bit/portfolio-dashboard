@@ -2638,17 +2638,35 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
       const underweightGroups = groups.filter((g) => g.isUnderweight).sort((a, b) => a.difference - b.difference);
       const overweightGroups = groups.filter((g) => !g.isUnderweight).sort((a, b) => b.difference - a.difference);
       const allocation = [];
+      const allocationDetails = [];
       if (underweightGroups.length > 0 && availableCapital > 0) {
         const totalUnderweight = underweightGroups.reduce((sum, g) => sum + Math.abs(g.difference), 0);
         underweightGroups.forEach((group) => {
           const proportion = Math.abs(group.difference) / totalUnderweight;
-          const amount = availableCapital * proportion;
+          const categoryAmount = availableCapital * proportion;
           allocation.push({
             category: group.category,
-            amount,
+            amount: categoryAmount,
             proportion: proportion * 100,
             reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`
           });
+          const categoryPositions = positions.filter(
+            (pos) => (pos.category || "Ohne Kategorie") === group.category
+          );
+          if (categoryPositions.length > 0) {
+            const amountPerSecurity = categoryAmount / categoryPositions.length;
+            categoryPositions.forEach((pos) => {
+              allocationDetails.push({
+                category: group.category,
+                name: pos.name,
+                wkn: pos.wkn || pos.isin || "N/A",
+                isin: pos.isin || "",
+                amount: amountPerSecurity,
+                currentPrice: pos.currentPrice || pos.buyPrice,
+                shares: (pos.currentPrice || pos.buyPrice) > 0 ? amountPerSecurity / (pos.currentPrice || pos.buyPrice) : 0
+              });
+            });
+          }
         });
       }
       return {
@@ -2659,6 +2677,7 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
         underweightGroups,
         overweightGroups,
         allocation,
+        allocationDetails,
         summary: {
           totalInvested: allocation.reduce((sum, a) => sum + a.amount, 0),
           numberOfUnderweightGroups: underweightGroups.length,
