@@ -702,33 +702,59 @@ export const appRouter = router({
 
         // 4. Group positions by category
         const groupedByCategory = new Map<string, number>();
+        const allCategories = new Set<string>();
 
         positions.forEach(pos => {
-          const category = pos.category || 'Ohne Kategorie';
+          const category = pos.category || 'Sonstige';
           const price = pos.currentPrice || pos.buyPrice;
           const value = pos.amount * price;
 
+          allCategories.add(category);
           groupedByCategory.set(
             category,
             (groupedByCategory.get(category) || 0) + value
           );
         });
 
-        // 5. Calculate IST vs SOLL percentages
-        const groups = targetAllocations.map(target => {
+        // 5. Calculate IST vs SOLL percentages for all categories
+        const groups: any[] = [];
+
+        // First, add all target allocations
+        targetAllocations.forEach(target => {
           const currentValue = groupedByCategory.get(target.category) || 0;
           const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
           const targetPercent = target.target || target.targetPercent || 0;
           const difference = currentPercent - targetPercent;
 
-          return {
+          groups.push({
             category: target.category,
             currentValue,
             currentPercent,
             targetPercent,
             difference,
             isUnderweight: difference < 0,
-          };
+          });
+        });
+
+        // Then, add categories from portfolio that are not in target allocations
+        // Treat these as having a small target (5%) so they appear in rebalancing recommendations
+        allCategories.forEach(category => {
+          const existsInTargets = targetAllocations.some(t => t.category === category);
+          if (!existsInTargets) {
+            const currentValue = groupedByCategory.get(category) || 0;
+            const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
+            const targetPercent = 5; // Default target for uncategorized positions
+            const difference = currentPercent - targetPercent;
+
+            groups.push({
+              category,
+              currentValue,
+              currentPercent,
+              targetPercent,
+              difference,
+              isUnderweight: difference < 0, // Most likely underweight with 5% target
+            });
+          }
         });
 
         // 6. Sort into underweight and overweight
@@ -762,7 +788,7 @@ export const appRouter = router({
 
             // Find all securities in this underweight category
             const categoryPositions = positions.filter(pos =>
-              (pos.category || 'Ohne Kategorie') === group.category
+              (pos.category || 'Sonstige') === group.category
             );
 
             // Distribute category amount equally among securities

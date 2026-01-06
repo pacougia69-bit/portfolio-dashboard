@@ -2612,28 +2612,49 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
         return sum + pos.amount * price;
       }, 0);
       const groupedByCategory = /* @__PURE__ */ new Map();
+      const allCategories = /* @__PURE__ */ new Set();
       positions.forEach((pos) => {
-        const category = pos.category || "Ohne Kategorie";
+        const category = pos.category || "Sonstige";
         const price = pos.currentPrice || pos.buyPrice;
         const value = pos.amount * price;
+        allCategories.add(category);
         groupedByCategory.set(
           category,
           (groupedByCategory.get(category) || 0) + value
         );
       });
-      const groups = targetAllocations.map((target) => {
+      const groups = [];
+      targetAllocations.forEach((target) => {
         const currentValue = groupedByCategory.get(target.category) || 0;
         const currentPercent = totalValue > 0 ? currentValue / totalValue * 100 : 0;
         const targetPercent = target.target || target.targetPercent || 0;
         const difference = currentPercent - targetPercent;
-        return {
+        groups.push({
           category: target.category,
           currentValue,
           currentPercent,
           targetPercent,
           difference,
           isUnderweight: difference < 0
-        };
+        });
+      });
+      allCategories.forEach((category) => {
+        const existsInTargets = targetAllocations.some((t2) => t2.category === category);
+        if (!existsInTargets) {
+          const currentValue = groupedByCategory.get(category) || 0;
+          const currentPercent = totalValue > 0 ? currentValue / totalValue * 100 : 0;
+          const targetPercent = 5;
+          const difference = currentPercent - targetPercent;
+          groups.push({
+            category,
+            currentValue,
+            currentPercent,
+            targetPercent,
+            difference,
+            isUnderweight: difference < 0
+            // Most likely underweight with 5% target
+          });
+        }
       });
       const underweightGroups = groups.filter((g) => g.isUnderweight).sort((a, b) => a.difference - b.difference);
       const overweightGroups = groups.filter((g) => !g.isUnderweight).sort((a, b) => b.difference - a.difference);
@@ -2651,7 +2672,7 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
             reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`
           });
           const categoryPositions = positions.filter(
-            (pos) => (pos.category || "Ohne Kategorie") === group.category
+            (pos) => (pos.category || "Sonstige") === group.category
           );
           if (categoryPositions.length > 0) {
             const amountPerSecurity = categoryAmount / categoryPositions.length;
