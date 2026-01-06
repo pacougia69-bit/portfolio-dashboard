@@ -421,7 +421,17 @@ export const appRouter = router({
     listTemplates: protectedProcedure.query(async () => {
       const { aiQuestionTemplates } = await import('../drizzle/schema');
       const { db } = await import('./db');
-      return db.select().from(aiQuestionTemplates).where(eq(aiQuestionTemplates.isActive, true)).orderBy(aiQuestionTemplates.sortOrder);
+      const { sql } = await import('drizzle-orm');
+
+      // Use raw SQL to avoid type mismatch with TINYINT(1) vs boolean
+      const result = await db.execute(sql`
+        SELECT * FROM ai_question_templates
+        WHERE isActive = 1
+        ORDER BY sortOrder
+      `);
+
+      console.log('listTemplates result:', result);
+      return result.rows || [];
     }),
 
     createTemplate: protectedProcedure
