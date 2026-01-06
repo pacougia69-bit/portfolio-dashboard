@@ -3,6 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
+import { eq, and } from "drizzle-orm";
 import { 
   getPortfolioPositions, 
   createPortfolioPosition, 
@@ -414,6 +415,81 @@ export const appRouter = router({
           watchlistInfo,
           watchlist
         );
+      }),
+
+    // Template Management
+    listTemplates: protectedProcedure.query(async () => {
+      const { aiQuestionTemplates } = await import('../drizzle/schema');
+      const { db } = await import('./db');
+      return db.select().from(aiQuestionTemplates).where(eq(aiQuestionTemplates.isActive, true)).orderBy(aiQuestionTemplates.sortOrder);
+    }),
+
+    createTemplate: protectedProcedure
+      .input(z.object({
+        title: z.string(),
+        prompt: z.string(),
+        category: z.string().optional(),
+        icon: z.string().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { aiQuestionTemplates } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        return db.insert(aiQuestionTemplates).values(input);
+      }),
+
+    updateTemplate: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().optional(),
+        prompt: z.string().optional(),
+        category: z.string().optional(),
+        icon: z.string().optional(),
+        isActive: z.boolean().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { aiQuestionTemplates } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        const { id, ...updates } = input;
+        return db.update(aiQuestionTemplates).set(updates).where(eq(aiQuestionTemplates.id, id));
+      }),
+
+    deleteTemplate: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { aiQuestionTemplates } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        return db.update(aiQuestionTemplates).set({ isActive: false }).where(eq(aiQuestionTemplates.id, input.id));
+      }),
+
+    // Chat History
+    getChatHistory: protectedProcedure
+      .input(z.object({ sessionId: z.string().optional() }))
+      .query(async ({ ctx, input }) => {
+        const { aiChatHistory } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        const conditions = [eq(aiChatHistory.userId, ctx.user.id)];
+        if (input.sessionId) {
+          conditions.push(eq(aiChatHistory.sessionId, input.sessionId));
+        }
+        return db.select().from(aiChatHistory).where(and(...conditions)).orderBy(aiChatHistory.createdAt);
+      }),
+
+    saveChatMessage: protectedProcedure
+      .input(z.object({
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string(),
+        templateId: z.number().optional(),
+        sessionId: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { aiChatHistory } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        return db.insert(aiChatHistory).values({
+          userId: ctx.user.id,
+          ...input,
+        });
       }),
   }),
 
