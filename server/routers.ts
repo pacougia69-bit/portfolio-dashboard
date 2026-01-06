@@ -1331,15 +1331,25 @@ export const appRouter = router({
           }
 
           // Build full URL for the image
-          // Priority: PUBLIC_URL > RAILWAY_PUBLIC_DOMAIN > OAUTH_SERVER_URL > localhost
+          // Priority: PUBLIC_URL > RAILWAY_STATIC_URL > RAILWAY_PUBLIC_DOMAIN > OAUTH_SERVER_URL > localhost
           const baseUrl = process.env.PUBLIC_URL
+            || process.env.RAILWAY_STATIC_URL
             || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
             || process.env.OAUTH_SERVER_URL
             || 'http://localhost:5000';
 
+          console.log('[Media Analysis] Environment variables check:');
+          console.log('  PUBLIC_URL:', process.env.PUBLIC_URL || '(not set)');
+          console.log('  RAILWAY_STATIC_URL:', process.env.RAILWAY_STATIC_URL || '(not set)');
+          console.log('  RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)');
+          console.log('  OAUTH_SERVER_URL:', process.env.OAUTH_SERVER_URL || '(not set)');
+          console.log('  Using baseUrl:', baseUrl);
+
           const fullUrl = imageUrl.startsWith('http')
             ? imageUrl
             : `${baseUrl}${imageUrl}`;
+
+          console.log('  Full URL for analysis:', fullUrl);
 
           // Default prompt for financial document analysis
           const systemPrompt = `Du bist ein Experte für Finanzanalyse und analysierst Dokumente aus Börsenzeitschriften.
