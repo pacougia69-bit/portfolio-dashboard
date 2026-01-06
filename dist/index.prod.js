@@ -2496,64 +2496,82 @@ Bitte bewerte jeden Watchlist-ETF:
     resetTemplates: protectedProcedure.mutation(async () => {
       const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { sql } = await import("drizzle-orm");
       const db = await getDb2();
       if (!db) throw new Error("Database not available");
-      const defaultTemplates = [
-        {
-          title: "Klumpenrisiko-Check",
-          prompt: "Analysiere den ETF/die Aktie {ASSET_NAME}. Welche 3 Top-Unternehmen dominieren diese Position aktuell? Gibt es ein Klumpenrisiko in Branche oder Region, das ich im Zusammenspiel mit meinem restlichen Portfolio beachten sollte?",
-          category: "Risiko",
-          icon: "\u26A0\uFE0F",
-          sortOrder: 1
-        },
-        {
-          title: "Makro-Einfluss",
-          prompt: "Welche makro\xF6konomischen Daten (Inflation, Zinsen, News) hatten in den letzten 7\u201314 Tagen den gr\xF6\xDFten Einfluss auf {ASSET_NAME}? Ist der Kurs eher gestiegen/gefallen und was waren die 2\u20133 Hauptgr\xFCnde?",
-          category: "Analyse",
-          icon: "\u{1F4CA}",
-          sortOrder: 2
-        },
-        {
-          title: "Investment-Story Check",
-          prompt: "Erkl\xE4re die langfristige Investment-Story von {ASSET_NAME} (WKN: {WKN}). Was sind die Wachstumstreiber, was die 3\u20134 gr\xF6\xDFten Risiken und hat sich die Story in den letzten 12 Monaten fundamental verbessert oder verschlechtert?",
-          category: "Fundament",
-          icon: "\u{1F4C8}",
-          sortOrder: 3
-        },
-        {
-          title: "Technik- & Trend-Analyse",
-          prompt: "Analysiere {ASSET_NAME} (WKN: {WKN}) technisch: Notiert der Kurs \xFCber/unter/nahe der 200-Tage-Linie? Befinden wir uns im Aufw\xE4rts-, Abw\xE4rtstrend oder in einer Seitw\xE4rtsphase? Wie ist die Marktstimmung (optimistisch/skeptisch)?",
-          category: "Technik",
-          icon: "\u{1F4C9}",
-          sortOrder: 4
-        },
-        {
-          title: "Sektor- & News-Update",
-          prompt: "Welche sektor-spezifischen Entwicklungen und politischen Faktoren haben {ASSET_NAME} in den letzten 30 Tagen am st\xE4rksten beeinflusst? Deuten die Bewegungen auf normale Volatilit\xE4t oder einen Trendwechsel hin?",
-          category: "News",
-          icon: "\u{1F4F0}",
-          sortOrder: 5
-        },
-        {
-          title: "Rebalancing-Impuls",
-          prompt: "Gibt es fundamentale Gr\xFCnde (Sektor-Rotation, Index-\xC4nderung), warum ich {ASSET_NAME} bei einer Abweichung aktuell verst\xE4rkt nachkaufen oder Gewinne mitnehmen sollte, anstatt nur stur nach Prozenten zu rebalancen?",
-          category: "Strategie",
-          icon: "\u2696\uFE0F",
-          sortOrder: 6
-        },
-        {
-          title: "Marktstimmung",
-          prompt: "Wie ist das Sentiment gegen\xFCber {ASSET_NAME} in den letzten 7 Tagen? Ist die Nachrichtenlage positiv/neutral/negativ und welche Themen (KI, Regulierung, Zinsen) dominieren gerade?",
-          category: "Sentiment",
-          icon: "\u{1F4AD}",
-          sortOrder: 7
+      try {
+        const defaultTemplates = [
+          {
+            title: "Klumpenrisiko-Check",
+            prompt: "Analysiere den ETF/die Aktie {ASSET_NAME}. Welche 3 Top-Unternehmen dominieren diese Position aktuell? Gibt es ein Klumpenrisiko in Branche oder Region, das ich im Zusammenspiel mit meinem restlichen Portfolio beachten sollte?",
+            category: "Risiko",
+            icon: "\u26A0\uFE0F",
+            isActive: true,
+            sortOrder: 1
+          },
+          {
+            title: "Makro-Einfluss",
+            prompt: "Welche makro\xF6konomischen Daten (Inflation, Zinsen, News) hatten in den letzten 7\u201314 Tagen den gr\xF6\xDFten Einfluss auf {ASSET_NAME}? Ist der Kurs eher gestiegen/gefallen und was waren die 2\u20133 Hauptgr\xFCnde?",
+            category: "Analyse",
+            icon: "\u{1F4CA}",
+            isActive: true,
+            sortOrder: 2
+          },
+          {
+            title: "Investment-Story Check",
+            prompt: "Erkl\xE4re die langfristige Investment-Story von {ASSET_NAME} (WKN: {WKN}). Was sind die Wachstumstreiber, was die 3\u20134 gr\xF6\xDFten Risiken und hat sich die Story in den letzten 12 Monaten fundamental verbessert oder verschlechtert?",
+            category: "Fundament",
+            icon: "\u{1F4C8}",
+            isActive: true,
+            sortOrder: 3
+          },
+          {
+            title: "Technik- & Trend-Analyse",
+            prompt: "Analysiere {ASSET_NAME} (WKN: {WKN}) technisch: Notiert der Kurs \xFCber/unter/nahe der 200-Tage-Linie? Befinden wir uns im Aufw\xE4rts-, Abw\xE4rtstrend oder in einer Seitw\xE4rtsphase? Wie ist die Marktstimmung (optimistisch/skeptisch)?",
+            category: "Technik",
+            icon: "\u{1F4C9}",
+            isActive: true,
+            sortOrder: 4
+          },
+          {
+            title: "Sektor- & News-Update",
+            prompt: "Welche sektor-spezifischen Entwicklungen und politischen Faktoren haben {ASSET_NAME} in den letzten 30 Tagen am st\xE4rksten beeinflusst? Deuten die Bewegungen auf normale Volatilit\xE4t oder einen Trendwechsel hin?",
+            category: "News",
+            icon: "\u{1F4F0}",
+            isActive: true,
+            sortOrder: 5
+          },
+          {
+            title: "Rebalancing-Impuls",
+            prompt: "Gibt es fundamentale Gr\xFCnde (Sektor-Rotation, Index-\xC4nderung), warum ich {ASSET_NAME} bei einer Abweichung aktuell verst\xE4rkt nachkaufen oder Gewinne mitnehmen sollte, anstatt nur stur nach Prozenten zu rebalancen?",
+            category: "Strategie",
+            icon: "\u2696\uFE0F",
+            isActive: true,
+            sortOrder: 6
+          },
+          {
+            title: "Marktstimmung",
+            prompt: "Wie ist das Sentiment gegen\xFCber {ASSET_NAME} in den letzten 7 Tagen? Ist die Nachrichtenlage positiv/neutral/negativ und welche Themen (KI, Regulierung, Zinsen) dominieren gerade?",
+            category: "Sentiment",
+            icon: "\u{1F4AD}",
+            isActive: true,
+            sortOrder: 7
+          }
+        ];
+        await db.execute(sql`TRUNCATE TABLE ai_question_templates`);
+        for (const template of defaultTemplates) {
+          try {
+            await db.insert(aiQuestionTemplates2).values(template);
+          } catch (insertError) {
+            console.error(`Failed to insert template: ${template.title}`, insertError);
+            throw new Error(`Failed to insert template "${template.title}": ${insertError}`);
+          }
         }
-      ];
-      await db.delete(aiQuestionTemplates2);
-      for (const template of defaultTemplates) {
-        await db.insert(aiQuestionTemplates2).values(template);
+        return { success: true, count: defaultTemplates.length };
+      } catch (error) {
+        console.error("Reset templates error:", error);
+        throw new Error(`Failed to reset templates: ${error}`);
       }
-      return { success: true, count: defaultTemplates.length };
     })
   }),
   // Security Lookup
