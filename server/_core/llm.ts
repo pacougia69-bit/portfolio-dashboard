@@ -190,8 +190,8 @@ export async function invokeLLMWithVision(
     throw new Error(error);
   }
 
-  // Use GPT-4 Vision model
-  const VISION_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-4-vision-preview"];
+  // Use GPT-4 Vision models - gpt-4o is the current stable model with vision
+  const VISION_MODELS = ["gpt-4o", "gpt-4-turbo"];
   const model = VISION_MODELS[modelIndex];
 
   if (!model) {
