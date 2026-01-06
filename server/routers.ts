@@ -577,6 +577,12 @@ export const appRouter = router({
           ];
 
           // Step 1: Drop and recreate table with correct schema
+          console.log('');
+          console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+          console.log('!!! RESET NUR DURCH BUTTON !!!');
+          console.log('!!! resetTemplates mutation wurde aufgerufen !!!');
+          console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+          console.log('');
           console.log('Dropping ai_question_templates table...');
           await db.execute(sql`DROP TABLE IF EXISTS ai_question_templates`);
 
