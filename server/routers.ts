@@ -1356,12 +1356,15 @@ export const appRouter = router({
           console.log('  RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)');
           console.log('  OAUTH_SERVER_URL:', process.env.OAUTH_SERVER_URL || '(not set)');
 
-          // Priority: PUBLIC_URL > RAILWAY_STATIC_URL > RAILWAY_PUBLIC_DOMAIN > OAUTH_SERVER_URL
-          // NO LOCALHOST FALLBACK - must be deployed with proper domain
+          // Priority: PUBLIC_URL > RAILWAY_STATIC_URL > RAILWAY_PUBLIC_DOMAIN > OAUTH_SERVER_URL > HARDCODED FALLBACK
+          // Hardcoded fallback for Railway when env vars are not accessible
+          const RAILWAY_DOMAIN_FALLBACK = 'https://portfolio-dashboard-production-e5c1.up.railway.app';
+
           const baseUrl = process.env.PUBLIC_URL
             || process.env.RAILWAY_STATIC_URL
             || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
-            || process.env.OAUTH_SERVER_URL;
+            || process.env.OAUTH_SERVER_URL
+            || RAILWAY_DOMAIN_FALLBACK;
 
           if (!baseUrl) {
             throw new Error('🤖 CLAUDE-ERROR: PUBLIC_URL NOT DEFINED. Please set PUBLIC_URL environment variable with your Railway domain (e.g., https://your-app.up.railway.app)');
