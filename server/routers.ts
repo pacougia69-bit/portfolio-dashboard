@@ -419,22 +419,57 @@ export const appRouter = router({
 
     // Template Management
     listTemplates: protectedProcedure.query(async () => {
-      const { aiQuestionTemplates } = await import('../drizzle/schema');
-      const { db } = await import('./db');
-      const { sql } = await import('drizzle-orm');
+      console.log('📋 listTemplates called');
 
-      // Use raw SQL to avoid type mismatch with TINYINT(1) vs boolean
-      const result = await db.execute(sql`
-        SELECT * FROM ai_question_templates
-        WHERE isActive = 1
-        ORDER BY sortOrder
-      `);
+      try {
+        const { aiQuestionTemplates } = await import('../drizzle/schema');
+        const { getDb } = await import('./db');
+        const { sql } = await import('drizzle-orm');
 
-      console.log('listTemplates raw result:', result);
-      console.log('listTemplates rows:', result[0]);
+        const db = await getDb();
+        if (!db) {
+          console.error('❌ listTemplates: Database not available');
+          return [];
+        }
 
-      // MySQL2 returns [rows, fields] - we need the first element
-      return Array.isArray(result[0]) ? result[0] : [];
+        console.log('✓ Database connection OK');
+
+        // Use raw SQL to avoid type mismatch with TINYINT(1) vs boolean
+        console.log('🔍 Executing query: SELECT * FROM ai_question_templates WHERE isActive = 1 ORDER BY sortOrder');
+
+        const result = await db.execute(sql`
+          SELECT * FROM ai_question_templates
+          WHERE isActive = 1
+          ORDER BY sortOrder
+        `);
+
+        console.log('✓ Query executed successfully');
+        console.log('📊 Raw result type:', typeof result);
+        console.log('📊 Result is array:', Array.isArray(result));
+        console.log('📊 Result length:', result ? result.length : 'null');
+        console.log('📊 Result[0] type:', typeof result[0]);
+        console.log('📊 Result[0] is array:', Array.isArray(result[0]));
+        console.log('📊 Result[0] length:', result[0] ? (result[0] as any).length : 'null');
+
+        // MySQL2 returns [rows, fields] - we need the first element
+        const rows = Array.isArray(result[0]) ? result[0] : [];
+        console.log(`✅ Returning ${rows.length} templates`);
+
+        if (rows.length > 0) {
+          console.log('📝 First template:', JSON.stringify(rows[0], null, 2));
+        }
+
+        return rows;
+      } catch (error: any) {
+        console.error('❌❌❌ listTemplates ERROR:', error);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        console.error('Error code:', error.code);
+        console.error('Error sqlMessage:', error.sqlMessage);
+
+        // Return empty array instead of throwing to prevent 500 error
+        return [];
+      }
     }),
 
     createTemplate: protectedProcedure

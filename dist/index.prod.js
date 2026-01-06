@@ -2435,17 +2435,44 @@ Bitte bewerte jeden Watchlist-ETF:
     }),
     // Template Management
     listTemplates: protectedProcedure.query(async () => {
-      const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const { sql } = await import("drizzle-orm");
-      const result = await db.execute(sql`
-        SELECT * FROM ai_question_templates
-        WHERE isActive = 1
-        ORDER BY sortOrder
-      `);
-      console.log("listTemplates raw result:", result);
-      console.log("listTemplates rows:", result[0]);
-      return Array.isArray(result[0]) ? result[0] : [];
+      console.log("\u{1F4CB} listTemplates called");
+      try {
+        const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { sql } = await import("drizzle-orm");
+        const db = await getDb2();
+        if (!db) {
+          console.error("\u274C listTemplates: Database not available");
+          return [];
+        }
+        console.log("\u2713 Database connection OK");
+        console.log("\u{1F50D} Executing query: SELECT * FROM ai_question_templates WHERE isActive = 1 ORDER BY sortOrder");
+        const result = await db.execute(sql`
+          SELECT * FROM ai_question_templates
+          WHERE isActive = 1
+          ORDER BY sortOrder
+        `);
+        console.log("\u2713 Query executed successfully");
+        console.log("\u{1F4CA} Raw result type:", typeof result);
+        console.log("\u{1F4CA} Result is array:", Array.isArray(result));
+        console.log("\u{1F4CA} Result length:", result ? result.length : "null");
+        console.log("\u{1F4CA} Result[0] type:", typeof result[0]);
+        console.log("\u{1F4CA} Result[0] is array:", Array.isArray(result[0]));
+        console.log("\u{1F4CA} Result[0] length:", result[0] ? result[0].length : "null");
+        const rows = Array.isArray(result[0]) ? result[0] : [];
+        console.log(`\u2705 Returning ${rows.length} templates`);
+        if (rows.length > 0) {
+          console.log("\u{1F4DD} First template:", JSON.stringify(rows[0], null, 2));
+        }
+        return rows;
+      } catch (error) {
+        console.error("\u274C\u274C\u274C listTemplates ERROR:", error);
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
+        console.error("Error code:", error.code);
+        console.error("Error sqlMessage:", error.sqlMessage);
+        return [];
+      }
     }),
     createTemplate: protectedProcedure.input(z2.object({
       title: z2.string(),
