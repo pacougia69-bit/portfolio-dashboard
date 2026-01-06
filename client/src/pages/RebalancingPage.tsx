@@ -6,7 +6,6 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
   Table,
@@ -17,7 +16,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { TrendingDown, TrendingUp, Calculator, RefreshCw, AlertCircle } from 'lucide-react';
+import { TrendingDown, TrendingUp, Calculator, AlertCircle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import Layout from '@/components/Layout';
 
@@ -39,10 +38,6 @@ export default function RebalancingPage() {
     if (!isNaN(numValue) && numValue >= 0) {
       setAmount(numValue);
     }
-  };
-
-  const handleCalculate = () => {
-    refetch();
   };
 
   return (
@@ -67,24 +62,21 @@ export default function RebalancingPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-4 items-end">
-              <div className="flex-1 max-w-xs">
-                <Label htmlFor="amount">Betrag in €</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  min="0"
-                  step="100"
-                  value={inputValue}
-                  onChange={(e) => handleAmountChange(e.target.value)}
-                  placeholder="5000"
-                  className="text-lg"
-                />
-              </div>
-              <Button onClick={handleCalculate} disabled={isLoading}>
-                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                Berechnen
-              </Button>
+            <div className="max-w-xs">
+              <Label htmlFor="amount">Betrag in €</Label>
+              <Input
+                id="amount"
+                type="number"
+                min="0"
+                step="100"
+                value={inputValue}
+                onChange={(e) => handleAmountChange(e.target.value)}
+                placeholder="5000"
+                className="text-lg"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Die Berechnung erfolgt automatisch bei Änderung des Betrags
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -148,7 +140,7 @@ export default function RebalancingPage() {
             </Card>
 
             {/* Keine Untergewichtung */}
-            {data.allocation.length === 0 && (
+            {(!data.allocationDetails || data.allocationDetails.length === 0) && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Perfekt allokiert</AlertTitle>
@@ -159,57 +151,61 @@ export default function RebalancingPage() {
               </Alert>
             )}
 
-            {/* Investitions-Verteilung */}
-            {data.allocation.length > 0 && (
+            {/* Investitions-Verteilung nach Wertpapieren */}
+            {data.allocationDetails && data.allocationDetails.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Empfohlene Investitions-Verteilung</CardTitle>
                   <CardDescription>
-                    Verteilen Sie Ihr Kapital auf die untergewichteten Gruppen
+                    Investieren Sie in diese untergewichteten Wertpapiere
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>ETF-Gruppe</TableHead>
-                        <TableHead className="text-right">Ist-Anteil</TableHead>
-                        <TableHead className="text-right">Soll-Anteil</TableHead>
-                        <TableHead className="text-right">Differenz</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>WKN/ISIN</TableHead>
+                        <TableHead>Kategorie</TableHead>
+                        <TableHead className="text-right">Preis</TableHead>
+                        <TableHead className="text-right">Anzahl Anteile</TableHead>
                         <TableHead className="text-right">Euro-Betrag</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {data.allocation.map((item) => {
-                        const group = data.underweightGroups.find(
-                          (g) => g.category === item.category
-                        );
-                        return (
-                          <TableRow key={item.category}>
-                            <TableCell className="font-medium">{item.category}</TableCell>
-                            <TableCell className="text-right">
-                              {group?.currentPercent.toFixed(2)}%
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {group?.targetPercent.toFixed(2)}%
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <span className="flex items-center justify-end gap-1 text-red-600">
-                                <TrendingDown className="w-4 h-4" />
-                                {Math.abs(group?.difference || 0).toFixed(2)}%
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right font-semibold text-green-600">
-                              {item.amount.toLocaleString('de-DE', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })} €
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
+                      {data.allocationDetails.map((item, index) => (
+                        <TableRow key={`${item.category}-${item.wkn}-${index}`}>
+                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {item.wkn}
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs px-2 py-1 bg-secondary rounded">
+                              {item.category}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {item.currentPrice.toLocaleString('de-DE', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })} €
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {item.shares.toLocaleString('de-DE', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold text-green-600">
+                            {item.amount.toLocaleString('de-DE', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })} €
+                          </TableCell>
+                        </TableRow>
+                      ))}
                       <TableRow className="border-t-2">
-                        <TableCell colSpan={4} className="font-semibold">
+                        <TableCell colSpan={5} className="font-semibold">
                           Gesamt
                         </TableCell>
                         <TableCell className="text-right font-bold text-green-600">
