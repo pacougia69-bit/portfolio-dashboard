@@ -740,8 +740,9 @@ export const appRouter = router({
           .filter(g => !g.isUnderweight)
           .sort((a, b) => b.difference - a.difference);
 
-        // 7. Calculate allocation
+        // 7. Calculate allocation with individual securities
         const allocation: any[] = [];
+        const allocationDetails: any[] = [];
 
         if (underweightGroups.length > 0 && availableCapital > 0) {
           // Calculate total underweight
@@ -750,14 +751,38 @@ export const appRouter = router({
           // Distribute proportionally
           underweightGroups.forEach(group => {
             const proportion = Math.abs(group.difference) / totalUnderweight;
-            const amount = availableCapital * proportion;
+            const categoryAmount = availableCapital * proportion;
 
             allocation.push({
               category: group.category,
-              amount,
+              amount: categoryAmount,
               proportion: proportion * 100,
               reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`,
             });
+
+            // Find all securities in this underweight category
+            const categoryPositions = positions.filter(pos =>
+              (pos.category || 'Ohne Kategorie') === group.category
+            );
+
+            // Distribute category amount equally among securities
+            if (categoryPositions.length > 0) {
+              const amountPerSecurity = categoryAmount / categoryPositions.length;
+
+              categoryPositions.forEach(pos => {
+                allocationDetails.push({
+                  category: group.category,
+                  name: pos.name,
+                  wkn: pos.wkn || pos.isin || 'N/A',
+                  isin: pos.isin || '',
+                  amount: amountPerSecurity,
+                  currentPrice: pos.currentPrice || pos.buyPrice,
+                  shares: (pos.currentPrice || pos.buyPrice) > 0
+                    ? amountPerSecurity / (pos.currentPrice || pos.buyPrice)
+                    : 0,
+                });
+              });
+            }
           });
         }
 
@@ -769,6 +794,7 @@ export const appRouter = router({
           underweightGroups,
           overweightGroups,
           allocation,
+          allocationDetails,
           summary: {
             totalInvested: allocation.reduce((sum, a) => sum + a.amount, 0),
             numberOfUnderweightGroups: underweightGroups.length,
