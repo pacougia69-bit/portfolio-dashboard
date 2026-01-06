@@ -503,14 +503,14 @@ export const appRouter = router({
         if (!db) throw new Error("Database not available");
 
         try {
-          // Default templates with explicit field values
+          // Default templates with all required fields
           const defaultTemplates = [
             {
               title: "Klumpenrisiko-Check",
               prompt: "Analysiere den ETF/die Aktie {ASSET_NAME}. Welche 3 Top-Unternehmen dominieren diese Position aktuell? Gibt es ein Klumpenrisiko in Branche oder Region, das ich im Zusammenspiel mit meinem restlichen Portfolio beachten sollte?",
               category: "Risiko",
               icon: "⚠️",
-              isActive: 1,
+              isActive: true,
               sortOrder: 1,
             },
             {
@@ -518,7 +518,7 @@ export const appRouter = router({
               prompt: "Welche makroökonomischen Daten (Inflation, Zinsen, News) hatten in den letzten 7–14 Tagen den größten Einfluss auf {ASSET_NAME}? Ist der Kurs eher gestiegen/gefallen und was waren die 2–3 Hauptgründe?",
               category: "Analyse",
               icon: "📊",
-              isActive: 1,
+              isActive: true,
               sortOrder: 2,
             },
             {
@@ -526,7 +526,7 @@ export const appRouter = router({
               prompt: "Erkläre die langfristige Investment-Story von {ASSET_NAME} (WKN: {WKN}). Was sind die Wachstumstreiber, was die 3–4 größten Risiken und hat sich die Story in den letzten 12 Monaten fundamental verbessert oder verschlechtert?",
               category: "Fundament",
               icon: "📈",
-              isActive: 1,
+              isActive: true,
               sortOrder: 3,
             },
             {
@@ -534,7 +534,7 @@ export const appRouter = router({
               prompt: "Analysiere {ASSET_NAME} (WKN: {WKN}) technisch: Notiert der Kurs über/unter/nahe der 200-Tage-Linie? Befinden wir uns im Aufwärts-, Abwärtstrend oder in einer Seitwärtsphase? Wie ist die Marktstimmung (optimistisch/skeptisch)?",
               category: "Technik",
               icon: "📉",
-              isActive: 1,
+              isActive: true,
               sortOrder: 4,
             },
             {
@@ -542,7 +542,7 @@ export const appRouter = router({
               prompt: "Welche sektor-spezifischen Entwicklungen und politischen Faktoren haben {ASSET_NAME} in den letzten 30 Tagen am stärksten beeinflusst? Deuten die Bewegungen auf normale Volatilität oder einen Trendwechsel hin?",
               category: "News",
               icon: "📰",
-              isActive: 1,
+              isActive: true,
               sortOrder: 5,
             },
             {
@@ -550,7 +550,7 @@ export const appRouter = router({
               prompt: "Gibt es fundamentale Gründe (Sektor-Rotation, Index-Änderung), warum ich {ASSET_NAME} bei einer Abweichung aktuell verstärkt nachkaufen oder Gewinne mitnehmen sollte, anstatt nur stur nach Prozenten zu rebalancen?",
               category: "Strategie",
               icon: "⚖️",
-              isActive: 1,
+              isActive: true,
               sortOrder: 6,
             },
             {
@@ -558,29 +558,58 @@ export const appRouter = router({
               prompt: "Wie ist das Sentiment gegenüber {ASSET_NAME} in den letzten 7 Tagen? Ist die Nachrichtenlage positiv/neutral/negativ und welche Themen (KI, Regulierung, Zinsen) dominieren gerade?",
               category: "Sentiment",
               icon: "💭",
-              isActive: 1,
+              isActive: true,
               sortOrder: 7,
             },
           ];
 
-          // TRUNCATE table to reset auto_increment and clear all data
-          await db.execute(sql`TRUNCATE TABLE ai_question_templates`);
+          // Step 1: Drop and recreate table with correct schema
+          console.log('Dropping ai_question_templates table...');
+          await db.execute(sql`DROP TABLE IF EXISTS ai_question_templates`);
 
-          // Insert new templates using raw SQL with explicit column names (no id, createdAt, updatedAt)
+          console.log('Recreating ai_question_templates table...');
+          await db.execute(sql`
+            CREATE TABLE ai_question_templates (
+              id int AUTO_INCREMENT NOT NULL,
+              title varchar(255) NOT NULL,
+              prompt text NOT NULL,
+              category varchar(50),
+              icon varchar(50),
+              isActive tinyint(1) DEFAULT 1,
+              sortOrder int DEFAULT 0,
+              createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+          `);
+
+          // Step 2: Insert templates with explicit timestamps
+          console.log('Inserting templates...');
           for (const template of defaultTemplates) {
             try {
               await db.execute(sql`
                 INSERT INTO ai_question_templates
-                  (title, prompt, category, icon, isActive, sortOrder)
+                  (title, prompt, category, icon, isActive, sortOrder, createdAt, updatedAt)
                 VALUES
-                  (${template.title}, ${template.prompt}, ${template.category}, ${template.icon}, ${template.isActive}, ${template.sortOrder})
+                  (
+                    ${template.title},
+                    ${template.prompt},
+                    ${template.category},
+                    ${template.icon},
+                    ${template.isActive ? 1 : 0},
+                    ${template.sortOrder},
+                    NOW(),
+                    NOW()
+                  )
               `);
+              console.log(`Inserted template: ${template.title}`);
             } catch (insertError) {
               console.error(`Failed to insert template: ${template.title}`, insertError);
               throw new Error(`Failed to insert template "${template.title}": ${insertError}`);
             }
           }
 
+          console.log('Templates reset successfully');
           return { success: true, count: defaultTemplates.length };
         } catch (error) {
           console.error('Reset templates error:', error);
