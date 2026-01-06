@@ -738,22 +738,35 @@ export const appRouter = router({
         const userId = ctx.user.id;
         const availableCapital = input.amount;
 
-        // 1. Get portfolio positions
-        const positions = await getPortfolioPositions(userId);
+        // 1. Get active savings plans (ETFs with savings rate > 0)
+        const savingsPlans = await getSavingsPlans(userId);
+        const activeETFs = savingsPlans.filter(plan =>
+          plan.isActive && Number(plan.monthlyAmount) > 0
+        );
 
-        if (positions.length === 0) {
+        if (activeETFs.length === 0) {
           return {
             success: false,
-            error: 'Keine Portfolio-Positionen gefunden',
+            error: 'Keine aktiven Sparpläne gefunden. Bitte legen Sie auf der Strategie-Seite ETF-Sparraten fest.',
             totalPortfolioValue: 0,
             groups: [],
             underweightGroups: [],
             overweightGroups: [],
             allocation: [],
+            allocationDetails: [],
           };
         }
 
-        // 2. Get target allocations
+        // 2. Get portfolio positions to get current values and categories
+        const positions = await getPortfolioPositions(userId);
+
+        // Create a map of ticker -> position for quick lookup
+        const positionMap = new Map();
+        positions.forEach(pos => {
+          positionMap.set(pos.ticker, pos);
+        });
+
+        // 3. Get target allocations
         const settings = await getUserSettings(userId);
 
         if (!settings || !settings.targetAllocations) {
@@ -765,25 +778,31 @@ export const appRouter = router({
             underweightGroups: [],
             overweightGroups: [],
             allocation: [],
+            allocationDetails: [],
           };
         }
 
         const targetAllocations = settings.targetAllocations as any[];
 
-        // 3. Calculate current portfolio value
-        const totalValue = positions.reduce((sum, pos) => {
-          const price = pos.currentPrice || pos.buyPrice;
-          return sum + (pos.amount * price);
+        // 4. Calculate current portfolio value (only from positions that have active savings plans)
+        const totalValue = activeETFs.reduce((sum, plan) => {
+          const position = positionMap.get(plan.ticker);
+          if (position) {
+            const price = position.currentPrice || position.buyPrice;
+            return sum + (position.amount * price);
+          }
+          return sum;
         }, 0);
 
-        // 4. Group positions by category
+        // 5. Group positions by category (only active ETFs)
         const groupedByCategory = new Map<string, number>();
         const allCategories = new Set<string>();
 
-        positions.forEach(pos => {
-          const category = pos.category || 'Sonstige';
-          const price = pos.currentPrice || pos.buyPrice;
-          const value = pos.amount * price;
+        activeETFs.forEach(plan => {
+          const position = positionMap.get(plan.ticker);
+          const category = position?.category || 'Sonstige';
+          const price = position?.currentPrice || position?.buyPrice || 0;
+          const value = position ? position.amount * price : 0;
 
           allCategories.add(category);
           groupedByCategory.set(
@@ -792,7 +811,7 @@ export const appRouter = router({
           );
         });
 
-        // 5. Calculate IST vs SOLL percentages for all categories
+        // 6. Calculate IST vs SOLL percentages for all categories
         const groups: any[] = [];
 
         // First, add all target allocations
@@ -812,7 +831,7 @@ export const appRouter = router({
           });
         });
 
-        // Then, add categories from portfolio that are not in target allocations
+        // Then, add categories from active ETFs that are not in target allocations
         // Treat these as having a small target (5%) so they appear in rebalancing recommendations
         allCategories.forEach(category => {
           const existsInTargets = targetAllocations.some(t => t.category === category);
@@ -833,7 +852,7 @@ export const appRouter = router({
           }
         });
 
-        // 6. Sort into underweight and overweight
+        // 7. Sort into underweight and overweight
         const underweightGroups = groups
           .filter(g => g.isUnderweight)
           .sort((a, b) => a.difference - b.difference);
@@ -842,7 +861,7 @@ export const appRouter = router({
           .filter(g => !g.isUnderweight)
           .sort((a, b) => b.difference - a.difference);
 
-        // 7. Calculate allocation with individual securities
+        // 8. Calculate allocation with individual securities
         const allocation: any[] = [];
         const allocationDetails: any[] = [];
 
@@ -862,26 +881,30 @@ export const appRouter = router({
               reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`,
             });
 
-            // Find all securities in this underweight category
-            const categoryPositions = positions.filter(pos =>
-              (pos.category || 'Sonstige') === group.category
-            );
+            // Find all active ETFs in this underweight category
+            const categoryETFs = activeETFs.filter(plan => {
+              const position = positionMap.get(plan.ticker);
+              return (position?.category || 'Sonstige') === group.category;
+            });
 
-            // Distribute category amount equally among securities
-            if (categoryPositions.length > 0) {
-              const amountPerSecurity = categoryAmount / categoryPositions.length;
+            // Distribute category amount equally among ETFs
+            if (categoryETFs.length > 0) {
+              const amountPerETF = categoryAmount / categoryETFs.length;
 
-              categoryPositions.forEach(pos => {
+              categoryETFs.forEach(plan => {
+                const position = positionMap.get(plan.ticker);
+                const currentPrice = position?.currentPrice || position?.buyPrice || 0;
+
                 allocationDetails.push({
                   category: group.category,
-                  name: pos.name,
-                  wkn: pos.wkn || pos.isin || 'N/A',
-                  isin: pos.isin || '',
-                  amount: amountPerSecurity,
-                  currentPrice: pos.currentPrice || pos.buyPrice,
-                  shares: (pos.currentPrice || pos.buyPrice) > 0
-                    ? amountPerSecurity / (pos.currentPrice || pos.buyPrice)
-                    : 0,
+                  name: plan.name,
+                  ticker: plan.ticker,
+                  wkn: position?.wkn || position?.isin || 'N/A',
+                  isin: position?.isin || '',
+                  amount: amountPerETF,
+                  currentPrice,
+                  shares: currentPrice > 0 ? amountPerETF / currentPrice : 0,
+                  monthlySavingsRate: Number(plan.monthlyAmount),
                 });
               });
             }
@@ -902,6 +925,7 @@ export const appRouter = router({
             numberOfUnderweightGroups: underweightGroups.length,
             numberOfOverweightGroups: overweightGroups.length,
             largestUnderweight: underweightGroups[0]?.category || 'Keine',
+            activeETFsCount: activeETFs.length,
           },
         };
       }),
