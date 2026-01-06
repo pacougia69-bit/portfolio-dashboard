@@ -15,6 +15,7 @@ __export(schema_exports, {
   aiChatHistory: () => aiChatHistory,
   aiQuestionTemplates: () => aiQuestionTemplates,
   dividends: () => dividends,
+  mediaInsights: () => mediaInsights,
   notes: () => notes,
   portfolioPositions: () => portfolioPositions,
   priceCache: () => priceCache,
@@ -25,7 +26,7 @@ __export(schema_exports, {
   watchlistItems: () => watchlistItems
 });
 import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, json, boolean } from "drizzle-orm/mysql-core";
-var users, portfolioPositions, watchlistItems, dividends, savingsPlans, notes, priceCache, aiAnalyses, userSettings, transactions, aiQuestionTemplates, aiChatHistory;
+var users, portfolioPositions, watchlistItems, dividends, savingsPlans, notes, priceCache, aiAnalyses, userSettings, transactions, aiQuestionTemplates, aiChatHistory, mediaInsights;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -164,6 +165,19 @@ var init_schema = __esm({
       templateId: int("templateId"),
       sessionId: varchar("sessionId", { length: 64 }),
       createdAt: timestamp("createdAt").defaultNow().notNull()
+    });
+    mediaInsights = mysqlTable("media_insights", {
+      id: int("id").autoincrement().primaryKey(),
+      userId: int("userId").notNull(),
+      assetId: int("assetId"),
+      title: varchar("title", { length: 255 }).notNull(),
+      summary: text("summary"),
+      source: varchar("source", { length: 100 }),
+      imageUrl: varchar("imageUrl", { length: 500 }),
+      pdfUrl: varchar("pdfUrl", { length: 500 }),
+      analysisData: json("analysisData"),
+      createdAt: timestamp("createdAt").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
     });
   }
 });
@@ -823,6 +837,204 @@ var init_db = __esm({
   }
 });
 
+// server/_core/llm.ts
+var llm_exports = {};
+__export(llm_exports, {
+  invokeLLM: () => invokeLLM,
+  invokeLLMWithVision: () => invokeLLMWithVision
+});
+import OpenAI from "openai";
+async function invokeLLM(messages, modelIndex = 0) {
+  if (!openai) {
+    const error = "OpenAI API key is missing. AI features are disabled.";
+    console.error(error);
+    throw new Error(error);
+  }
+  const model = MODELS_TO_TRY[modelIndex];
+  if (!model) {
+    const error = "All OpenAI models failed. Please check your API key and quota.";
+    console.error(error);
+    throw new Error(error);
+  }
+  try {
+    console.log(`Attempting to use OpenAI model: ${model}`);
+    console.log(`Messages parameter type: ${Array.isArray(messages) ? "array" : typeof messages}`);
+    console.log(`Messages being sent:`, JSON.stringify(messages, null, 2));
+    let messagesArray;
+    if (!Array.isArray(messages)) {
+      console.warn("Messages is not an array, converting:", typeof messages);
+      messagesArray = [messages];
+    } else {
+      messagesArray = messages;
+    }
+    if (messagesArray.length === 0) {
+      throw new Error("Messages array is empty");
+    }
+    const formattedMessages = [];
+    for (const msg of messagesArray) {
+      if (!msg || typeof msg !== "object" || !msg.role) {
+        console.error("Invalid message object:", msg);
+        throw new Error("Invalid message format");
+      }
+      let contentStr;
+      if (typeof msg.content === "string") {
+        contentStr = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        contentStr = msg.content.map(
+          (c) => typeof c === "string" ? c : c.text
+        ).join(" ");
+      } else if (msg.content && typeof msg.content === "object" && "text" in msg.content) {
+        contentStr = msg.content.text;
+      } else {
+        console.error("Invalid content format:", msg.content);
+        throw new Error("Message content must be a string or text object");
+      }
+      formattedMessages.push({
+        role: msg.role,
+        content: contentStr
+      });
+    }
+    if (!Array.isArray(formattedMessages)) {
+      console.error("FATAL: formattedMessages is not an array!");
+      throw new Error("Failed to create messages array");
+    }
+    if (formattedMessages.length === 0) {
+      console.error("FATAL: formattedMessages array is empty!");
+      throw new Error("Messages array cannot be empty");
+    }
+    for (let i = 0; i < formattedMessages.length; i++) {
+      const m = formattedMessages[i];
+      if (!m || typeof m !== "object" || !m.role || !m.content) {
+        console.error(`Invalid formatted message at index ${i}:`, m);
+        throw new Error(`Invalid message object at index ${i}`);
+      }
+    }
+    console.log(`Formatted messages count: ${formattedMessages.length}`);
+    console.log(`Formatted messages for OpenAI:`, JSON.stringify(formattedMessages, null, 2));
+    console.log("=== DEBUG OpenAI API Call ===");
+    console.log("DEBUG messages value:", JSON.stringify(formattedMessages, null, 2));
+    console.log("DEBUG messages isArray:", Array.isArray(formattedMessages));
+    console.log("DEBUG messages type:", typeof formattedMessages);
+    console.log("DEBUG messages length:", formattedMessages?.length);
+    console.log("DEBUG messages constructor:", formattedMessages?.constructor?.name);
+    console.log("DEBUG first message:", JSON.stringify(formattedMessages[0]));
+    console.log("=== END DEBUG ===");
+    const response = await openai.chat.completions.create({
+      model,
+      messages: Array.isArray(formattedMessages) ? formattedMessages : [formattedMessages],
+      temperature: 0.7,
+      max_tokens: 2e3
+    });
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error("OpenAI returned empty response");
+    }
+    console.log(`Successfully generated response using model: ${model}`);
+    return content;
+  } catch (error) {
+    const errorMessage = error?.message || String(error);
+    const errorCode = error?.code || error?.status;
+    console.error(`Error with model ${model}:`, {
+      message: errorMessage,
+      code: errorCode,
+      type: error?.type,
+      status: error?.status,
+      fullError: error
+    });
+    if ((errorMessage.includes("model") || errorMessage.includes("does not exist") || errorCode === "model_not_found" || error?.status === 404) && modelIndex < MODELS_TO_TRY.length - 1) {
+      console.log(`Trying next model...`);
+      return invokeLLM(messages, modelIndex + 1);
+    }
+    const detailedError = `OpenAI API Error: ${errorMessage} (Model: ${model}, Code: ${errorCode || "unknown"})`;
+    console.error(detailedError);
+    throw new Error(detailedError);
+  }
+}
+async function invokeLLMWithVision(messages, imageUrl, modelIndex = 0) {
+  if (!openai) {
+    const error = "OpenAI API key is missing. AI features are disabled.";
+    console.error(error);
+    throw new Error(error);
+  }
+  const VISION_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-4-vision-preview"];
+  const model = VISION_MODELS[modelIndex];
+  if (!model) {
+    const error = "All vision models failed. Please check your API key and quota.";
+    console.error(error);
+    throw new Error(error);
+  }
+  try {
+    console.log(`Attempting to use OpenAI Vision model: ${model}`);
+    console.log(`Analyzing image URL: ${imageUrl}`);
+    const formattedMessages = messages.map((msg, index) => {
+      if (msg.role === "user" && index === messages.length - 1) {
+        return {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: typeof msg.content === "string" ? msg.content : String(msg.content)
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl,
+                detail: "high"
+                // Use high detail for financial documents
+              }
+            }
+          ]
+        };
+      }
+      return {
+        role: msg.role,
+        content: typeof msg.content === "string" ? msg.content : String(msg.content)
+      };
+    });
+    console.log("Calling OpenAI Vision API...");
+    const completion = await openai.chat.completions.create({
+      model,
+      messages: formattedMessages,
+      max_tokens: 2e3,
+      temperature: 0.3
+      // Lower temperature for more factual analysis
+    });
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error("No response from Vision API");
+    }
+    console.log("\u2705 Vision API call successful");
+    return content;
+  } catch (error) {
+    console.error(`Vision model ${model} failed:`, error);
+    if (modelIndex < VISION_MODELS.length - 1) {
+      console.log(`Retrying with next vision model...`);
+      return invokeLLMWithVision(messages, imageUrl, modelIndex + 1);
+    }
+    const errorMessage = error?.message || String(error);
+    console.error("All vision models failed:", errorMessage);
+    throw error;
+  }
+}
+var apiKey, openai, MODELS_TO_TRY;
+var init_llm = __esm({
+  "server/_core/llm.ts"() {
+    "use strict";
+    apiKey = process.env.OPENAI_API_KEY;
+    openai = apiKey ? new OpenAI({ apiKey }) : null;
+    MODELS_TO_TRY = [
+      "gpt-4o",
+      // Try GPT-4o first if available
+      "gpt-4o-mini",
+      // Fallback to GPT-4o mini
+      "gpt-4-turbo",
+      // Then GPT-4 Turbo
+      "gpt-3.5-turbo"
+      // Most reliable fallback
+    ];
+  }
+});
+
 // server/dkb-parser.ts
 var dkb_parser_exports = {};
 __export(dkb_parser_exports, {
@@ -1399,128 +1611,8 @@ var systemRouter = router({
 init_db();
 import { z as z2 } from "zod";
 
-// server/_core/llm.ts
-import OpenAI from "openai";
-var apiKey = process.env.OPENAI_API_KEY;
-var openai = apiKey ? new OpenAI({ apiKey }) : null;
-var MODELS_TO_TRY = [
-  "gpt-4o",
-  // Try GPT-4o first if available
-  "gpt-4o-mini",
-  // Fallback to GPT-4o mini
-  "gpt-4-turbo",
-  // Then GPT-4 Turbo
-  "gpt-3.5-turbo"
-  // Most reliable fallback
-];
-async function invokeLLM(messages, modelIndex = 0) {
-  if (!openai) {
-    const error = "OpenAI API key is missing. AI features are disabled.";
-    console.error(error);
-    throw new Error(error);
-  }
-  const model = MODELS_TO_TRY[modelIndex];
-  if (!model) {
-    const error = "All OpenAI models failed. Please check your API key and quota.";
-    console.error(error);
-    throw new Error(error);
-  }
-  try {
-    console.log(`Attempting to use OpenAI model: ${model}`);
-    console.log(`Messages parameter type: ${Array.isArray(messages) ? "array" : typeof messages}`);
-    console.log(`Messages being sent:`, JSON.stringify(messages, null, 2));
-    let messagesArray;
-    if (!Array.isArray(messages)) {
-      console.warn("Messages is not an array, converting:", typeof messages);
-      messagesArray = [messages];
-    } else {
-      messagesArray = messages;
-    }
-    if (messagesArray.length === 0) {
-      throw new Error("Messages array is empty");
-    }
-    const formattedMessages = [];
-    for (const msg of messagesArray) {
-      if (!msg || typeof msg !== "object" || !msg.role) {
-        console.error("Invalid message object:", msg);
-        throw new Error("Invalid message format");
-      }
-      let contentStr;
-      if (typeof msg.content === "string") {
-        contentStr = msg.content;
-      } else if (Array.isArray(msg.content)) {
-        contentStr = msg.content.map(
-          (c) => typeof c === "string" ? c : c.text
-        ).join(" ");
-      } else if (msg.content && typeof msg.content === "object" && "text" in msg.content) {
-        contentStr = msg.content.text;
-      } else {
-        console.error("Invalid content format:", msg.content);
-        throw new Error("Message content must be a string or text object");
-      }
-      formattedMessages.push({
-        role: msg.role,
-        content: contentStr
-      });
-    }
-    if (!Array.isArray(formattedMessages)) {
-      console.error("FATAL: formattedMessages is not an array!");
-      throw new Error("Failed to create messages array");
-    }
-    if (formattedMessages.length === 0) {
-      console.error("FATAL: formattedMessages array is empty!");
-      throw new Error("Messages array cannot be empty");
-    }
-    for (let i = 0; i < formattedMessages.length; i++) {
-      const m = formattedMessages[i];
-      if (!m || typeof m !== "object" || !m.role || !m.content) {
-        console.error(`Invalid formatted message at index ${i}:`, m);
-        throw new Error(`Invalid message object at index ${i}`);
-      }
-    }
-    console.log(`Formatted messages count: ${formattedMessages.length}`);
-    console.log(`Formatted messages for OpenAI:`, JSON.stringify(formattedMessages, null, 2));
-    console.log("=== DEBUG OpenAI API Call ===");
-    console.log("DEBUG messages value:", JSON.stringify(formattedMessages, null, 2));
-    console.log("DEBUG messages isArray:", Array.isArray(formattedMessages));
-    console.log("DEBUG messages type:", typeof formattedMessages);
-    console.log("DEBUG messages length:", formattedMessages?.length);
-    console.log("DEBUG messages constructor:", formattedMessages?.constructor?.name);
-    console.log("DEBUG first message:", JSON.stringify(formattedMessages[0]));
-    console.log("=== END DEBUG ===");
-    const response = await openai.chat.completions.create({
-      model,
-      messages: Array.isArray(formattedMessages) ? formattedMessages : [formattedMessages],
-      temperature: 0.7,
-      max_tokens: 2e3
-    });
-    const content = response.choices[0].message.content;
-    if (!content) {
-      throw new Error("OpenAI returned empty response");
-    }
-    console.log(`Successfully generated response using model: ${model}`);
-    return content;
-  } catch (error) {
-    const errorMessage = error?.message || String(error);
-    const errorCode = error?.code || error?.status;
-    console.error(`Error with model ${model}:`, {
-      message: errorMessage,
-      code: errorCode,
-      type: error?.type,
-      status: error?.status,
-      fullError: error
-    });
-    if ((errorMessage.includes("model") || errorMessage.includes("does not exist") || errorCode === "model_not_found" || error?.status === 404) && modelIndex < MODELS_TO_TRY.length - 1) {
-      console.log(`Trying next model...`);
-      return invokeLLM(messages, modelIndex + 1);
-    }
-    const detailedError = `OpenAI API Error: ${errorMessage} (Model: ${model}, Code: ${errorCode || "unknown"})`;
-    console.error(detailedError);
-    throw new Error(detailedError);
-  }
-}
-
 // server/services.ts
+init_llm();
 init_db();
 var eurUsdRate = null;
 var eurUsdLastFetch = 0;
@@ -2987,6 +3079,183 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
           activeETFsCount: activeETFs.length
         }
       };
+    })
+  }),
+  // Media Insights - Upload and analyze financial media
+  media: router({
+    // Upload and save media insight
+    upload: protectedProcedure.input(z2.object({
+      title: z2.string(),
+      source: z2.string().optional(),
+      assetId: z2.number().optional(),
+      fileData: z2.string(),
+      // Base64 encoded image or PDF
+      fileType: z2.enum(["image/png", "image/jpeg", "image/jpg", "application/pdf"])
+    })).mutation(async ({ ctx, input }) => {
+      const { mediaInsights: mediaInsights2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const fs2 = await import("fs/promises");
+      const path2 = await import("path");
+      const db = await getDb2();
+      if (!db) {
+        throw new Error("Database connection not available");
+      }
+      try {
+        const uploadsDir = path2.join(process.cwd(), "dist", "public", "uploads");
+        await fs2.mkdir(uploadsDir, { recursive: true });
+        const timestamp2 = Date.now();
+        const extension = input.fileType === "application/pdf" ? "pdf" : input.fileType.split("/")[1];
+        const filename = `media_${timestamp2}.${extension}`;
+        const filepath = path2.join(uploadsDir, filename);
+        const base64Data = input.fileData.replace(/^data:.*base64,/, "");
+        await fs2.writeFile(filepath, base64Data, "base64");
+        const fileUrl = `/uploads/${filename}`;
+        const isImage = input.fileType.startsWith("image/");
+        const result = await db.insert(mediaInsights2).values({
+          userId: ctx.user.id,
+          title: input.title,
+          source: input.source,
+          assetId: input.assetId,
+          imageUrl: isImage ? fileUrl : null,
+          pdfUrl: !isImage ? fileUrl : null
+        });
+        return {
+          success: true,
+          id: result.insertId,
+          url: fileUrl,
+          message: "Media uploaded successfully"
+        };
+      } catch (error) {
+        console.error("Upload error:", error);
+        throw new Error(`Failed to upload media: ${error.message}`);
+      }
+    }),
+    // List all media insights for current user
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const { mediaInsights: mediaInsights2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { eq: eq2, desc: desc2 } = await import("drizzle-orm");
+      const db = await getDb2();
+      if (!db) {
+        console.error("\u274C media.list: Database not available");
+        return [];
+      }
+      return db.select().from(mediaInsights2).where(eq2(mediaInsights2.userId, ctx.user.id)).orderBy(desc2(mediaInsights2.createdAt));
+    }),
+    // Get single media insight
+    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
+      const { mediaInsights: mediaInsights2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { eq: eq2, and: and2 } = await import("drizzle-orm");
+      const db = await getDb2();
+      if (!db) {
+        throw new Error("Database not available");
+      }
+      const results = await db.select().from(mediaInsights2).where(and2(
+        eq2(mediaInsights2.id, input.id),
+        eq2(mediaInsights2.userId, ctx.user.id)
+      )).limit(1);
+      return results[0] || null;
+    }),
+    // Update media insight
+    update: protectedProcedure.input(z2.object({
+      id: z2.number(),
+      title: z2.string().optional(),
+      summary: z2.string().optional(),
+      source: z2.string().optional(),
+      analysisData: z2.any().optional()
+    })).mutation(async ({ ctx, input }) => {
+      const { mediaInsights: mediaInsights2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { eq: eq2, and: and2 } = await import("drizzle-orm");
+      const db = await getDb2();
+      if (!db) {
+        throw new Error("Database not available");
+      }
+      const { id, ...updates } = input;
+      return db.update(mediaInsights2).set(updates).where(and2(
+        eq2(mediaInsights2.id, id),
+        eq2(mediaInsights2.userId, ctx.user.id)
+      ));
+    }),
+    // Delete media insight
+    delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+      const { mediaInsights: mediaInsights2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { eq: eq2, and: and2 } = await import("drizzle-orm");
+      const db = await getDb2();
+      if (!db) {
+        throw new Error("Database not available");
+      }
+      return db.delete(mediaInsights2).where(and2(
+        eq2(mediaInsights2.id, input.id),
+        eq2(mediaInsights2.userId, ctx.user.id)
+      ));
+    }),
+    // Analyze document with AI (Vision API for images, text extraction for PDFs)
+    analyzeDocument: protectedProcedure.input(z2.object({
+      mediaId: z2.number(),
+      customPrompt: z2.string().optional()
+    })).mutation(async ({ ctx, input }) => {
+      const { mediaInsights: mediaInsights2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { eq: eq2, and: and2 } = await import("drizzle-orm");
+      const { invokeLLMWithVision: invokeLLMWithVision2 } = await Promise.resolve().then(() => (init_llm(), llm_exports));
+      const db = await getDb2();
+      if (!db) {
+        throw new Error("Database not available");
+      }
+      try {
+        const results = await db.select().from(mediaInsights2).where(and2(
+          eq2(mediaInsights2.id, input.mediaId),
+          eq2(mediaInsights2.userId, ctx.user.id)
+        )).limit(1);
+        const media = results[0];
+        if (!media) {
+          throw new Error("Media insight not found");
+        }
+        const imageUrl = media.imageUrl || media.pdfUrl;
+        if (!imageUrl) {
+          throw new Error("No file URL found");
+        }
+        const fullUrl = imageUrl.startsWith("http") ? imageUrl : `${process.env.APP_URL || "http://localhost:5000"}${imageUrl}`;
+        const systemPrompt = `Du bist ein Experte f\xFCr Finanzanalyse und analysierst Dokumente aus B\xF6rsenzeitschriften.
+Extrahiere die wichtigsten Informationen aus dem Dokument und strukturiere sie wie folgt:
+
+1. **Aktie/ETF Name und Symbol**: Welches Wertpapier wird besprochen?
+2. **Zusammenfassung**: Worum geht es in dem Artikel? (2-3 S\xE4tze)
+3. **Chance**: Was sind die positiven Aspekte und Chancen?
+4. **Risiko**: Was sind die Risiken und negativen Punkte?
+5. **Kursziel/Empfehlung**: Gibt es ein Kursziel oder eine Handlungsempfehlung?
+6. **Quelle**: Aus welcher Zeitschrift/Quelle stammt der Artikel?
+
+Antworte auf Deutsch und strukturiert.`;
+        const userPrompt = input.customPrompt || "Analysiere dieses Dokument und extrahiere alle relevanten Finanzinformationen gem\xE4\xDF der Struktur.";
+        const analysis = await invokeLLMWithVision2([
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ], fullUrl);
+        const analysisData = {
+          rawAnalysis: analysis,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        await db.update(mediaInsights2).set({
+          summary: analysis?.substring(0, 500),
+          // First 500 chars as summary
+          analysisData
+        }).where(and2(
+          eq2(mediaInsights2.id, input.mediaId),
+          eq2(mediaInsights2.userId, ctx.user.id)
+        ));
+        return {
+          success: true,
+          analysis,
+          analysisData
+        };
+      } catch (error) {
+        console.error("Document analysis error:", error);
+        throw new Error(`Failed to analyze document: ${error.message}`);
+      }
     })
   })
 });
