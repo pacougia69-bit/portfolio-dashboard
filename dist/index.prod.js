@@ -2506,7 +2506,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Analysiere den ETF/die Aktie {ASSET_NAME}. Welche 3 Top-Unternehmen dominieren diese Position aktuell? Gibt es ein Klumpenrisiko in Branche oder Region, das ich im Zusammenspiel mit meinem restlichen Portfolio beachten sollte?",
             category: "Risiko",
             icon: "\u26A0\uFE0F",
-            isActive: true,
+            isActive: 1,
             sortOrder: 1
           },
           {
@@ -2514,7 +2514,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Welche makro\xF6konomischen Daten (Inflation, Zinsen, News) hatten in den letzten 7\u201314 Tagen den gr\xF6\xDFten Einfluss auf {ASSET_NAME}? Ist der Kurs eher gestiegen/gefallen und was waren die 2\u20133 Hauptgr\xFCnde?",
             category: "Analyse",
             icon: "\u{1F4CA}",
-            isActive: true,
+            isActive: 1,
             sortOrder: 2
           },
           {
@@ -2522,7 +2522,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Erkl\xE4re die langfristige Investment-Story von {ASSET_NAME} (WKN: {WKN}). Was sind die Wachstumstreiber, was die 3\u20134 gr\xF6\xDFten Risiken und hat sich die Story in den letzten 12 Monaten fundamental verbessert oder verschlechtert?",
             category: "Fundament",
             icon: "\u{1F4C8}",
-            isActive: true,
+            isActive: 1,
             sortOrder: 3
           },
           {
@@ -2530,7 +2530,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Analysiere {ASSET_NAME} (WKN: {WKN}) technisch: Notiert der Kurs \xFCber/unter/nahe der 200-Tage-Linie? Befinden wir uns im Aufw\xE4rts-, Abw\xE4rtstrend oder in einer Seitw\xE4rtsphase? Wie ist die Marktstimmung (optimistisch/skeptisch)?",
             category: "Technik",
             icon: "\u{1F4C9}",
-            isActive: true,
+            isActive: 1,
             sortOrder: 4
           },
           {
@@ -2538,7 +2538,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Welche sektor-spezifischen Entwicklungen und politischen Faktoren haben {ASSET_NAME} in den letzten 30 Tagen am st\xE4rksten beeinflusst? Deuten die Bewegungen auf normale Volatilit\xE4t oder einen Trendwechsel hin?",
             category: "News",
             icon: "\u{1F4F0}",
-            isActive: true,
+            isActive: 1,
             sortOrder: 5
           },
           {
@@ -2546,7 +2546,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Gibt es fundamentale Gr\xFCnde (Sektor-Rotation, Index-\xC4nderung), warum ich {ASSET_NAME} bei einer Abweichung aktuell verst\xE4rkt nachkaufen oder Gewinne mitnehmen sollte, anstatt nur stur nach Prozenten zu rebalancen?",
             category: "Strategie",
             icon: "\u2696\uFE0F",
-            isActive: true,
+            isActive: 1,
             sortOrder: 6
           },
           {
@@ -2554,14 +2554,19 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Wie ist das Sentiment gegen\xFCber {ASSET_NAME} in den letzten 7 Tagen? Ist die Nachrichtenlage positiv/neutral/negativ und welche Themen (KI, Regulierung, Zinsen) dominieren gerade?",
             category: "Sentiment",
             icon: "\u{1F4AD}",
-            isActive: true,
+            isActive: 1,
             sortOrder: 7
           }
         ];
         await db.execute(sql`TRUNCATE TABLE ai_question_templates`);
         for (const template of defaultTemplates) {
           try {
-            await db.insert(aiQuestionTemplates2).values(template);
+            await db.execute(sql`
+                INSERT INTO ai_question_templates
+                  (title, prompt, category, icon, isActive, sortOrder)
+                VALUES
+                  (${template.title}, ${template.prompt}, ${template.category}, ${template.icon}, ${template.isActive}, ${template.sortOrder})
+              `);
           } catch (insertError) {
             console.error(`Failed to insert template: ${template.title}`, insertError);
             throw new Error(`Failed to insert template "${template.title}": ${insertError}`);

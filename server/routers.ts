@@ -503,14 +503,14 @@ export const appRouter = router({
         if (!db) throw new Error("Database not available");
 
         try {
-          // Default templates with all required fields
+          // Default templates with explicit field values
           const defaultTemplates = [
             {
               title: "Klumpenrisiko-Check",
               prompt: "Analysiere den ETF/die Aktie {ASSET_NAME}. Welche 3 Top-Unternehmen dominieren diese Position aktuell? Gibt es ein Klumpenrisiko in Branche oder Region, das ich im Zusammenspiel mit meinem restlichen Portfolio beachten sollte?",
               category: "Risiko",
               icon: "⚠️",
-              isActive: true,
+              isActive: 1,
               sortOrder: 1,
             },
             {
@@ -518,7 +518,7 @@ export const appRouter = router({
               prompt: "Welche makroökonomischen Daten (Inflation, Zinsen, News) hatten in den letzten 7–14 Tagen den größten Einfluss auf {ASSET_NAME}? Ist der Kurs eher gestiegen/gefallen und was waren die 2–3 Hauptgründe?",
               category: "Analyse",
               icon: "📊",
-              isActive: true,
+              isActive: 1,
               sortOrder: 2,
             },
             {
@@ -526,7 +526,7 @@ export const appRouter = router({
               prompt: "Erkläre die langfristige Investment-Story von {ASSET_NAME} (WKN: {WKN}). Was sind die Wachstumstreiber, was die 3–4 größten Risiken und hat sich die Story in den letzten 12 Monaten fundamental verbessert oder verschlechtert?",
               category: "Fundament",
               icon: "📈",
-              isActive: true,
+              isActive: 1,
               sortOrder: 3,
             },
             {
@@ -534,7 +534,7 @@ export const appRouter = router({
               prompt: "Analysiere {ASSET_NAME} (WKN: {WKN}) technisch: Notiert der Kurs über/unter/nahe der 200-Tage-Linie? Befinden wir uns im Aufwärts-, Abwärtstrend oder in einer Seitwärtsphase? Wie ist die Marktstimmung (optimistisch/skeptisch)?",
               category: "Technik",
               icon: "📉",
-              isActive: true,
+              isActive: 1,
               sortOrder: 4,
             },
             {
@@ -542,7 +542,7 @@ export const appRouter = router({
               prompt: "Welche sektor-spezifischen Entwicklungen und politischen Faktoren haben {ASSET_NAME} in den letzten 30 Tagen am stärksten beeinflusst? Deuten die Bewegungen auf normale Volatilität oder einen Trendwechsel hin?",
               category: "News",
               icon: "📰",
-              isActive: true,
+              isActive: 1,
               sortOrder: 5,
             },
             {
@@ -550,7 +550,7 @@ export const appRouter = router({
               prompt: "Gibt es fundamentale Gründe (Sektor-Rotation, Index-Änderung), warum ich {ASSET_NAME} bei einer Abweichung aktuell verstärkt nachkaufen oder Gewinne mitnehmen sollte, anstatt nur stur nach Prozenten zu rebalancen?",
               category: "Strategie",
               icon: "⚖️",
-              isActive: true,
+              isActive: 1,
               sortOrder: 6,
             },
             {
@@ -558,7 +558,7 @@ export const appRouter = router({
               prompt: "Wie ist das Sentiment gegenüber {ASSET_NAME} in den letzten 7 Tagen? Ist die Nachrichtenlage positiv/neutral/negativ und welche Themen (KI, Regulierung, Zinsen) dominieren gerade?",
               category: "Sentiment",
               icon: "💭",
-              isActive: true,
+              isActive: 1,
               sortOrder: 7,
             },
           ];
@@ -566,10 +566,15 @@ export const appRouter = router({
           // TRUNCATE table to reset auto_increment and clear all data
           await db.execute(sql`TRUNCATE TABLE ai_question_templates`);
 
-          // Insert new templates one by one with error handling
+          // Insert new templates using raw SQL with explicit column names (no id, createdAt, updatedAt)
           for (const template of defaultTemplates) {
             try {
-              await db.insert(aiQuestionTemplates).values(template);
+              await db.execute(sql`
+                INSERT INTO ai_question_templates
+                  (title, prompt, category, icon, isActive, sortOrder)
+                VALUES
+                  (${template.title}, ${template.prompt}, ${template.category}, ${template.icon}, ${template.isActive}, ${template.sortOrder})
+              `);
             } catch (insertError) {
               console.error(`Failed to insert template: ${template.title}`, insertError);
               throw new Error(`Failed to insert template "${template.title}": ${insertError}`);
