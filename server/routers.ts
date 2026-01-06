@@ -1330,19 +1330,29 @@ export const appRouter = router({
             throw new Error('No file URL found');
           }
 
-          // Build full URL for the image
-          // Priority: PUBLIC_URL > RAILWAY_STATIC_URL > RAILWAY_PUBLIC_DOMAIN > OAUTH_SERVER_URL > localhost
-          const baseUrl = process.env.PUBLIC_URL
-            || process.env.RAILWAY_STATIC_URL
-            || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
-            || process.env.OAUTH_SERVER_URL
-            || 'http://localhost:5000';
-
+          // Build full URL for the image - REQUIRE PUBLIC_URL to be set
           console.log('[Media Analysis] Environment variables check:');
           console.log('  PUBLIC_URL:', process.env.PUBLIC_URL || '(not set)');
           console.log('  RAILWAY_STATIC_URL:', process.env.RAILWAY_STATIC_URL || '(not set)');
           console.log('  RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)');
           console.log('  OAUTH_SERVER_URL:', process.env.OAUTH_SERVER_URL || '(not set)');
+
+          // Priority: PUBLIC_URL > RAILWAY_STATIC_URL > RAILWAY_PUBLIC_DOMAIN > OAUTH_SERVER_URL
+          // NO LOCALHOST FALLBACK - must be deployed with proper domain
+          const baseUrl = process.env.PUBLIC_URL
+            || process.env.RAILWAY_STATIC_URL
+            || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
+            || process.env.OAUTH_SERVER_URL;
+
+          if (!baseUrl) {
+            throw new Error('ERROR: PUBLIC_URL NOT DEFINED. Please set PUBLIC_URL environment variable with your Railway domain (e.g., https://your-app.up.railway.app)');
+          }
+
+          // Ensure URL starts with https://
+          if (!baseUrl.startsWith('https://') && !baseUrl.startsWith('http://')) {
+            throw new Error(`ERROR: PUBLIC_URL must start with https:// but got: ${baseUrl}`);
+          }
+
           console.log('  Using baseUrl:', baseUrl);
 
           const fullUrl = imageUrl.startsWith('http')
