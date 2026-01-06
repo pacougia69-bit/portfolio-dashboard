@@ -175,3 +175,91 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
     throw new Error(detailedError);
   }
 }
+
+/**
+ * Invoke LLM with Vision API for image/document analysis
+ */
+export async function invokeLLMWithVision(
+  messages: Message[],
+  imageUrl: string,
+  modelIndex: number = 0
+): Promise<string> {
+  if (!openai) {
+    const error = "OpenAI API key is missing. AI features are disabled.";
+    console.error(error);
+    throw new Error(error);
+  }
+
+  // Use GPT-4 Vision model
+  const VISION_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-4-vision-preview"];
+  const model = VISION_MODELS[modelIndex];
+
+  if (!model) {
+    const error = "All vision models failed. Please check your API key and quota.";
+    console.error(error);
+    throw new Error(error);
+  }
+
+  try {
+    console.log(`Attempting to use OpenAI Vision model: ${model}`);
+    console.log(`Analyzing image URL: ${imageUrl}`);
+
+    // Format messages for Vision API
+    const formattedMessages: ChatCompletionMessageParam[] = messages.map((msg, index) => {
+      // Add image to the last user message
+      if (msg.role === 'user' && index === messages.length - 1) {
+        return {
+          role: 'user' as const,
+          content: [
+            {
+              type: 'text' as const,
+              text: typeof msg.content === 'string' ? msg.content : String(msg.content),
+            },
+            {
+              type: 'image_url' as const,
+              image_url: {
+                url: imageUrl,
+                detail: 'high' as const, // Use high detail for financial documents
+              },
+            },
+          ],
+        };
+      }
+
+      return {
+        role: msg.role as "system" | "user" | "assistant",
+        content: typeof msg.content === 'string' ? msg.content : String(msg.content),
+      };
+    });
+
+    console.log('Calling OpenAI Vision API...');
+    const completion = await openai.chat.completions.create({
+      model,
+      messages: formattedMessages,
+      max_tokens: 2000,
+      temperature: 0.3, // Lower temperature for more factual analysis
+    });
+
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No response from Vision API');
+    }
+
+    console.log('✅ Vision API call successful');
+    return content;
+
+  } catch (error: any) {
+    console.error(`Vision model ${model} failed:`, error);
+
+    // Retry with next model
+    if (modelIndex < VISION_MODELS.length - 1) {
+      console.log(`Retrying with next vision model...`);
+      return invokeLLMWithVision(messages, imageUrl, modelIndex + 1);
+    }
+
+    // All models failed
+    const errorMessage = error?.message || String(error);
+    console.error("All vision models failed:", errorMessage);
+    throw error;
+  }
+}

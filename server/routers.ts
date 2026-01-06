@@ -1139,6 +1139,252 @@ export const appRouter = router({
         };
       }),
   }),
+
+  // Media Insights - Upload and analyze financial media
+  media: router({
+    // Upload and save media insight
+    upload: protectedProcedure
+      .input(z.object({
+        title: z.string(),
+        source: z.string().optional(),
+        assetId: z.number().optional(),
+        fileData: z.string(), // Base64 encoded image or PDF
+        fileType: z.enum(['image/png', 'image/jpeg', 'image/jpg', 'application/pdf']),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { mediaInsights } = await import('../drizzle/schema');
+        const { getDb } = await import('./db');
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        const db = await getDb();
+        if (!db) {
+          throw new Error('Database connection not available');
+        }
+
+        try {
+          // Create uploads directory if it doesn't exist
+          const uploadsDir = path.join(process.cwd(), 'dist', 'public', 'uploads');
+          await fs.mkdir(uploadsDir, { recursive: true });
+
+          // Generate unique filename
+          const timestamp = Date.now();
+          const extension = input.fileType === 'application/pdf' ? 'pdf' : input.fileType.split('/')[1];
+          const filename = `media_${timestamp}.${extension}`;
+          const filepath = path.join(uploadsDir, filename);
+
+          // Save file
+          const base64Data = input.fileData.replace(/^data:.*base64,/, '');
+          await fs.writeFile(filepath, base64Data, 'base64');
+
+          const fileUrl = `/uploads/${filename}`;
+          const isImage = input.fileType.startsWith('image/');
+
+          // Save to database
+          const result = await db.insert(mediaInsights).values({
+            userId: ctx.user.id,
+            title: input.title,
+            source: input.source,
+            assetId: input.assetId,
+            imageUrl: isImage ? fileUrl : null,
+            pdfUrl: !isImage ? fileUrl : null,
+          });
+
+          return {
+            success: true,
+            id: result.insertId,
+            url: fileUrl,
+            message: 'Media uploaded successfully'
+          };
+        } catch (error: any) {
+          console.error('Upload error:', error);
+          throw new Error(`Failed to upload media: ${error.message}`);
+        }
+      }),
+
+    // List all media insights for current user
+    list: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { mediaInsights } = await import('../drizzle/schema');
+        const { getDb } = await import('./db');
+        const { eq, desc } = await import('drizzle-orm');
+
+        const db = await getDb();
+        if (!db) {
+          console.error('❌ media.list: Database not available');
+          return [];
+        }
+
+        return db.select()
+          .from(mediaInsights)
+          .where(eq(mediaInsights.userId, ctx.user.id))
+          .orderBy(desc(mediaInsights.createdAt));
+      }),
+
+    // Get single media insight
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const { mediaInsights } = await import('../drizzle/schema');
+        const { getDb } = await import('./db');
+        const { eq, and } = await import('drizzle-orm');
+
+        const db = await getDb();
+        if (!db) {
+          throw new Error('Database not available');
+        }
+
+        const results = await db.select()
+          .from(mediaInsights)
+          .where(and(
+            eq(mediaInsights.id, input.id),
+            eq(mediaInsights.userId, ctx.user.id)
+          ))
+          .limit(1);
+
+        return results[0] || null;
+      }),
+
+    // Update media insight
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().optional(),
+        summary: z.string().optional(),
+        source: z.string().optional(),
+        analysisData: z.any().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { mediaInsights } = await import('../drizzle/schema');
+        const { getDb } = await import('./db');
+        const { eq, and } = await import('drizzle-orm');
+
+        const db = await getDb();
+        if (!db) {
+          throw new Error('Database not available');
+        }
+
+        const { id, ...updates } = input;
+        return db.update(mediaInsights)
+          .set(updates)
+          .where(and(
+            eq(mediaInsights.id, id),
+            eq(mediaInsights.userId, ctx.user.id)
+          ));
+      }),
+
+    // Delete media insight
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const { mediaInsights } = await import('../drizzle/schema');
+        const { getDb } = await import('./db');
+        const { eq, and } = await import('drizzle-orm');
+
+        const db = await getDb();
+        if (!db) {
+          throw new Error('Database not available');
+        }
+
+        return db.delete(mediaInsights)
+          .where(and(
+            eq(mediaInsights.id, input.id),
+            eq(mediaInsights.userId, ctx.user.id)
+          ));
+      }),
+
+    // Analyze document with AI (Vision API for images, text extraction for PDFs)
+    analyzeDocument: protectedProcedure
+      .input(z.object({
+        mediaId: z.number(),
+        customPrompt: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { mediaInsights } = await import('../drizzle/schema');
+        const { getDb } = await import('./db');
+        const { eq, and } = await import('drizzle-orm');
+        const { invokeLLMWithVision } = await import('./_core/llm');
+
+        const db = await getDb();
+        if (!db) {
+          throw new Error('Database not available');
+        }
+
+        try {
+          // Get media insight from database
+          const results = await db.select()
+            .from(mediaInsights)
+            .where(and(
+              eq(mediaInsights.id, input.mediaId),
+              eq(mediaInsights.userId, ctx.user.id)
+            ))
+            .limit(1);
+
+          const media = results[0];
+          if (!media) {
+            throw new Error('Media insight not found');
+          }
+
+          const imageUrl = media.imageUrl || media.pdfUrl;
+          if (!imageUrl) {
+            throw new Error('No file URL found');
+          }
+
+          // Build full URL for the image
+          const fullUrl = imageUrl.startsWith('http')
+            ? imageUrl
+            : `${process.env.APP_URL || 'http://localhost:5000'}${imageUrl}`;
+
+          // Default prompt for financial document analysis
+          const systemPrompt = `Du bist ein Experte für Finanzanalyse und analysierst Dokumente aus Börsenzeitschriften.
+Extrahiere die wichtigsten Informationen aus dem Dokument und strukturiere sie wie folgt:
+
+1. **Aktie/ETF Name und Symbol**: Welches Wertpapier wird besprochen?
+2. **Zusammenfassung**: Worum geht es in dem Artikel? (2-3 Sätze)
+3. **Chance**: Was sind die positiven Aspekte und Chancen?
+4. **Risiko**: Was sind die Risiken und negativen Punkte?
+5. **Kursziel/Empfehlung**: Gibt es ein Kursziel oder eine Handlungsempfehlung?
+6. **Quelle**: Aus welcher Zeitschrift/Quelle stammt der Artikel?
+
+Antworte auf Deutsch und strukturiert.`;
+
+          const userPrompt = input.customPrompt ||
+            'Analysiere dieses Dokument und extrahiere alle relevanten Finanzinformationen gemäß der Struktur.';
+
+          // Analyze with vision API
+          const analysis = await invokeLLMWithVision([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ], fullUrl);
+
+          // Parse analysis to extract structured data
+          const analysisData = {
+            rawAnalysis: analysis,
+            timestamp: new Date().toISOString(),
+          };
+
+          // Update media insight with analysis
+          await db.update(mediaInsights)
+            .set({
+              summary: analysis?.substring(0, 500), // First 500 chars as summary
+              analysisData,
+            })
+            .where(and(
+              eq(mediaInsights.id, input.mediaId),
+              eq(mediaInsights.userId, ctx.user.id)
+            ));
+
+          return {
+            success: true,
+            analysis,
+            analysisData,
+          };
+        } catch (error: any) {
+          console.error('Document analysis error:', error);
+          throw new Error(`Failed to analyze document: ${error.message}`);
+        }
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

@@ -220,3 +220,23 @@ export const aiChatHistory = mysqlTable("ai_chat_history", {
 export type AiChatHistory = typeof aiChatHistory.$inferSelect;
 export type InsertAiChatHistory = typeof aiChatHistory.$inferInsert;
 
+/**
+ * Media Insights - Uploaded financial media analysis
+ */
+export const mediaInsights = mysqlTable("media_insights", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  assetId: int("assetId"),
+  title: varchar("title", { length: 255 }).notNull(),
+  summary: text("summary"),
+  source: varchar("source", { length: 100 }),
+  imageUrl: varchar("imageUrl", { length: 500 }),
+  pdfUrl: varchar("pdfUrl", { length: 500 }),
+  analysisData: json("analysisData"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MediaInsight = typeof mediaInsights.$inferSelect;
+export type InsertMediaInsight = typeof mediaInsights.$inferInsert;
+
