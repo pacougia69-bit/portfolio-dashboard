@@ -572,22 +572,71 @@ export const appRouter = router({
     // PIN-Sperre Funktionen
     setPin: protectedProcedure
       .input(z.object({
-        pin: z.string().min(4).max(6),
+        pin: z.string()
+          .optional()
+          .refine((val) => {
+            // PIN is optional, but if provided and not empty, must be valid
+            if (val && val.length > 0) {
+              return val.length >= 4 && val.length <= 6 && /^\d+$/.test(val);
+            }
+            return true;
+          }, {
+            message: "Der PIN muss 4-6 Ziffern enthalten"
+          }),
         enabled: z.boolean(),
-        autoLockMinutes: z.number().min(1).max(60).optional(),
+        autoLockMinutes: z.number()
+          .min(1, { message: "Auto-Sperre muss mindestens 1 Minute sein" })
+          .max(60, { message: "Auto-Sperre darf maximal 60 Minuten sein" })
+          .optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const { setUserPin } = await import('./db');
-        return setUserPin(ctx.user.id, input.pin, input.enabled, input.autoLockMinutes);
+        const { setUserPin, getUserSettings } = await import('./db');
+
+        // If PIN is provided and not empty, update PIN
+        if (input.pin && input.pin.length > 0) {
+          return setUserPin(ctx.user.id, input.pin, input.enabled, input.autoLockMinutes);
+        }
+
+        // Otherwise, just update autoLockMinutes and/or enabled status
+        const existing = await getUserSettings(ctx.user.id);
+
+        if (!existing) {
+          throw new Error("Bitte setzen Sie zuerst einen PIN");
+        }
+
+        // Update only settings, keep existing PIN hash
+        const db = await import('./db').then(m => m.getDb());
+        const dbInstance = await db();
+        if (!dbInstance) throw new Error("Database not available");
+
+        const { userSettings } = await import('../drizzle/schema');
+        const { eq } = await import('drizzle-orm');
+
+        const updateData: Record<string, unknown> = {};
+        if (input.enabled !== undefined) updateData.pinEnabled = input.enabled;
+        if (input.autoLockMinutes !== undefined) updateData.autoLockMinutes = input.autoLockMinutes;
+
+        await dbInstance.update(userSettings)
+          .set(updateData)
+          .where(eq(userSettings.userId, ctx.user.id));
+
+        return { success: true };
       }),
     
     verifyPin: protectedProcedure
       .input(z.object({
-        pin: z.string(),
+        pin: z.string()
+          .min(1, { message: "Bitte PIN eingeben" }),
       }))
       .mutation(async ({ ctx, input }) => {
         const { verifyUserPin } = await import('./db');
-        return verifyUserPin(ctx.user.id, input.pin);
+        const result = await verifyUserPin(ctx.user.id, input.pin);
+
+        if (!result.valid) {
+          throw new Error("Der PIN ist falsch");
+        }
+
+        return result;
       }),
     
     removePin: protectedProcedure
@@ -600,6 +649,133 @@ export const appRouter = router({
       .query(async ({ ctx }) => {
         const { getUserPinStatus } = await import('./db');
         return getUserPinStatus(ctx.user.id);
+      }),
+  }),
+
+  // Portfolio Rebalancing
+  rebalancing: router({
+    analyze: protectedProcedure
+      .input(z.object({
+        amount: z.number().min(0, { message: "Betrag muss mindestens 0 € sein" }),
+      }))
+      .query(async ({ ctx, input }) => {
+        const userId = ctx.user.id;
+        const availableCapital = input.amount;
+
+        // 1. Get portfolio positions
+        const positions = await getPortfolioPositions(userId);
+
+        if (positions.length === 0) {
+          return {
+            success: false,
+            error: 'Keine Portfolio-Positionen gefunden',
+            totalPortfolioValue: 0,
+            groups: [],
+            underweightGroups: [],
+            overweightGroups: [],
+            allocation: [],
+          };
+        }
+
+        // 2. Get target allocations
+        const settings = await getUserSettings(userId);
+
+        if (!settings || !settings.targetAllocations) {
+          return {
+            success: false,
+            error: 'Keine Ziel-Allokation in Einstellungen gefunden. Bitte setzen Sie Ihre Strategie.',
+            totalPortfolioValue: 0,
+            groups: [],
+            underweightGroups: [],
+            overweightGroups: [],
+            allocation: [],
+          };
+        }
+
+        const targetAllocations = settings.targetAllocations as any[];
+
+        // 3. Calculate current portfolio value
+        const totalValue = positions.reduce((sum, pos) => {
+          const price = pos.currentPrice || pos.buyPrice;
+          return sum + (pos.amount * price);
+        }, 0);
+
+        // 4. Group positions by category
+        const groupedByCategory = new Map<string, number>();
+
+        positions.forEach(pos => {
+          const category = pos.category || 'Ohne Kategorie';
+          const price = pos.currentPrice || pos.buyPrice;
+          const value = pos.amount * price;
+
+          groupedByCategory.set(
+            category,
+            (groupedByCategory.get(category) || 0) + value
+          );
+        });
+
+        // 5. Calculate IST vs SOLL percentages
+        const groups = targetAllocations.map(target => {
+          const currentValue = groupedByCategory.get(target.category) || 0;
+          const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
+          const targetPercent = target.target || target.targetPercent || 0;
+          const difference = currentPercent - targetPercent;
+
+          return {
+            category: target.category,
+            currentValue,
+            currentPercent,
+            targetPercent,
+            difference,
+            isUnderweight: difference < 0,
+          };
+        });
+
+        // 6. Sort into underweight and overweight
+        const underweightGroups = groups
+          .filter(g => g.isUnderweight)
+          .sort((a, b) => a.difference - b.difference);
+
+        const overweightGroups = groups
+          .filter(g => !g.isUnderweight)
+          .sort((a, b) => b.difference - a.difference);
+
+        // 7. Calculate allocation
+        const allocation: any[] = [];
+
+        if (underweightGroups.length > 0 && availableCapital > 0) {
+          // Calculate total underweight
+          const totalUnderweight = underweightGroups.reduce((sum, g) => sum + Math.abs(g.difference), 0);
+
+          // Distribute proportionally
+          underweightGroups.forEach(group => {
+            const proportion = Math.abs(group.difference) / totalUnderweight;
+            const amount = availableCapital * proportion;
+
+            allocation.push({
+              category: group.category,
+              amount,
+              proportion: proportion * 100,
+              reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`,
+            });
+          });
+        }
+
+        return {
+          success: true,
+          totalPortfolioValue: totalValue,
+          availableCapital,
+          groups,
+          underweightGroups,
+          overweightGroups,
+          allocation,
+          summary: {
+            totalInvested: allocation.reduce((sum, a) => sum + a.amount, 0),
+            numberOfUnderweightGroups: underweightGroups.length,
+            numberOfOverweightGroups: overweightGroups.length,
+            largestUnderweight: underweightGroups[0]?.category || 'Keine',
+          },
+        };
       }),
   }),
 });

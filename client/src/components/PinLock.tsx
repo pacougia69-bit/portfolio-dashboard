@@ -61,16 +61,17 @@ export default function PinLock({
         onUnlock();
       } else {
         setAttempts(prev => prev + 1);
-        setError('Falscher PIN');
+        setError('Der PIN ist falsch');
         setPin('');
-        
+
         // Vibrate on mobile if available
         if (navigator.vibrate) {
           navigator.vibrate(200);
         }
       }
     } catch (err) {
-      setError('Fehler bei der Überprüfung');
+      const errorMessage = err instanceof Error ? err.message : 'Fehler bei der PIN-Überprüfung';
+      setError(errorMessage);
       setPin('');
     } finally {
       setIsVerifying(false);

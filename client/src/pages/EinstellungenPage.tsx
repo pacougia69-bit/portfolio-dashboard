@@ -294,12 +294,12 @@ export default function EinstellungenPage() {
                 </Button>
                 <div className="flex items-center gap-2 flex-1">
                   <Label className="text-xs whitespace-nowrap">Auto-Sperre:</Label>
-                  <Select 
+                  <Select
                     value={String(pinStatus?.autoLockMinutes || 5)}
                     onValueChange={(value) => {
                       setPin.mutate({
-                        pin: '', // Will be ignored if PIN already set
-                        enabled: true,
+                        pin: undefined, // Don't send PIN when only changing auto-lock time
+                        enabled: pinStatus?.enabled || false,
                         autoLockMinutes: parseInt(value),
                       });
                     }}
