@@ -1398,7 +1398,6 @@ var systemRouter = router({
 // server/routers.ts
 init_db();
 import { z as z2 } from "zod";
-import { eq as eq2, and as and2 } from "drizzle-orm";
 
 // server/_core/llm.ts
 import OpenAI from "openai";
@@ -2482,7 +2481,11 @@ Falls sinnvoll, kannst du sie kurz erw\xE4hnen, aber konzentriere dich auf meine
       sortOrder: z2.number().optional()
     })).mutation(async ({ input }) => {
       const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const db = await getDb2();
+      if (!db) {
+        throw new Error("Database connection not available. Please try again.");
+      }
       return db.insert(aiQuestionTemplates2).values(input);
     }),
     updateTemplate: protectedProcedure.input(z2.object({
@@ -2495,19 +2498,35 @@ Falls sinnvoll, kannst du sie kurz erw\xE4hnen, aber konzentriere dich auf meine
       sortOrder: z2.number().optional()
     })).mutation(async ({ input }) => {
       const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { eq: eq2 } = await import("drizzle-orm");
+      const db = await getDb2();
+      if (!db) {
+        throw new Error("Database connection not available. Please try again.");
+      }
       const { id, ...updates } = input;
       return db.update(aiQuestionTemplates2).set(updates).where(eq2(aiQuestionTemplates2.id, id));
     }),
     deleteTemplate: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
       const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { eq: eq2 } = await import("drizzle-orm");
+      const db = await getDb2();
+      if (!db) {
+        throw new Error("Database connection not available. Please try again.");
+      }
       return db.update(aiQuestionTemplates2).set({ isActive: false }).where(eq2(aiQuestionTemplates2.id, input.id));
     }),
     // Chat History
     getChatHistory: protectedProcedure.input(z2.object({ sessionId: z2.string().optional() })).query(async ({ ctx, input }) => {
       const { aiChatHistory: aiChatHistory2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { eq: eq2, and: and2 } = await import("drizzle-orm");
+      const db = await getDb2();
+      if (!db) {
+        console.error("\u274C getChatHistory: Database not available");
+        return [];
+      }
       const conditions = [eq2(aiChatHistory2.userId, ctx.user.id)];
       if (input.sessionId) {
         conditions.push(eq2(aiChatHistory2.sessionId, input.sessionId));
@@ -2521,7 +2540,11 @@ Falls sinnvoll, kannst du sie kurz erw\xE4hnen, aber konzentriere dich auf meine
       sessionId: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
       const { aiChatHistory: aiChatHistory2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const db = await getDb2();
+      if (!db) {
+        throw new Error("Database connection not available. Please try again.");
+      }
       return db.insert(aiChatHistory2).values({
         userId: ctx.user.id,
         ...input
@@ -2786,11 +2809,11 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
       const dbInstance = await db();
       if (!dbInstance) throw new Error("Database not available");
       const { userSettings: userSettings2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const { eq: eq3 } = await import("drizzle-orm");
+      const { eq: eq2 } = await import("drizzle-orm");
       const updateData = {};
       if (input.enabled !== void 0) updateData.pinEnabled = input.enabled;
       if (input.autoLockMinutes !== void 0) updateData.autoLockMinutes = input.autoLockMinutes;
-      await dbInstance.update(userSettings2).set(updateData).where(eq3(userSettings2.userId, ctx.user.id));
+      await dbInstance.update(userSettings2).set(updateData).where(eq2(userSettings2.userId, ctx.user.id));
       return { success: true };
     }),
     verifyPin: protectedProcedure.input(z2.object({
