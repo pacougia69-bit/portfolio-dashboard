@@ -2506,7 +2506,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Analysiere den ETF/die Aktie {ASSET_NAME}. Welche 3 Top-Unternehmen dominieren diese Position aktuell? Gibt es ein Klumpenrisiko in Branche oder Region, das ich im Zusammenspiel mit meinem restlichen Portfolio beachten sollte?",
             category: "Risiko",
             icon: "\u26A0\uFE0F",
-            isActive: 1,
+            isActive: true,
             sortOrder: 1
           },
           {
@@ -2514,7 +2514,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Welche makro\xF6konomischen Daten (Inflation, Zinsen, News) hatten in den letzten 7\u201314 Tagen den gr\xF6\xDFten Einfluss auf {ASSET_NAME}? Ist der Kurs eher gestiegen/gefallen und was waren die 2\u20133 Hauptgr\xFCnde?",
             category: "Analyse",
             icon: "\u{1F4CA}",
-            isActive: 1,
+            isActive: true,
             sortOrder: 2
           },
           {
@@ -2522,7 +2522,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Erkl\xE4re die langfristige Investment-Story von {ASSET_NAME} (WKN: {WKN}). Was sind die Wachstumstreiber, was die 3\u20134 gr\xF6\xDFten Risiken und hat sich die Story in den letzten 12 Monaten fundamental verbessert oder verschlechtert?",
             category: "Fundament",
             icon: "\u{1F4C8}",
-            isActive: 1,
+            isActive: true,
             sortOrder: 3
           },
           {
@@ -2530,7 +2530,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Analysiere {ASSET_NAME} (WKN: {WKN}) technisch: Notiert der Kurs \xFCber/unter/nahe der 200-Tage-Linie? Befinden wir uns im Aufw\xE4rts-, Abw\xE4rtstrend oder in einer Seitw\xE4rtsphase? Wie ist die Marktstimmung (optimistisch/skeptisch)?",
             category: "Technik",
             icon: "\u{1F4C9}",
-            isActive: 1,
+            isActive: true,
             sortOrder: 4
           },
           {
@@ -2538,7 +2538,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Welche sektor-spezifischen Entwicklungen und politischen Faktoren haben {ASSET_NAME} in den letzten 30 Tagen am st\xE4rksten beeinflusst? Deuten die Bewegungen auf normale Volatilit\xE4t oder einen Trendwechsel hin?",
             category: "News",
             icon: "\u{1F4F0}",
-            isActive: 1,
+            isActive: true,
             sortOrder: 5
           },
           {
@@ -2546,7 +2546,7 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Gibt es fundamentale Gr\xFCnde (Sektor-Rotation, Index-\xC4nderung), warum ich {ASSET_NAME} bei einer Abweichung aktuell verst\xE4rkt nachkaufen oder Gewinne mitnehmen sollte, anstatt nur stur nach Prozenten zu rebalancen?",
             category: "Strategie",
             icon: "\u2696\uFE0F",
-            isActive: 1,
+            isActive: true,
             sortOrder: 6
           },
           {
@@ -2554,24 +2554,52 @@ Bitte bewerte jeden Watchlist-ETF:
             prompt: "Wie ist das Sentiment gegen\xFCber {ASSET_NAME} in den letzten 7 Tagen? Ist die Nachrichtenlage positiv/neutral/negativ und welche Themen (KI, Regulierung, Zinsen) dominieren gerade?",
             category: "Sentiment",
             icon: "\u{1F4AD}",
-            isActive: 1,
+            isActive: true,
             sortOrder: 7
           }
         ];
-        await db.execute(sql`TRUNCATE TABLE ai_question_templates`);
+        console.log("Dropping ai_question_templates table...");
+        await db.execute(sql`DROP TABLE IF EXISTS ai_question_templates`);
+        console.log("Recreating ai_question_templates table...");
+        await db.execute(sql`
+            CREATE TABLE ai_question_templates (
+              id int AUTO_INCREMENT NOT NULL,
+              title varchar(255) NOT NULL,
+              prompt text NOT NULL,
+              category varchar(50),
+              icon varchar(50),
+              isActive tinyint(1) DEFAULT 1,
+              sortOrder int DEFAULT 0,
+              createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+          `);
+        console.log("Inserting templates...");
         for (const template of defaultTemplates) {
           try {
             await db.execute(sql`
                 INSERT INTO ai_question_templates
-                  (title, prompt, category, icon, isActive, sortOrder)
+                  (title, prompt, category, icon, isActive, sortOrder, createdAt, updatedAt)
                 VALUES
-                  (${template.title}, ${template.prompt}, ${template.category}, ${template.icon}, ${template.isActive}, ${template.sortOrder})
+                  (
+                    ${template.title},
+                    ${template.prompt},
+                    ${template.category},
+                    ${template.icon},
+                    ${template.isActive ? 1 : 0},
+                    ${template.sortOrder},
+                    NOW(),
+                    NOW()
+                  )
               `);
+            console.log(`Inserted template: ${template.title}`);
           } catch (insertError) {
             console.error(`Failed to insert template: ${template.title}`, insertError);
             throw new Error(`Failed to insert template "${template.title}": ${insertError}`);
           }
         }
+        console.log("Templates reset successfully");
         return { success: true, count: defaultTemplates.length };
       } catch (error) {
         console.error("Reset templates error:", error);
