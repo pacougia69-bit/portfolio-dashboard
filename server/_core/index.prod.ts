@@ -312,13 +312,35 @@ async function fixTransactionsSchema() {
 async function startServer() {
   // Run database migration before starting the server
   await runDatabaseMigration();
-  
+
   const app = express()
   const port = Number(process.env.PORT || 3000)
   const host = '0.0.0.0'
 
+  // Configure body parser with larger size limit for file uploads
+  app.use(express.json({ limit: "50mb" }))
+  app.use(express.urlencoded({ limit: "50mb", extended: true }))
+
   // Health check endpoint
   app.get('/health', (_req, res) => res.status(200).send('OK'))
+
+  // Debug endpoint - Direct HTTP route (not tRPC)
+  app.get("/api/debug", (req, res) => {
+    res.json({
+      timestamp: new Date().toISOString(),
+      deploymentCheck: '🤖 CLAUDE-CODE-V3-DEPLOYED ✓',
+      environment: {
+        PUBLIC_URL: process.env.PUBLIC_URL || '(not set)',
+        RAILWAY_STATIC_URL: process.env.RAILWAY_STATIC_URL || '(not set)',
+        RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)',
+        OAUTH_SERVER_URL: process.env.OAUTH_SERVER_URL || '(not set)',
+        NODE_ENV: process.env.NODE_ENV || '(not set)',
+        PORT: process.env.PORT || '(not set)',
+      },
+      message: 'If you see CLAUDE-CODE-V3-DEPLOYED, the latest code is running!',
+      hardcodedFallback: 'https://portfolio-dashboard-production-e5c1.up.railway.app',
+    });
+  });
 
   // OAuth and tRPC routes - MUST be before static files
   registerOAuthRoutes(app)
@@ -461,6 +483,14 @@ async function startServer() {
   const distPath = path.resolve(process.cwd(), 'dist', 'public')
   if (fs.existsSync(distPath)) {
     console.log(`✅ Statische Dateien werden serviert von: ${distPath}`)
+
+    // Serve uploaded files
+    const uploadsPath = path.resolve(distPath, 'uploads')
+    if (fs.existsSync(uploadsPath)) {
+      console.log(`✅ Uploads-Ordner gefunden: ${uploadsPath}`)
+      app.use('/uploads', express.static(uploadsPath))
+    }
+
     app.use(express.static(distPath))
     
     // Catch-all for SPA - MUST be last (but exclude admin and API routes)
