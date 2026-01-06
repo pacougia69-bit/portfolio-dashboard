@@ -430,8 +430,11 @@ export const appRouter = router({
         ORDER BY sortOrder
       `);
 
-      console.log('listTemplates result:', result);
-      return result.rows || [];
+      console.log('listTemplates raw result:', result);
+      console.log('listTemplates rows:', result[0]);
+
+      // MySQL2 returns [rows, fields] - we need the first element
+      return Array.isArray(result[0]) ? result[0] : [];
     }),
 
     createTemplate: protectedProcedure

@@ -2443,8 +2443,9 @@ Bitte bewerte jeden Watchlist-ETF:
         WHERE isActive = 1
         ORDER BY sortOrder
       `);
-      console.log("listTemplates result:", result);
-      return result.rows || [];
+      console.log("listTemplates raw result:", result);
+      console.log("listTemplates rows:", result[0]);
+      return Array.isArray(result[0]) ? result[0] : [];
     }),
     createTemplate: protectedProcedure.input(z2.object({
       title: z2.string(),
