@@ -1165,6 +1165,52 @@ var init_dkb_parser = __esm({
   }
 });
 
+// server/ensure-media-table.ts
+var ensure_media_table_exports = {};
+__export(ensure_media_table_exports, {
+  ensureMediaInsightsTable: () => ensureMediaInsightsTable
+});
+import { sql } from "drizzle-orm";
+async function ensureMediaInsightsTable() {
+  console.log("\u{1F50D} Checking media_insights table...");
+  const db = await getDb();
+  if (!db) {
+    console.error("\u274C Database not available for migration");
+    return false;
+  }
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS media_insights (
+        id int AUTO_INCREMENT NOT NULL,
+        userId int NOT NULL,
+        assetId int DEFAULT NULL,
+        title varchar(255) NOT NULL,
+        summary text,
+        source varchar(100),
+        imageUrl varchar(500),
+        pdfUrl varchar(500),
+        analysisData json DEFAULT NULL,
+        createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_userId (userId),
+        KEY idx_assetId (assetId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log("\u2705 media_insights table ready");
+    return true;
+  } catch (error) {
+    console.error("\u274C Failed to ensure media_insights table:", error);
+    return false;
+  }
+}
+var init_ensure_media_table = __esm({
+  "server/ensure-media-table.ts"() {
+    "use strict";
+    init_db();
+  }
+});
+
 // server/_core/index.prod.ts
 import express from "express";
 import { createServer } from "http";
@@ -2530,7 +2576,7 @@ Falls sinnvoll, kannst du sie kurz erw\xE4hnen, aber konzentriere dich auf meine
       try {
         const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-        const { sql } = await import("drizzle-orm");
+        const { sql: sql2 } = await import("drizzle-orm");
         const db = await getDb2();
         if (!db) {
           console.error("\u274C listTemplates: Database not available");
@@ -2538,7 +2584,7 @@ Falls sinnvoll, kannst du sie kurz erw\xE4hnen, aber konzentriere dich auf meine
         }
         console.log("\u2713 Database connection OK");
         console.log("\u{1F50D} Executing query: SELECT * FROM ai_question_templates WHERE isActive = 1 ORDER BY sortOrder");
-        const result = await db.execute(sql`
+        const result = await db.execute(sql2`
           SELECT * FROM ai_question_templates
           WHERE isActive = 1
           ORDER BY sortOrder
@@ -2646,7 +2692,7 @@ Falls sinnvoll, kannst du sie kurz erw\xE4hnen, aber konzentriere dich auf meine
     resetTemplates: protectedProcedure.mutation(async () => {
       const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const { sql } = await import("drizzle-orm");
+      const { sql: sql2 } = await import("drizzle-orm");
       const db = await getDb2();
       if (!db) throw new Error("Database not available");
       try {
@@ -2715,9 +2761,9 @@ Falls sinnvoll, kannst du sie kurz erw\xE4hnen, aber konzentriere dich auf meine
         console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         console.log("");
         console.log("Dropping ai_question_templates table...");
-        await db.execute(sql`DROP TABLE IF EXISTS ai_question_templates`);
+        await db.execute(sql2`DROP TABLE IF EXISTS ai_question_templates`);
         console.log("Recreating ai_question_templates table...");
-        await db.execute(sql`
+        await db.execute(sql2`
             CREATE TABLE ai_question_templates (
               id int AUTO_INCREMENT NOT NULL,
               title varchar(255) NOT NULL,
@@ -2734,7 +2780,7 @@ Falls sinnvoll, kannst du sie kurz erw\xE4hnen, aber konzentriere dich auf meine
         console.log("Inserting templates...");
         for (const template of defaultTemplates) {
           try {
-            await db.execute(sql`
+            await db.execute(sql2`
                 INSERT INTO ai_question_templates
                   (title, prompt, category, icon, isActive, sortOrder, createdAt, updatedAt)
                 VALUES
@@ -3365,6 +3411,9 @@ async function runDatabaseMigration() {
       console.error("\u26A0\uFE0F  Error checking/fixing transactions schema:", schemaError.message);
     }
     await connection.end();
+    console.log("\u{1F4F8} Ensuring media_insights table...");
+    const { ensureMediaInsightsTable: ensureMediaInsightsTable2 } = await Promise.resolve().then(() => (init_ensure_media_table(), ensure_media_table_exports));
+    await ensureMediaInsightsTable2();
     console.log("\u2705 Database migration completed successfully");
   } catch (error) {
     console.error("\u274C Database migration failed:", error);

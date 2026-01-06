@@ -148,7 +148,12 @@ async function runDatabaseMigration() {
     }
     
     await connection.end();
-    
+
+    // Ensure media_insights table exists
+    console.log('📸 Ensuring media_insights table...');
+    const { ensureMediaInsightsTable } = await import('../ensure-media-table');
+    await ensureMediaInsightsTable();
+
     console.log('✅ Database migration completed successfully');
   } catch (error) {
     console.error('❌ Database migration failed:', error);
