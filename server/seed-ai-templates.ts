@@ -3,72 +3,78 @@
  * Run with: tsx server/seed-ai-templates.ts
  */
 
-import { db } from './db';
+import { getDb } from './db';
 import { aiQuestionTemplates } from '../drizzle/schema';
 
 const defaultTemplates = [
   {
-    title: "Portfolio-Analyse",
-    prompt: "Analysiere mein gesamtes Portfolio und gib mir eine Einschätzung zu Diversifikation, Risiko und Optimierungspotenzial.",
-    category: "Analyse",
-    icon: "BarChart3",
+    title: "Klumpenrisiko-Check",
+    prompt: "Analysiere den ETF/die Aktie {ASSET_NAME}. Welche 3 Top-Unternehmen dominieren diese Position aktuell? Gibt es ein Klumpenrisiko in Branche oder Region, das ich im Zusammenspiel mit meinem restlichen Portfolio beachten sollte?",
+    category: "Risiko",
+    icon: "⚠️",
     sortOrder: 1,
   },
   {
-    title: "Rebalancing-Empfehlung",
-    prompt: "Ich habe gerade extra Kapital verfügbar. Wie sollte ich es investieren, um mein Portfolio wieder auszubalancieren?",
-    category: "Investition",
-    icon: "Scale",
+    title: "Makro-Einfluss",
+    prompt: "Welche makroökonomischen Daten (Inflation, Zinsen, News) hatten in den letzten 7–14 Tagen den größten Einfluss auf {ASSET_NAME}? Ist der Kurs eher gestiegen/gefallen und was waren die 2–3 Hauptgründe?",
+    category: "Analyse",
+    icon: "📊",
     sortOrder: 2,
   },
   {
-    title: "Sparplan optimieren",
-    prompt: "Ich möchte meine ETF-Sparpläne optimieren. Was empfiehlst du basierend auf meiner aktuellen Allokation?",
-    category: "Sparplan",
-    icon: "Calendar",
+    title: "Investment-Story Check",
+    prompt: "Erkläre die langfristige Investment-Story von {ASSET_NAME} (WKN: {WKN}). Was sind die Wachstumstreiber, was die 3–4 größten Risiken und hat sich die Story in den letzten 12 Monaten fundamental verbessert oder verschlechtert?",
+    category: "Fundament",
+    icon: "📈",
     sortOrder: 3,
   },
   {
-    title: "Dividenden-Strategie",
-    prompt: "Wie ist meine Dividenden-Strategie? Sollte ich mehr auf Dividenden-ETFs oder Wachstums-ETFs setzen?",
-    category: "Dividenden",
-    icon: "Coins",
+    title: "Technik- & Trend-Analyse",
+    prompt: "Analysiere {ASSET_NAME} (WKN: {WKN}) technisch: Notiert der Kurs über/unter/nahe der 200-Tage-Linie? Befinden wir uns im Aufwärts-, Abwärtstrend oder in einer Seitwärtsphase? Wie ist die Marktstimmung (optimistisch/skeptisch)?",
+    category: "Technik",
+    icon: "📉",
     sortOrder: 4,
   },
   {
-    title: "Risiko-Bewertung",
-    prompt: "Bewerte das Risikoprofil meines Portfolios. Ist es zu riskant oder zu konservativ für meine Ziele?",
-    category: "Risiko",
-    icon: "AlertTriangle",
+    title: "Sektor- & News-Update",
+    prompt: "Welche sektor-spezifischen Entwicklungen und politischen Faktoren haben {ASSET_NAME} in den letzten 30 Tagen am stärksten beeinflusst? Deuten die Bewegungen auf normale Volatilität oder einen Trendwechsel hin?",
+    category: "News",
+    icon: "📰",
     sortOrder: 5,
   },
   {
-    title: "Wertpapier-Empfehlung",
-    prompt: "Welche ETFs oder Aktien aus meiner Watchlist passen am besten zu meiner Strategie?",
-    category: "Empfehlung",
-    icon: "Target",
+    title: "Rebalancing-Impuls",
+    prompt: "Gibt es fundamentale Gründe (Sektor-Rotation, Index-Änderung), warum ich {ASSET_NAME} bei einer Abweichung aktuell verstärkt nachkaufen oder Gewinne mitnehmen sollte, anstatt nur stur nach Prozenten zu rebalancen?",
+    category: "Strategie",
+    icon: "⚖️",
     sortOrder: 6,
   },
   {
-    title: "Verkaufs-Strategie",
-    prompt: "Gibt es Positionen in meinem Portfolio, die ich verkaufen oder reduzieren sollte?",
-    category: "Verkauf",
-    icon: "TrendingDown",
+    title: "Marktstimmung",
+    prompt: "Wie ist das Sentiment gegenüber {ASSET_NAME} in den letzten 7 Tagen? Ist die Nachrichtenlage positiv/neutral/negativ und welche Themen (KI, Regulierung, Zinsen) dominieren gerade?",
+    category: "Sentiment",
+    icon: "💭",
     sortOrder: 7,
-  },
-  {
-    title: "Langfrist-Strategie",
-    prompt: "Bewerte meine Langfrist-Strategie. Bin ich auf dem richtigen Weg für meine finanziellen Ziele?",
-    category: "Strategie",
-    icon: "TrendingUp",
-    sortOrder: 8,
   },
 ];
 
 async function seedTemplates() {
   console.log('🌱 Seeding AI question templates...');
 
+  const db = await getDb();
+  if (!db) {
+    console.error('❌ Database not available');
+    throw new Error('Database not available');
+  }
+
   try {
+    // Delete all existing templates
+    console.log('🗑️  Deleting existing templates...');
+    await db.delete(aiQuestionTemplates);
+    console.log('✓ Existing templates deleted');
+
+    // Insert new templates
+    console.log('\n📝 Inserting new templates...');
     for (const template of defaultTemplates) {
       await db.insert(aiQuestionTemplates).values(template);
       console.log(`✓ Created template: ${template.title}`);
