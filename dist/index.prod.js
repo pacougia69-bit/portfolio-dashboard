@@ -956,7 +956,7 @@ async function invokeLLMWithVision(messages, imageUrl, modelIndex = 0) {
     console.error(error);
     throw new Error(error);
   }
-  const VISION_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-4-vision-preview"];
+  const VISION_MODELS = ["gpt-4o", "gpt-4-turbo"];
   const model = VISION_MODELS[modelIndex];
   if (!model) {
     const error = "All vision models failed. Please check your API key and quota.";
