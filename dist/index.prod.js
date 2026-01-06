@@ -12,6 +12,8 @@ var __export = (target, all) => {
 var schema_exports = {};
 __export(schema_exports, {
   aiAnalyses: () => aiAnalyses,
+  aiChatHistory: () => aiChatHistory,
+  aiQuestionTemplates: () => aiQuestionTemplates,
   dividends: () => dividends,
   notes: () => notes,
   portfolioPositions: () => portfolioPositions,
@@ -23,7 +25,7 @@ __export(schema_exports, {
   watchlistItems: () => watchlistItems
 });
 import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, json, boolean } from "drizzle-orm/mysql-core";
-var users, portfolioPositions, watchlistItems, dividends, savingsPlans, notes, priceCache, aiAnalyses, userSettings, transactions;
+var users, portfolioPositions, watchlistItems, dividends, savingsPlans, notes, priceCache, aiAnalyses, userSettings, transactions, aiQuestionTemplates, aiChatHistory;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -141,6 +143,26 @@ var init_schema = __esm({
       totalAmount: decimal("totalAmount", { precision: 18, scale: 4 }).notNull(),
       orderNumber: varchar("orderNumber", { length: 100 }).notNull().unique(),
       invoiceNumber: varchar("invoiceNumber", { length: 100 }),
+      createdAt: timestamp("createdAt").defaultNow().notNull()
+    });
+    aiQuestionTemplates = mysqlTable("ai_question_templates", {
+      id: int("id").autoincrement().primaryKey(),
+      title: varchar("title", { length: 255 }).notNull(),
+      prompt: text("prompt").notNull(),
+      category: varchar("category", { length: 50 }),
+      icon: varchar("icon", { length: 50 }),
+      isActive: boolean("isActive").default(true),
+      sortOrder: int("sortOrder").default(0),
+      createdAt: timestamp("createdAt").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
+    });
+    aiChatHistory = mysqlTable("ai_chat_history", {
+      id: int("id").autoincrement().primaryKey(),
+      userId: int("userId").notNull(),
+      role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
+      content: text("content").notNull(),
+      templateId: int("templateId"),
+      sessionId: varchar("sessionId", { length: 64 }),
       createdAt: timestamp("createdAt").defaultNow().notNull()
     });
   }
@@ -1376,6 +1398,7 @@ var systemRouter = router({
 // server/routers.ts
 init_db();
 import { z as z2 } from "zod";
+import { eq as eq2, and as and2 } from "drizzle-orm";
 
 // server/_core/llm.ts
 import OpenAI from "openai";
@@ -2409,6 +2432,65 @@ Bitte bewerte jeden Watchlist-ETF:
         `Ich habe ein monatliches Budget von ${input.monthlyBudget}\u20AC f\xFCr ETF-Sparpl\xE4ne. Meine aktuelle ETF-Allokation ist: ${input.currentAllocations.map((a) => `${a.category}: ${a.currentPercent.toFixed(1)}% (Ziel: ${a.targetPercent}%)`).join(", ")}. Bitte schlage mir vor, wie ich die ${input.monthlyBudget}\u20AC auf meine ETFs verteilen soll, um meine Ziel-Allokation zu erreichen. Ber\xFCcksichtige dabei auch Rebalancing-Bedarf. Gib konkrete Euro-Betr\xE4ge pro ETF an.` + watchlistInfo,
         watchlist
       );
+    }),
+    // Template Management
+    listTemplates: protectedProcedure.query(async () => {
+      const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return db.select().from(aiQuestionTemplates2).where(eq2(aiQuestionTemplates2.isActive, true)).orderBy(aiQuestionTemplates2.sortOrder);
+    }),
+    createTemplate: protectedProcedure.input(z2.object({
+      title: z2.string(),
+      prompt: z2.string(),
+      category: z2.string().optional(),
+      icon: z2.string().optional(),
+      sortOrder: z2.number().optional()
+    })).mutation(async ({ input }) => {
+      const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return db.insert(aiQuestionTemplates2).values(input);
+    }),
+    updateTemplate: protectedProcedure.input(z2.object({
+      id: z2.number(),
+      title: z2.string().optional(),
+      prompt: z2.string().optional(),
+      category: z2.string().optional(),
+      icon: z2.string().optional(),
+      isActive: z2.boolean().optional(),
+      sortOrder: z2.number().optional()
+    })).mutation(async ({ input }) => {
+      const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { id, ...updates } = input;
+      return db.update(aiQuestionTemplates2).set(updates).where(eq2(aiQuestionTemplates2.id, id));
+    }),
+    deleteTemplate: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
+      const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return db.update(aiQuestionTemplates2).set({ isActive: false }).where(eq2(aiQuestionTemplates2.id, input.id));
+    }),
+    // Chat History
+    getChatHistory: protectedProcedure.input(z2.object({ sessionId: z2.string().optional() })).query(async ({ ctx, input }) => {
+      const { aiChatHistory: aiChatHistory2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const conditions = [eq2(aiChatHistory2.userId, ctx.user.id)];
+      if (input.sessionId) {
+        conditions.push(eq2(aiChatHistory2.sessionId, input.sessionId));
+      }
+      return db.select().from(aiChatHistory2).where(and2(...conditions)).orderBy(aiChatHistory2.createdAt);
+    }),
+    saveChatMessage: protectedProcedure.input(z2.object({
+      role: z2.enum(["user", "assistant", "system"]),
+      content: z2.string(),
+      templateId: z2.number().optional(),
+      sessionId: z2.string().optional()
+    })).mutation(async ({ ctx, input }) => {
+      const { aiChatHistory: aiChatHistory2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return db.insert(aiChatHistory2).values({
+        userId: ctx.user.id,
+        ...input
+      });
     })
   }),
   // Security Lookup
@@ -2549,11 +2631,11 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
       const dbInstance = await db();
       if (!dbInstance) throw new Error("Database not available");
       const { userSettings: userSettings2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const { eq: eq2 } = await import("drizzle-orm");
+      const { eq: eq3 } = await import("drizzle-orm");
       const updateData = {};
       if (input.enabled !== void 0) updateData.pinEnabled = input.enabled;
       if (input.autoLockMinutes !== void 0) updateData.autoLockMinutes = input.autoLockMinutes;
-      await dbInstance.update(userSettings2).set(updateData).where(eq2(userSettings2.userId, ctx.user.id));
+      await dbInstance.update(userSettings2).set(updateData).where(eq3(userSettings2.userId, ctx.user.id));
       return { success: true };
     }),
     verifyPin: protectedProcedure.input(z2.object({
@@ -2612,28 +2694,49 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
         return sum + pos.amount * price;
       }, 0);
       const groupedByCategory = /* @__PURE__ */ new Map();
+      const allCategories = /* @__PURE__ */ new Set();
       positions.forEach((pos) => {
-        const category = pos.category || "Ohne Kategorie";
+        const category = pos.category || "Sonstige";
         const price = pos.currentPrice || pos.buyPrice;
         const value = pos.amount * price;
+        allCategories.add(category);
         groupedByCategory.set(
           category,
           (groupedByCategory.get(category) || 0) + value
         );
       });
-      const groups = targetAllocations.map((target) => {
+      const groups = [];
+      targetAllocations.forEach((target) => {
         const currentValue = groupedByCategory.get(target.category) || 0;
         const currentPercent = totalValue > 0 ? currentValue / totalValue * 100 : 0;
         const targetPercent = target.target || target.targetPercent || 0;
         const difference = currentPercent - targetPercent;
-        return {
+        groups.push({
           category: target.category,
           currentValue,
           currentPercent,
           targetPercent,
           difference,
           isUnderweight: difference < 0
-        };
+        });
+      });
+      allCategories.forEach((category) => {
+        const existsInTargets = targetAllocations.some((t2) => t2.category === category);
+        if (!existsInTargets) {
+          const currentValue = groupedByCategory.get(category) || 0;
+          const currentPercent = totalValue > 0 ? currentValue / totalValue * 100 : 0;
+          const targetPercent = 5;
+          const difference = currentPercent - targetPercent;
+          groups.push({
+            category,
+            currentValue,
+            currentPercent,
+            targetPercent,
+            difference,
+            isUnderweight: difference < 0
+            // Most likely underweight with 5% target
+          });
+        }
       });
       const underweightGroups = groups.filter((g) => g.isUnderweight).sort((a, b) => a.difference - b.difference);
       const overweightGroups = groups.filter((g) => !g.isUnderweight).sort((a, b) => b.difference - a.difference);
@@ -2651,7 +2754,7 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
             reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`
           });
           const categoryPositions = positions.filter(
-            (pos) => (pos.category || "Ohne Kategorie") === group.category
+            (pos) => (pos.category || "Sonstige") === group.category
           );
           if (categoryPositions.length > 0) {
             const amountPerSecurity = categoryAmount / categoryPositions.length;

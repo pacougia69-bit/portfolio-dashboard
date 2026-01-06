@@ -185,3 +185,38 @@ export const transactions = mysqlTable("transactions", {
 
 export type Transaction = typeof transactions.$inferSelect;
 export type InsertTransaction = typeof transactions.$inferInsert;
+
+/**
+ * AI Question Templates for quick access
+ */
+export const aiQuestionTemplates = mysqlTable("ai_question_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  prompt: text("prompt").notNull(),
+  category: varchar("category", { length: 50 }),
+  icon: varchar("icon", { length: 50 }),
+  isActive: boolean("isActive").default(true),
+  sortOrder: int("sortOrder").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AiQuestionTemplate = typeof aiQuestionTemplates.$inferSelect;
+export type InsertAiQuestionTemplate = typeof aiQuestionTemplates.$inferInsert;
+
+/**
+ * AI Chat History
+ */
+export const aiChatHistory = mysqlTable("ai_chat_history", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
+  content: text("content").notNull(),
+  templateId: int("templateId"),
+  sessionId: varchar("sessionId", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AiChatHistory = typeof aiChatHistory.$inferSelect;
+export type InsertAiChatHistory = typeof aiChatHistory.$inferInsert;
+

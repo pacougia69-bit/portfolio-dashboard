@@ -3,6 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
+import { eq, and } from "drizzle-orm";
 import { 
   getPortfolioPositions, 
   createPortfolioPosition, 
@@ -415,6 +416,81 @@ export const appRouter = router({
           watchlist
         );
       }),
+
+    // Template Management
+    listTemplates: protectedProcedure.query(async () => {
+      const { aiQuestionTemplates } = await import('../drizzle/schema');
+      const { db } = await import('./db');
+      return db.select().from(aiQuestionTemplates).where(eq(aiQuestionTemplates.isActive, true)).orderBy(aiQuestionTemplates.sortOrder);
+    }),
+
+    createTemplate: protectedProcedure
+      .input(z.object({
+        title: z.string(),
+        prompt: z.string(),
+        category: z.string().optional(),
+        icon: z.string().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { aiQuestionTemplates } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        return db.insert(aiQuestionTemplates).values(input);
+      }),
+
+    updateTemplate: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().optional(),
+        prompt: z.string().optional(),
+        category: z.string().optional(),
+        icon: z.string().optional(),
+        isActive: z.boolean().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { aiQuestionTemplates } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        const { id, ...updates } = input;
+        return db.update(aiQuestionTemplates).set(updates).where(eq(aiQuestionTemplates.id, id));
+      }),
+
+    deleteTemplate: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { aiQuestionTemplates } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        return db.update(aiQuestionTemplates).set({ isActive: false }).where(eq(aiQuestionTemplates.id, input.id));
+      }),
+
+    // Chat History
+    getChatHistory: protectedProcedure
+      .input(z.object({ sessionId: z.string().optional() }))
+      .query(async ({ ctx, input }) => {
+        const { aiChatHistory } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        const conditions = [eq(aiChatHistory.userId, ctx.user.id)];
+        if (input.sessionId) {
+          conditions.push(eq(aiChatHistory.sessionId, input.sessionId));
+        }
+        return db.select().from(aiChatHistory).where(and(...conditions)).orderBy(aiChatHistory.createdAt);
+      }),
+
+    saveChatMessage: protectedProcedure
+      .input(z.object({
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string(),
+        templateId: z.number().optional(),
+        sessionId: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { aiChatHistory } = await import('../drizzle/schema');
+        const { db } = await import('./db');
+        return db.insert(aiChatHistory).values({
+          userId: ctx.user.id,
+          ...input,
+        });
+      }),
   }),
 
   // Security Lookup
@@ -702,33 +778,59 @@ export const appRouter = router({
 
         // 4. Group positions by category
         const groupedByCategory = new Map<string, number>();
+        const allCategories = new Set<string>();
 
         positions.forEach(pos => {
-          const category = pos.category || 'Ohne Kategorie';
+          const category = pos.category || 'Sonstige';
           const price = pos.currentPrice || pos.buyPrice;
           const value = pos.amount * price;
 
+          allCategories.add(category);
           groupedByCategory.set(
             category,
             (groupedByCategory.get(category) || 0) + value
           );
         });
 
-        // 5. Calculate IST vs SOLL percentages
-        const groups = targetAllocations.map(target => {
+        // 5. Calculate IST vs SOLL percentages for all categories
+        const groups: any[] = [];
+
+        // First, add all target allocations
+        targetAllocations.forEach(target => {
           const currentValue = groupedByCategory.get(target.category) || 0;
           const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
           const targetPercent = target.target || target.targetPercent || 0;
           const difference = currentPercent - targetPercent;
 
-          return {
+          groups.push({
             category: target.category,
             currentValue,
             currentPercent,
             targetPercent,
             difference,
             isUnderweight: difference < 0,
-          };
+          });
+        });
+
+        // Then, add categories from portfolio that are not in target allocations
+        // Treat these as having a small target (5%) so they appear in rebalancing recommendations
+        allCategories.forEach(category => {
+          const existsInTargets = targetAllocations.some(t => t.category === category);
+          if (!existsInTargets) {
+            const currentValue = groupedByCategory.get(category) || 0;
+            const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
+            const targetPercent = 5; // Default target for uncategorized positions
+            const difference = currentPercent - targetPercent;
+
+            groups.push({
+              category,
+              currentValue,
+              currentPercent,
+              targetPercent,
+              difference,
+              isUnderweight: difference < 0, // Most likely underweight with 5% target
+            });
+          }
         });
 
         // 6. Sort into underweight and overweight
@@ -762,7 +864,7 @@ export const appRouter = router({
 
             // Find all securities in this underweight category
             const categoryPositions = positions.filter(pos =>
-              (pos.category || 'Ohne Kategorie') === group.category
+              (pos.category || 'Sonstige') === group.category
             );
 
             // Distribute category amount equally among securities
