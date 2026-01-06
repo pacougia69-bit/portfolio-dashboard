@@ -38,6 +38,25 @@ import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateR
 
 export const appRouter = router({
   system: systemRouter,
+
+  // Debug endpoint to check environment variables
+  debug: router({
+    checkUrl: publicProcedure.query(() => {
+      return {
+        timestamp: new Date().toISOString(),
+        deploymentCheck: 'CLAUDE-CODE-V2-DEPLOYED ✓',
+        environment: {
+          PUBLIC_URL: process.env.PUBLIC_URL || '(not set)',
+          RAILWAY_STATIC_URL: process.env.RAILWAY_STATIC_URL || '(not set)',
+          RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)',
+          OAUTH_SERVER_URL: process.env.OAUTH_SERVER_URL || '(not set)',
+          NODE_ENV: process.env.NODE_ENV || '(not set)',
+        },
+        message: 'If you see this, the new code is deployed successfully!',
+      };
+    }),
+  }),
+
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -1345,12 +1364,12 @@ export const appRouter = router({
             || process.env.OAUTH_SERVER_URL;
 
           if (!baseUrl) {
-            throw new Error('ERROR: PUBLIC_URL NOT DEFINED. Please set PUBLIC_URL environment variable with your Railway domain (e.g., https://your-app.up.railway.app)');
+            throw new Error('🤖 CLAUDE-ERROR: PUBLIC_URL NOT DEFINED. Please set PUBLIC_URL environment variable with your Railway domain (e.g., https://your-app.up.railway.app)');
           }
 
           // Ensure URL starts with https://
           if (!baseUrl.startsWith('https://') && !baseUrl.startsWith('http://')) {
-            throw new Error(`ERROR: PUBLIC_URL must start with https:// but got: ${baseUrl}`);
+            throw new Error(`🤖 CLAUDE-ERROR: PUBLIC_URL must start with https:// but got: ${baseUrl}`);
           }
 
           console.log('  Using baseUrl:', baseUrl);
@@ -1406,8 +1425,8 @@ Antworte auf Deutsch und strukturiert.`;
             analysisData,
           };
         } catch (error: any) {
-          console.error('Document analysis error:', error);
-          throw new Error(`Failed to analyze document: ${error.message}`);
+          console.error('🤖 CLAUDE-DEBUG: Document analysis error:', error);
+          throw new Error(`🤖 CLAUDE-ERROR: Failed to analyze document: ${error.message}`);
         }
       }),
   }),

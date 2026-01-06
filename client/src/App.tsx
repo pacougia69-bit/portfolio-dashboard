@@ -21,6 +21,7 @@ import AIAssistantPage from "./pages/AIAssistantPage";
 import HilfePage from "./pages/HilfePage";
 import RebalancingPage from "./pages/RebalancingPage";
 import MediaInsightsPage from "./pages/MediaInsightsPage";
+import DebugPage from "./pages/DebugPage";
 
 function Router() {
   return (
@@ -38,6 +39,7 @@ function Router() {
       <Route path="/ki-assistent" component={AIAssistantPage} />
       <Route path="/mediathek" component={MediaInsightsPage} />
       <Route path="/hilfe" component={HilfePage} />
+      <Route path="/debug" component={DebugPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
