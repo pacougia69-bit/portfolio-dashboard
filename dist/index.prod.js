@@ -2437,7 +2437,14 @@ Bitte bewerte jeden Watchlist-ETF:
     listTemplates: protectedProcedure.query(async () => {
       const { aiQuestionTemplates: aiQuestionTemplates2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { db } = await Promise.resolve().then(() => (init_db(), db_exports));
-      return db.select().from(aiQuestionTemplates2).where(eq2(aiQuestionTemplates2.isActive, true)).orderBy(aiQuestionTemplates2.sortOrder);
+      const { sql } = await import("drizzle-orm");
+      const result = await db.execute(sql`
+        SELECT * FROM ai_question_templates
+        WHERE isActive = 1
+        ORDER BY sortOrder
+      `);
+      console.log("listTemplates result:", result);
+      return result.rows || [];
     }),
     createTemplate: protectedProcedure.input(z2.object({
       title: z2.string(),
