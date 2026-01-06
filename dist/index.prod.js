@@ -2664,18 +2664,27 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
     })).query(async ({ ctx, input }) => {
       const userId = ctx.user.id;
       const availableCapital = input.amount;
-      const positions = await getPortfolioPositions(userId);
-      if (positions.length === 0) {
+      const savingsPlans2 = await getSavingsPlans(userId);
+      const activeETFs = savingsPlans2.filter(
+        (plan) => plan.isActive && Number(plan.monthlyAmount) > 0
+      );
+      if (activeETFs.length === 0) {
         return {
           success: false,
-          error: "Keine Portfolio-Positionen gefunden",
+          error: "Keine aktiven Sparpl\xE4ne gefunden. Bitte legen Sie auf der Strategie-Seite ETF-Sparraten fest.",
           totalPortfolioValue: 0,
           groups: [],
           underweightGroups: [],
           overweightGroups: [],
-          allocation: []
+          allocation: [],
+          allocationDetails: []
         };
       }
+      const positions = await getPortfolioPositions(userId);
+      const positionMap = /* @__PURE__ */ new Map();
+      positions.forEach((pos) => {
+        positionMap.set(pos.ticker, pos);
+      });
       const settings = await getUserSettings(userId);
       if (!settings || !settings.targetAllocations) {
         return {
@@ -2685,20 +2694,26 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
           groups: [],
           underweightGroups: [],
           overweightGroups: [],
-          allocation: []
+          allocation: [],
+          allocationDetails: []
         };
       }
       const targetAllocations = settings.targetAllocations;
-      const totalValue = positions.reduce((sum, pos) => {
-        const price = pos.currentPrice || pos.buyPrice;
-        return sum + pos.amount * price;
+      const totalValue = activeETFs.reduce((sum, plan) => {
+        const position = positionMap.get(plan.ticker);
+        if (position) {
+          const price = position.currentPrice || position.buyPrice;
+          return sum + position.amount * price;
+        }
+        return sum;
       }, 0);
       const groupedByCategory = /* @__PURE__ */ new Map();
       const allCategories = /* @__PURE__ */ new Set();
-      positions.forEach((pos) => {
-        const category = pos.category || "Sonstige";
-        const price = pos.currentPrice || pos.buyPrice;
-        const value = pos.amount * price;
+      activeETFs.forEach((plan) => {
+        const position = positionMap.get(plan.ticker);
+        const category = position?.category || "Sonstige";
+        const price = position?.currentPrice || position?.buyPrice || 0;
+        const value = position ? position.amount * price : 0;
         allCategories.add(category);
         groupedByCategory.set(
           category,
@@ -2753,20 +2768,25 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
             proportion: proportion * 100,
             reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`
           });
-          const categoryPositions = positions.filter(
-            (pos) => (pos.category || "Sonstige") === group.category
-          );
-          if (categoryPositions.length > 0) {
-            const amountPerSecurity = categoryAmount / categoryPositions.length;
-            categoryPositions.forEach((pos) => {
+          const categoryETFs = activeETFs.filter((plan) => {
+            const position = positionMap.get(plan.ticker);
+            return (position?.category || "Sonstige") === group.category;
+          });
+          if (categoryETFs.length > 0) {
+            const amountPerETF = categoryAmount / categoryETFs.length;
+            categoryETFs.forEach((plan) => {
+              const position = positionMap.get(plan.ticker);
+              const currentPrice = position?.currentPrice || position?.buyPrice || 0;
               allocationDetails.push({
                 category: group.category,
-                name: pos.name,
-                wkn: pos.wkn || pos.isin || "N/A",
-                isin: pos.isin || "",
-                amount: amountPerSecurity,
-                currentPrice: pos.currentPrice || pos.buyPrice,
-                shares: (pos.currentPrice || pos.buyPrice) > 0 ? amountPerSecurity / (pos.currentPrice || pos.buyPrice) : 0
+                name: plan.name,
+                ticker: plan.ticker,
+                wkn: position?.wkn || position?.isin || "N/A",
+                isin: position?.isin || "",
+                amount: amountPerETF,
+                currentPrice,
+                shares: currentPrice > 0 ? amountPerETF / currentPrice : 0,
+                monthlySavingsRate: Number(plan.monthlyAmount)
               });
             });
           }
@@ -2785,7 +2805,8 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
           totalInvested: allocation.reduce((sum, a) => sum + a.amount, 0),
           numberOfUnderweightGroups: underweightGroups.length,
           numberOfOverweightGroups: overweightGroups.length,
-          largestUnderweight: underweightGroups[0]?.category || "Keine"
+          largestUnderweight: underweightGroups[0]?.category || "Keine",
+          activeETFsCount: activeETFs.length
         }
       };
     })
