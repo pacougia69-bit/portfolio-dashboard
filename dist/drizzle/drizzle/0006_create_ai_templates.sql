@@ -1,9 +1,7 @@
--- Migration: Reset AI Templates Table
--- Drop and recreate table with correct schema
+-- Migration: Create AI Question Templates Table
+-- Only creates if not exists - does NOT drop existing data
 
-DROP TABLE IF EXISTS `ai_question_templates`;
-
-CREATE TABLE `ai_question_templates` (
+CREATE TABLE IF NOT EXISTS `ai_question_templates` (
   `id` int AUTO_INCREMENT NOT NULL,
   `title` varchar(255) NOT NULL,
   `prompt` text NOT NULL,
