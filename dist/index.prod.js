@@ -1803,17 +1803,21 @@ Watchlist (${watchlist.length} Positionen):
 ${watchlist.map((w) => `- ${w.name} (${w.ticker}): Zielpreis ${w.targetPrice || "nicht gesetzt"} \u20AC`).join("\n")}
 ` : ""}
 `;
-  const systemPrompt = `Du bist ein erfahrener Finanzberater und Portfolio-Analyst. 
-Du analysierst Portfolios und gibst fundierte, aber verst\xE4ndliche Empfehlungen auf Deutsch.
-Sei konkret und gib praktische Handlungsempfehlungen.
-Beachte Diversifikation, Risiko und langfristige Anlagestrategien.
+  const systemPrompt = `Du bist ein erfahrener Finanzberater und Portfolio-Analyst.
+Du analysierst Portfolios und einzelne Assets (ETFs, Aktien) pr\xE4zise und fokussiert.
+Antworte immer auf Deutsch und sei konkret.
 
-Wenn der Nutzer ETFs aus der Watchlist erw\xE4hnt, bewerte jeden einzeln:
-- Analysiere ob der ETF zur bestehenden Strategie passt
-- Pr\xFCfe Diversifikationseffekte und Risiko
-- Gib eine klare Empfehlung: EMPFOHLEN oder NICHT EMPFOHLEN mit Begr\xFCndung
-- Falls empfohlen: Schlage einen konkreten monatlichen Sparbetrag vor
-- Erstelle am Ende eine neue Gesamt-Sparplan-Verteilung
+WICHTIG - Fokus auf die Frage:
+- Beantworte NUR das, was der Nutzer konkret fragt
+- Konzentriere dich auf das spezifische Asset in der Frage
+- Gib keine ungefragt Watchlist-Bewertungen
+- Erstelle KEINE automatische Sparplan-Verteilung
+- Bleib beim Thema der konkreten Frage
+
+Falls der Nutzer EXPLIZIT nach folgenden Dingen fragt, dann liefere sie:
+- Watchlist-Bewertung: Nur wenn explizit gefragt
+- Sparplan-Vorschlag: Nur wenn explizit gefragt
+- Gesamtportfolio-Analyse: Nur wenn explizit gefragt
 
 Formatiere deine Antwort \xFCbersichtlich mit \xDCberschriften und Tabellen wo sinnvoll.
 Antworte immer auf Deutsch.`;
@@ -2418,14 +2422,10 @@ var appRouter = router({
       );
       const watchlistInfo = watchlistETFs.length > 0 ? `
 
-Au\xDFerdem habe ich folgende ETFs/Wertpapiere in meiner Watchlist, die ich eventuell in meinen Sparplan aufnehmen m\xF6chte:
+Hinweis: Ich habe ${watchlistETFs.length} ETF(s) in meiner Watchlist:
 ` + watchlistETFs.map((w) => `- ${w.name} (${w.ticker}${w.wkn ? `, WKN: ${w.wkn}` : ""})${w.currentPrice ? ` - Aktueller Kurs: ${w.currentPrice}\u20AC` : ""}${w.notes ? ` - Notizen: ${w.notes}` : ""}`).join("\n") + `
 
-Bitte bewerte jeden Watchlist-ETF:
-1. Passt er zu meiner Strategie? (Diversifikation, Risiko)
-2. Empfehlung: Aufnehmen oder ablehnen? Mit Begr\xFCndung.
-3. Falls empfohlen: Wie viel Euro pro Monat?
-4. Erstelle dann eine NEUE Sparplan-Verteilung f\xFCr alle empfohlenen ETFs.` : "";
+Falls sinnvoll, kannst du sie kurz erw\xE4hnen, aber konzentriere dich auf meine konkrete Frage.` : "";
       return analyzePortfolio(
         ctx.user.id,
         positions,

@@ -397,14 +397,10 @@ export const appRouter = router({
           w.name.toLowerCase().includes('treasury')
         );
         
-        const watchlistInfo = watchlistETFs.length > 0 
-          ? `\n\nAußerdem habe ich folgende ETFs/Wertpapiere in meiner Watchlist, die ich eventuell in meinen Sparplan aufnehmen möchte:\n` +
+        const watchlistInfo = watchlistETFs.length > 0
+          ? `\n\nHinweis: Ich habe ${watchlistETFs.length} ETF(s) in meiner Watchlist:\n` +
             watchlistETFs.map(w => `- ${w.name} (${w.ticker}${w.wkn ? `, WKN: ${w.wkn}` : ''})${w.currentPrice ? ` - Aktueller Kurs: ${w.currentPrice}€` : ''}${w.notes ? ` - Notizen: ${w.notes}` : ''}`).join('\n') +
-            `\n\nBitte bewerte jeden Watchlist-ETF:\n` +
-            `1. Passt er zu meiner Strategie? (Diversifikation, Risiko)\n` +
-            `2. Empfehlung: Aufnehmen oder ablehnen? Mit Begründung.\n` +
-            `3. Falls empfohlen: Wie viel Euro pro Monat?\n` +
-            `4. Erstelle dann eine NEUE Sparplan-Verteilung für alle empfohlenen ETFs.`
+            `\n\nFalls sinnvoll, kannst du sie kurz erwähnen, aber konzentriere dich auf meine konkrete Frage.`
           : '';
         
         return analyzePortfolio(ctx.user.id, positions, 
