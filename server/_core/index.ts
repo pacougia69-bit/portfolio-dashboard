@@ -35,6 +35,25 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+
+  // Debug endpoint - Direct HTTP route (not tRPC)
+  app.get("/api/debug", (req, res) => {
+    res.json({
+      timestamp: new Date().toISOString(),
+      deploymentCheck: '🤖 CLAUDE-CODE-V3-DEPLOYED ✓',
+      environment: {
+        PUBLIC_URL: process.env.PUBLIC_URL || '(not set)',
+        RAILWAY_STATIC_URL: process.env.RAILWAY_STATIC_URL || '(not set)',
+        RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)',
+        OAUTH_SERVER_URL: process.env.OAUTH_SERVER_URL || '(not set)',
+        NODE_ENV: process.env.NODE_ENV || '(not set)',
+        PORT: process.env.PORT || '(not set)',
+      },
+      message: 'If you see CLAUDE-CODE-V3-DEPLOYED, the latest code is running!',
+      hardcodedFallback: 'https://portfolio-dashboard-production-e5c1.up.railway.app',
+    });
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",
