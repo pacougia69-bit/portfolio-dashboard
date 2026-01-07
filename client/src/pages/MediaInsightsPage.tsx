@@ -186,21 +186,21 @@ export default function MediaInsightsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {insights.map((insight: any) => (
-            <Card key={insight.id} className="group hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-base line-clamp-2">{insight.title}</CardTitle>
+            <Card key={insight.id} className="group hover:shadow-lg transition-shadow flex flex-col">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-base line-clamp-2 mb-1.5">{insight.title}</CardTitle>
                     {insight.source && (
-                      <CardDescription className="mt-1">{insight.source}</CardDescription>
+                      <CardDescription className="text-xs">{insight.source}</CardDescription>
                     )}
                   </div>
                   <Button
                     variant="ghost"
-                    size="sm"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    size="icon"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 h-8 w-8 -mt-1 -mr-1"
                     onClick={() => handleDelete(insight.id)}
                   >
                     <Trash2 className="w-4 h-4 text-destructive" />
@@ -208,46 +208,56 @@ export default function MediaInsightsPage() {
                 </div>
               </CardHeader>
 
-              <CardContent>
+              <CardContent className="flex-1 flex flex-col space-y-3">
+                {/* Image Preview */}
                 {insight.imageUrl && (
-                  <img
-                    src={insight.imageUrl}
-                    alt={insight.title}
-                    className="w-full h-32 object-cover rounded-md mb-3 cursor-pointer"
+                  <div
+                    className="w-full aspect-video rounded-md border bg-muted overflow-hidden cursor-pointer"
                     onClick={() => setSelectedInsight(insight)}
-                  />
+                  >
+                    <img
+                      src={insight.imageUrl}
+                      alt={insight.title}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
                 )}
 
+                {/* Summary */}
                 {insight.summary && (
-                  <p className="text-sm text-muted-foreground line-clamp-3 mb-3">
+                  <p className="text-sm text-muted-foreground line-clamp-3 flex-1">
                     {insight.summary}
                   </p>
                 )}
 
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setSelectedInsight(insight)}
-                  >
-                    <Eye className="w-4 h-4 mr-1" />
-                    Ansehen
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleAnalyze(insight.id)}
-                    disabled={analyzeMutation.isPending}
-                  >
-                    <Sparkles className="w-4 h-4 mr-1" />
-                    Analysieren
-                  </Button>
-                </div>
+                {/* Action Buttons */}
+                <div className="flex flex-col gap-2 pt-2">
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setSelectedInsight(insight)}
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1.5" />
+                      Ansehen
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleAnalyze(insight.id)}
+                      disabled={analyzeMutation.isPending}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                      Analysieren
+                    </Button>
+                  </div>
 
-                <p className="text-xs text-muted-foreground mt-2">
-                  {new Date(insight.createdAt).toLocaleDateString('de-DE')}
-                </p>
+                  {/* Date */}
+                  <p className="text-xs text-muted-foreground text-center">
+                    {new Date(insight.createdAt).toLocaleDateString('de-DE')}
+                  </p>
+                </div>
               </CardContent>
             </Card>
           ))}
