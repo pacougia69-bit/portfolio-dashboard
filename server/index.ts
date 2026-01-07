@@ -1,286 +1,147 @@
+import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
+import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { registerOAuthRoutes } from "./_core/oauth";
+import { appRouter } from "./routers";
+import { createContext } from "./_core/context";
 import mysql from "mysql2/promise";
+import { migrate } from "drizzle-orm/mysql2/migrator";
+import { drizzle } from "drizzle-orm/mysql2";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function fixTransactionsSchema() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL environment variable is not set");
+/**
+ * RAILWAY PRODUCTION SERVER
+ * This file is used by Railway for production deployments
+ */
+
+async function runDatabaseMigration() {
+  const DATABASE_URL = process.env.DATABASE_URL;
+
+  if (!DATABASE_URL) {
+    console.warn('⚠️  DATABASE_URL not configured - skipping database migration');
+    return;
   }
 
-  const connection = await mysql.createConnection(databaseUrl);
-  const logs: string[] = [];
-
   try {
-    logs.push("📋 Checking transactions table schema...");
+    console.log('🔄 Starting database migration...');
 
-    // Check if table exists
-    const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
-    if (!Array.isArray(tables) || tables.length === 0) {
-      logs.push("❌ Transactions table does not exist!");
-      return logs;
-    }
+    const connection = await mysql.createConnection(DATABASE_URL);
+    const db = drizzle(connection);
 
-    // Get current columns
-    const [columns]: any = await connection.query("DESCRIBE transactions");
-    logs.push("\nCurrent columns:");
-    columns.forEach((col: any) => {
-      logs.push(`  - ${col.Field} (${col.Type})`);
-    });
-
-    const existingColumns = new Set(columns.map((col: any) => col.Field));
-
-    // Define required columns
-    const requiredColumns = [
-      { name: 'wkn', sql: 'wkn VARCHAR(20) DEFAULT NULL AFTER isin' },
-      { name: 'fees', sql: 'fees DECIMAL(18, 4) DEFAULT "0" NOT NULL AFTER price' },
-      { name: 'totalAmount', sql: 'totalAmount DECIMAL(18, 4) NOT NULL AFTER fees' },
-      { name: 'invoiceNumber', sql: 'invoiceNumber VARCHAR(100) DEFAULT NULL AFTER orderNumber' },
-    ];
-
-    const missingColumns = requiredColumns.filter(col => !existingColumns.has(col.name));
-
-    if (missingColumns.length === 0) {
-      logs.push("\n✅ All required columns already exist!");
-      return logs;
-    }
-
-    logs.push(`\n⚠️  Found ${missingColumns.length} missing columns: ${missingColumns.map(c => c.name).join(', ')}`);
-    logs.push("\n🔧 Adding missing columns...");
-
-    for (const col of missingColumns) {
-      try {
-        logs.push(`  Adding: ${col.name}`);
-        await connection.query(`ALTER TABLE transactions ADD COLUMN ${col.sql}`);
-        logs.push(`  ✅ Successfully added ${col.name}`);
-      } catch (error: any) {
-        logs.push(`  ❌ Failed to add ${col.name}: ${error.message}`);
-      }
-    }
-
-    logs.push("\n✅ Schema fix completed!");
-    return logs;
-  } finally {
+    // Run migrations
+    await migrate(db, { migrationsFolder: './drizzle' });
     await connection.end();
-  }
-}
 
-async function repairTransactionsTable() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL environment variable is not set");
-  }
+    // Ensure media_insights table exists
+    console.log('📸 Ensuring media_insights table...');
+    const { ensureMediaInsightsTable } = await import('./ensure-media-table');
+    await ensureMediaInsightsTable();
 
-  const connection = await mysql.createConnection(databaseUrl);
-  const logs: string[] = [];
-
-  try {
-    logs.push("🔧 Starting database repair for transactions table...");
-    logs.push("⚠️  WARNING: This will DROP and recreate the transactions table!");
-    logs.push("");
-
-    // Check current state
-    const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
-    if (Array.isArray(tables) && tables.length > 0) {
-      const [columns]: any = await connection.query("DESCRIBE transactions");
-      logs.push("Current table structure:");
-      columns.forEach((col: any) => {
-        logs.push(`  - ${col.Field} (${col.Type})`);
-      });
-      logs.push("");
-    } else {
-      logs.push("ℹ️  Transactions table does not exist yet.");
-      logs.push("");
-    }
-
-    // Drop existing table
-    logs.push("🗑️  Dropping existing transactions table...");
-    await connection.query("DROP TABLE IF EXISTS transactions");
-    logs.push("✅ Table dropped successfully");
-    logs.push("");
-
-    // Create new table with correct schema
-    logs.push("🏗️  Creating new transactions table with correct schema...");
-    const createTableSQL = `
-      CREATE TABLE transactions (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        userId INT NOT NULL,
-        date TIMESTAMP NOT NULL,
-        type ENUM('Kauf', 'Verkauf', 'Sparplan') NOT NULL,
-        isin VARCHAR(20) NOT NULL,
-        wkn VARCHAR(20) DEFAULT NULL,
-        name VARCHAR(255) NOT NULL,
-        quantity DECIMAL(18, 8) NOT NULL,
-        price DECIMAL(18, 4) NOT NULL,
-        fees DECIMAL(18, 4) DEFAULT '0' NOT NULL,
-        totalAmount DECIMAL(18, 4) NOT NULL,
-        orderNumber VARCHAR(100) NOT NULL UNIQUE,
-        invoiceNumber VARCHAR(100) DEFAULT NULL,
-        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `;
-    await connection.query(createTableSQL);
-    logs.push("✅ Table created successfully");
-    logs.push("");
-
-    // Verify new structure
-    const [newColumns]: any = await connection.query("DESCRIBE transactions");
-    logs.push("New table structure:");
-    newColumns.forEach((col: any) => {
-      logs.push(`  - ${col.Field} (${col.Type}) ${col.Key ? `[${col.Key}]` : ''}`);
-    });
-    logs.push("");
-
-    logs.push("✅ Database repair completed successfully!");
-    logs.push("ℹ️  The transactions table has been recreated with the correct schema.");
-    logs.push("ℹ️  All previous transaction data has been removed.");
-    
-    return logs;
-  } catch (error: any) {
-    logs.push("");
-    logs.push(`❌ Error during repair: ${error.message}`);
-    throw error;
-  } finally {
-    await connection.end();
-  }
-}
-
-async function checkAndRepairDatabase() {
-  try {
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      console.log('[DB Check] DATABASE_URL not set, skipping check');
-      return;
-    }
-
-    const connection = await mysql.createConnection(databaseUrl);
-    
-    try {
-      // Check if transactions table exists and has the correct schema
-      const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
-      if (!Array.isArray(tables) || tables.length === 0) {
-        console.log('[DB Check] Transactions table does not exist yet, will be created later');
-        return;
-      }
-
-      const [columns]: any = await connection.query("DESCRIBE transactions");
-      const columnNames = columns.map((col: any) => col.Field);
-      
-      // Check if we have the corrupted 'world' column or missing 'userId' column
-      if (columnNames.includes('world') || !columnNames.includes('userId')) {
-        console.log('[DB Repair] 🔧 Detected corrupted transactions table! Starting auto-repair...');
-        console.log('[DB Repair] Current columns:', columnNames.join(', '));
-        
-        // Drop and recreate the table
-        await connection.query("DROP TABLE IF EXISTS transactions");
-        console.log('[DB Repair] ✅ Dropped corrupted table');
-        
-        const createTableSQL = `
-          CREATE TABLE transactions (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            userId INT NOT NULL,
-            date TIMESTAMP NOT NULL,
-            type ENUM('Kauf', 'Verkauf', 'Sparplan') NOT NULL,
-            isin VARCHAR(20) NOT NULL,
-            wkn VARCHAR(20) DEFAULT NULL,
-            name VARCHAR(255) NOT NULL,
-            quantity DECIMAL(18, 8) NOT NULL,
-            price DECIMAL(18, 4) NOT NULL,
-            fees DECIMAL(18, 4) DEFAULT '0' NOT NULL,
-            totalAmount DECIMAL(18, 4) NOT NULL,
-            orderNumber VARCHAR(100) NOT NULL UNIQUE,
-            invoiceNumber VARCHAR(100) DEFAULT NULL,
-            createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `;
-        await connection.query(createTableSQL);
-        console.log('[DB Repair] ✅ Created new table with correct schema');
-        console.log('[DB Repair] ✅ Auto-repair completed successfully!');
-      } else {
-        console.log('[DB Check] ✅ Transactions table schema is correct');
-      }
-    } finally {
-      await connection.end();
-    }
-  } catch (error: any) {
-    console.error('[DB Check] Error during database check/repair:', error.message);
+    console.log('✅ Database migration completed successfully');
+  } catch (error) {
+    console.error('❌ Database migration failed:', error);
   }
 }
 
 async function startServer() {
-  // Run database check and repair on startup
-  await checkAndRepairDatabase();
-  
+  // Run database migration
+  await runDatabaseMigration();
+
   const app = express();
-  const server = createServer(app);
+  const port = Number(process.env.PORT || 3000);
+  const host = '0.0.0.0';
 
-  // Admin endpoint to fix database schema (adds missing columns)
-  app.get("/admin/fix-schema", async (req, res) => {
-    try {
-      const logs = await fixTransactionsSchema();
-      res.setHeader('Content-Type', 'text/plain');
-      res.send(logs.join('\n'));
-    } catch (error: any) {
-      res.status(500).send(`Error: ${error.message}\n${error.stack}`);
-    }
+  // Configure body parser with larger size limit for file uploads
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  console.log('');
+  console.log('='.repeat(60));
+  console.log('🚀 RAILWAY PRODUCTION SERVER STARTING');
+  console.log('='.repeat(60));
+  console.log('');
+
+  // Health check endpoint
+  app.get('/health', (_req, res) => res.status(200).send('OK'));
+
+  // Debug endpoint - RAILWAY DEPLOYMENT VERIFICATION
+  app.get("/api/debug", (req, res) => {
+    console.log('🔍 /api/debug endpoint hit');
+    res.json({
+      timestamp: new Date().toISOString(),
+      deploymentCheck: '🚀 RAILWAY-FIX-V4-DEPLOYED ✓',
+      serverFile: 'server/index.ts (PRODUCTION)',
+      environment: {
+        PUBLIC_URL: process.env.PUBLIC_URL || '(not set)',
+        RAILWAY_STATIC_URL: process.env.RAILWAY_STATIC_URL || '(not set)',
+        RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)',
+        OAUTH_SERVER_URL: process.env.OAUTH_SERVER_URL || '(not set)',
+        NODE_ENV: process.env.NODE_ENV || '(not set)',
+        PORT: process.env.PORT || '(not set)',
+      },
+      message: '✅ If you see RAILWAY-FIX-V4-DEPLOYED, the new code is running!',
+      hardcodedDomain: 'https://portfolio-dashboard-production-e5c1.up.railway.app',
+    });
   });
 
-  // Admin endpoint to repair database (drops and recreates transactions table)
-  app.get("/admin/repair-db", async (req, res) => {
-    try {
-      const logs = await repairTransactionsTable();
-      res.setHeader('Content-Type', 'text/plain');
-      res.send(logs.join('\n'));
-    } catch (error: any) {
-      res.status(500).send(`Error: ${error.message}\n${error.stack}`);
-    }
-  });
+  console.log('✅ /api/debug endpoint registered');
 
-  // Admin endpoint to check current schema
-  app.get("/admin/check-schema", async (req, res) => {
-    try {
-      const databaseUrl = process.env.DATABASE_URL;
-      if (!databaseUrl) {
-        throw new Error("DATABASE_URL not set");
+  // OAuth and tRPC routes
+  registerOAuthRoutes(app);
+  app.use('/api/trpc', createExpressMiddleware({ router: appRouter, createContext }));
+
+  console.log('✅ OAuth and tRPC routes registered');
+
+  // Static file serving
+  const distPath = path.resolve(process.cwd(), 'dist', 'public');
+
+  if (fs.existsSync(distPath)) {
+    console.log(`✅ Serving static files from: ${distPath}`);
+
+    // Serve uploaded files
+    const uploadsPath = path.resolve(distPath, 'uploads');
+    if (fs.existsSync(uploadsPath)) {
+      console.log(`✅ Serving uploads from: ${uploadsPath}`);
+      app.use('/uploads', express.static(uploadsPath));
+    }
+
+    app.use(express.static(distPath));
+
+    // Catch-all for SPA
+    app.get('*', (req, res) => {
+      if (req.path.startsWith('/admin') || req.path.startsWith('/api')) {
+        return res.status(404).send('Not found');
       }
-      const connection = await mysql.createConnection(databaseUrl);
-      const [columns]: any = await connection.query("DESCRIBE transactions");
-      await connection.end();
-      
-      res.setHeader('Content-Type', 'application/json');
-      res.json({ columns });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
 
-  // dist/server -> dist/public
-  const staticPath = path.resolve(__dirname, "..", "public");
+      const indexPath = path.resolve(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send('index.html not found');
+      }
+    });
+  } else {
+    console.error(`❌ Build folder not found: ${distPath}`);
+  }
 
-  // 1) Statische Dateien (JS, CSS, Bilder) direkt ausliefern
-  app.use(express.static(staticPath));
-
-  // 2) Nur HTML‑Routen auf index.html umleiten
-  app.get("*", (req, res, next) => {
-    if (
-      req.path.startsWith("/admin") ||
-      req.path.startsWith("/assets") ||
-      req.path.match(/.(js|css|png|jpg|jpeg|svg|ico|webp|map)$/)
-    ) {
-      return next(); // das sind Dateien oder Admin-Routen, nicht index.html
-    }
-    res.sendFile(path.join(staticPath, "index.html"));
-  });
-
-  const port = process.env.PORT || 3000;
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  const httpServer = createServer(app);
+  httpServer.listen(port, host, () => {
+    console.log('');
+    console.log('='.repeat(60));
+    console.log(`✅ Railway server running on http://${host}:${port}`);
+    console.log(`📍 Test: https://portfolio-dashboard-production-e5c1.up.railway.app/api/debug`);
+    console.log('='.repeat(60));
+    console.log('');
   });
 }
 
-startServer().catch(console.error);
+startServer().catch((err) => {
+  console.error('❌ Server start failed:', err);
+  process.exit(1);
+});
