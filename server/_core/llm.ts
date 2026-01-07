@@ -307,7 +307,7 @@ export async function invokeLLMWithVision(
               type: 'image_url' as const,
               image_url: {
                 url: finalImageUrl,
-                detail: 'high' as const, // Use high detail for financial documents
+                detail: 'low' as const, // Low detail = 85 tokens/image (vs high = 512-1024 tokens)
               },
             },
           ],
