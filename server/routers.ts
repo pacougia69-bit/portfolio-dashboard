@@ -1183,7 +1183,8 @@ export const appRouter = router({
 
         try {
           // Create uploads directory if it doesn't exist
-          const uploadsDir = path.join(process.cwd(), 'dist', 'public', 'uploads');
+          // Railway Volume is mounted at /app/uploads
+          const uploadsDir = path.join('/', 'app', 'uploads');
           await fs.mkdir(uploadsDir, { recursive: true });
 
           // Generate unique filename
@@ -1360,18 +1361,19 @@ export const appRouter = router({
           const fsSync = await import('fs');
 
           // Convert URL path to local filesystem path
-          // e.g., /uploads/media_123.pdf -> uploads/media_123.pdf
-          const relativePath = imageUrl.startsWith('/') ? imageUrl.slice(1) : imageUrl;
+          // e.g., /uploads/media_123.pdf -> media_123.pdf (just the filename)
+          const relativePath = imageUrl.startsWith('/uploads/')
+            ? imageUrl.replace('/uploads/', '')
+            : (imageUrl.startsWith('/') ? imageUrl.slice(1) : imageUrl);
 
           // SMART PATH DISCOVERY: Try multiple possible locations
-          // Railway can structure files differently than local development
+          // PRIMARY: Railway Volume is mounted at /app/uploads
           const possiblePaths = [
-            path.resolve(process.cwd(), 'dist', 'public', relativePath),  // Build output location
-            path.resolve(process.cwd(), 'public', relativePath),          // Direct public folder
-            path.resolve(process.cwd(), relativePath),                     // Root-relative path
-            path.resolve('/app', 'dist', 'public', relativePath),         // Railway absolute path
-            path.resolve('/app', 'public', relativePath),                 // Railway public folder
-            path.resolve('/app', relativePath),                            // Railway root
+            path.join('/', 'app', 'uploads', relativePath),                // Railway Volume (PRIMARY)
+            path.resolve(process.cwd(), 'dist', 'public', 'uploads', relativePath),  // Build output location
+            path.resolve(process.cwd(), 'public', 'uploads', relativePath),          // Direct public folder
+            path.resolve('/app', 'dist', 'public', 'uploads', relativePath),         // Railway absolute path
+            path.resolve('/app', 'public', 'uploads', relativePath),                 // Railway public folder
           ];
 
           console.log('   🔍 Searching for file in multiple locations...');
