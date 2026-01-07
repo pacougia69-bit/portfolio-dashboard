@@ -179,7 +179,7 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
 /**
  * Invoke LLM with Vision API for image/document analysis
  * Supports: JPG, PNG images directly
- * PDFs: Downloads and converts first page to image
+ * PDFs: Tries image conversion first, falls back to text extraction
  */
 export async function invokeLLMWithVision(
   messages: Message[],
@@ -211,56 +211,88 @@ export async function invokeLLMWithVision(
     const isPDF = imageUrl.toLowerCase().endsWith('.pdf');
 
     if (isPDF) {
-      console.log('📄 PDF detected - converting to image...');
+      console.log('📄 PDF detected - attempting conversion to image...');
 
-      // Download PDF and convert to Base64 image
-      const fetch = (await import('node-fetch')).default;
-      const response = await fetch(imageUrl);
+      try {
+        // Download PDF as buffer (robust loading)
+        const fetch = (await import('node-fetch')).default;
+        const response = await fetch(imageUrl);
 
-      if (!response.ok) {
-        throw new Error(`Failed to download PDF: ${response.status} ${response.statusText}`);
+        if (!response.ok) {
+          throw new Error(`Failed to download PDF: ${response.status} ${response.statusText}`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        console.log(`✅ PDF downloaded successfully (${buffer.length} bytes)`);
+
+        // Try to convert PDF to image using pdf-to-img
+        try {
+          console.log('🖼️  Attempting PDF to image conversion...');
+
+          const { pdf } = await import('pdf-to-img');
+          const pdfDoc = await pdf(buffer, { scale: 2.0 }); // Higher scale for better quality
+
+          // Get first page
+          let firstPageImage: Buffer | undefined;
+          for await (const page of pdfDoc) {
+            firstPageImage = page;
+            break; // Only take first page
+          }
+
+          if (!firstPageImage) {
+            throw new Error('No pages extracted from PDF');
+          }
+
+          // Convert to JPEG base64
+          const sharp = await import('sharp');
+          const jpegBuffer = await sharp.default(firstPageImage)
+            .jpeg({ quality: 90 })
+            .toBuffer();
+
+          const base64Image = jpegBuffer.toString('base64');
+          finalImageUrl = `data:image/jpeg;base64,${base64Image}`;
+
+          console.log('✅ PDF converted to JPEG image (Base64)');
+
+        } catch (imageConversionError: any) {
+          // FALLBACK: If image conversion fails, extract text instead
+          console.warn('⚠️  Image conversion failed, falling back to text extraction');
+          console.warn(`   Error: ${imageConversionError.message}`);
+
+          const pdfParse = (await import('pdf-parse')).default;
+          const pdfData = await pdfParse(buffer);
+
+          console.log(`📝 Extracted text from PDF (${pdfData.numpages} page(s), ${pdfData.text.length} characters)`);
+
+          if (!pdfData.text || pdfData.text.trim().length === 0) {
+            throw new Error('PDF text extraction failed - document may be image-based or encrypted');
+          }
+
+          // Use text-based analysis instead of vision
+          console.log('🔄 Using text-based analysis instead of vision API');
+
+          // Combine system and user messages, then append the extracted text
+          const textMessages: Message[] = [
+            ...messages,
+            {
+              role: 'user' as const,
+              content: `Hier ist der extrahierte Text aus dem PDF-Dokument:\n\n${pdfData.text}`
+            }
+          ];
+
+          // Use regular LLM (not vision) for text analysis
+          return invokeLLM(textMessages, 0);
+        }
+
+      } catch (downloadError: any) {
+        console.error('❌ Failed to download or process PDF:', downloadError.message);
+        throw new Error(`PDF processing failed: ${downloadError.message}`);
       }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      // Import pdf-parse to extract first page
-      const pdfParse = (await import('pdf-parse')).default;
-      const pdfData = await pdfParse(buffer);
-
-      console.log(`PDF has ${pdfData.numpages} page(s)`);
-
-      // For now, we'll convert the PDF buffer to a base64 data URL
-      // Note: OpenAI Vision API can't directly process PDFs, so we convert to PNG
-      const sharp = await import('sharp');
-
-      // Convert PDF first page to PNG using pdf-to-img library
-      const { pdf } = await import('pdf-to-img');
-      const pdfDoc = await pdf(buffer, { scale: 2.0 }); // Higher scale for better quality
-
-      // Get first page
-      let firstPageImage: Buffer | undefined;
-      for await (const page of pdfDoc) {
-        firstPageImage = page;
-        break; // Only take first page
-      }
-
-      if (!firstPageImage) {
-        throw new Error('Failed to extract image from PDF');
-      }
-
-      // Convert to JPEG base64
-      const jpegBuffer = await sharp.default(firstPageImage)
-        .jpeg({ quality: 90 })
-        .toBuffer();
-
-      const base64Image = jpegBuffer.toString('base64');
-      finalImageUrl = `data:image/jpeg;base64,${base64Image}`;
-
-      console.log('✅ PDF converted to JPEG image (Base64)');
     }
 
-    // Format messages for Vision API
+    // Format messages for Vision API (for images or successfully converted PDFs)
     const formattedMessages: ChatCompletionMessageParam[] = messages.map((msg, index) => {
       // Add image to the last user message
       if (msg.role === 'user' && index === messages.length - 1) {
@@ -307,7 +339,7 @@ export async function invokeLLMWithVision(
   } catch (error: any) {
     console.error(`Vision model ${model} failed:`, error);
 
-    // Retry with next model
+    // Retry with next model (only for Vision API errors, not text fallback)
     if (modelIndex < VISION_MODELS.length - 1) {
       console.log(`Retrying with next vision model...`);
       return invokeLLMWithVision(messages, imageUrl, modelIndex + 1);
