@@ -178,6 +178,8 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
 
 /**
  * Invoke LLM with Vision API for image/document analysis
+ * Supports: JPG, PNG images directly
+ * PDFs: Downloads and converts first page to image
  */
 export async function invokeLLMWithVision(
   messages: Message[],
@@ -204,6 +206,60 @@ export async function invokeLLMWithVision(
     console.log(`Attempting to use OpenAI Vision model: ${model}`);
     console.log(`Analyzing image URL: ${imageUrl}`);
 
+    // Check if URL is a PDF
+    let finalImageUrl = imageUrl;
+    const isPDF = imageUrl.toLowerCase().endsWith('.pdf');
+
+    if (isPDF) {
+      console.log('📄 PDF detected - converting to image...');
+
+      // Download PDF and convert to Base64 image
+      const fetch = (await import('node-fetch')).default;
+      const response = await fetch(imageUrl);
+
+      if (!response.ok) {
+        throw new Error(`Failed to download PDF: ${response.status} ${response.statusText}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Import pdf-parse to extract first page
+      const pdfParse = (await import('pdf-parse')).default;
+      const pdfData = await pdfParse(buffer);
+
+      console.log(`PDF has ${pdfData.numpages} page(s)`);
+
+      // For now, we'll convert the PDF buffer to a base64 data URL
+      // Note: OpenAI Vision API can't directly process PDFs, so we convert to PNG
+      const sharp = await import('sharp');
+
+      // Convert PDF first page to PNG using pdf-to-img library
+      const { pdf } = await import('pdf-to-img');
+      const pdfDoc = await pdf(buffer, { scale: 2.0 }); // Higher scale for better quality
+
+      // Get first page
+      let firstPageImage: Buffer | undefined;
+      for await (const page of pdfDoc) {
+        firstPageImage = page;
+        break; // Only take first page
+      }
+
+      if (!firstPageImage) {
+        throw new Error('Failed to extract image from PDF');
+      }
+
+      // Convert to JPEG base64
+      const jpegBuffer = await sharp.default(firstPageImage)
+        .jpeg({ quality: 90 })
+        .toBuffer();
+
+      const base64Image = jpegBuffer.toString('base64');
+      finalImageUrl = `data:image/jpeg;base64,${base64Image}`;
+
+      console.log('✅ PDF converted to JPEG image (Base64)');
+    }
+
     // Format messages for Vision API
     const formattedMessages: ChatCompletionMessageParam[] = messages.map((msg, index) => {
       // Add image to the last user message
@@ -218,7 +274,7 @@ export async function invokeLLMWithVision(
             {
               type: 'image_url' as const,
               image_url: {
-                url: imageUrl,
+                url: finalImageUrl,
                 detail: 'high' as const, // Use high detail for financial documents
               },
             },
