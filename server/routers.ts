@@ -1351,28 +1351,57 @@ export const appRouter = router({
 
           console.log('📂 [Media Analysis] Loading file from LOCAL filesystem');
           console.log('   File path from DB:', imageUrl);
+          console.log('   Server working directory:', process.cwd());
 
           // Load file from LOCAL filesystem (not HTTP!)
           // This is much more reliable than fetching via URL
           const path = await import('path');
           const fs = await import('fs/promises');
+          const fsSync = await import('fs');
 
           // Convert URL path to local filesystem path
-          // e.g., /uploads/media_123.pdf -> dist/public/uploads/media_123.pdf
+          // e.g., /uploads/media_123.pdf -> uploads/media_123.pdf
           const relativePath = imageUrl.startsWith('/') ? imageUrl.slice(1) : imageUrl;
-          const localFilePath = path.resolve(process.cwd(), 'dist', 'public', relativePath);
 
-          console.log('   Local file path:', localFilePath);
+          // SMART PATH DISCOVERY: Try multiple possible locations
+          // Railway can structure files differently than local development
+          const possiblePaths = [
+            path.resolve(process.cwd(), 'dist', 'public', relativePath),  // Build output location
+            path.resolve(process.cwd(), 'public', relativePath),          // Direct public folder
+            path.resolve(process.cwd(), relativePath),                     // Root-relative path
+            path.resolve('/app', 'dist', 'public', relativePath),         // Railway absolute path
+            path.resolve('/app', 'public', relativePath),                 // Railway public folder
+            path.resolve('/app', relativePath),                            // Railway root
+          ];
 
-          // Read file from filesystem
-          let fileBuffer: Buffer;
-          try {
-            fileBuffer = await fs.readFile(localFilePath);
-            console.log(`✅ File loaded from disk (${fileBuffer.length} bytes)`);
-          } catch (readError: any) {
-            console.error('❌ Failed to read file from disk:', readError.message);
-            throw new Error(`File not found on server: ${localFilePath}`);
+          console.log('   🔍 Searching for file in multiple locations...');
+
+          let fileBuffer: Buffer | null = null;
+          let foundPath: string | null = null;
+
+          for (const filePath of possiblePaths) {
+            if (fsSync.existsSync(filePath)) {
+              try {
+                fileBuffer = await fs.readFile(filePath);
+                foundPath = filePath;
+                console.log(`   ✅ File found at: ${filePath} (${fileBuffer.length} bytes)`);
+                break;
+              } catch (readError: any) {
+                console.log(`   ⚠️  Path exists but read failed: ${filePath} - ${readError.message}`);
+                continue;
+              }
+            } else {
+              console.log(`   ❌ Not found: ${filePath}`);
+            }
           }
+
+          if (!fileBuffer || !foundPath) {
+            const errorMsg = `File not found in any location. Tried:\n${possiblePaths.join('\n')}`;
+            console.error('❌', errorMsg);
+            throw new Error(errorMsg);
+          }
+
+          console.log(`✅ File successfully loaded from: ${foundPath}`);
 
           // Determine file type
           const isPDF = imageUrl.toLowerCase().endsWith('.pdf');
