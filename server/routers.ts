@@ -1349,39 +1349,25 @@ export const appRouter = router({
             throw new Error('No file URL found');
           }
 
-          // Build full URL for the image - REQUIRE PUBLIC_URL to be set
-          console.log('[Media Analysis] Environment variables check:');
-          console.log('  PUBLIC_URL:', process.env.PUBLIC_URL || '(not set)');
-          console.log('  RAILWAY_STATIC_URL:', process.env.RAILWAY_STATIC_URL || '(not set)');
-          console.log('  RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)');
-          console.log('  OAUTH_SERVER_URL:', process.env.OAUTH_SERVER_URL || '(not set)');
+          // Build full URL for the image - HARDCODED Railway domain
+          // NO environment variables, NO fallbacks - just the Railway domain
+          const RAILWAY_DOMAIN = 'https://portfolio-dashboard-production-e5c1.up.railway.app';
 
-          // Priority: PUBLIC_URL > RAILWAY_STATIC_URL > RAILWAY_PUBLIC_DOMAIN > OAUTH_SERVER_URL > HARDCODED FALLBACK
-          // Hardcoded fallback for Railway when env vars are not accessible
-          const RAILWAY_DOMAIN_FALLBACK = 'https://portfolio-dashboard-production-e5c1.up.railway.app';
+          console.log('🚀 [Media Analysis] Using HARDCODED Railway domain:', RAILWAY_DOMAIN);
+          console.log('   Environment check (for debugging):');
+          console.log('     PUBLIC_URL:', process.env.PUBLIC_URL || '(not set)');
+          console.log('     RAILWAY_STATIC_URL:', process.env.RAILWAY_STATIC_URL || '(not set)');
+          console.log('     RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)');
+          console.log('     OAUTH_SERVER_URL:', process.env.OAUTH_SERVER_URL || '(not set)');
 
-          const baseUrl = process.env.PUBLIC_URL
-            || process.env.RAILWAY_STATIC_URL
-            || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
-            || process.env.OAUTH_SERVER_URL
-            || RAILWAY_DOMAIN_FALLBACK;
-
-          if (!baseUrl) {
-            throw new Error('🤖 CLAUDE-ERROR: PUBLIC_URL NOT DEFINED. Please set PUBLIC_URL environment variable with your Railway domain (e.g., https://your-app.up.railway.app)');
-          }
-
-          // Ensure URL starts with https://
-          if (!baseUrl.startsWith('https://') && !baseUrl.startsWith('http://')) {
-            throw new Error(`🤖 CLAUDE-ERROR: PUBLIC_URL must start with https:// but got: ${baseUrl}`);
-          }
-
-          console.log('  Using baseUrl:', baseUrl);
+          const baseUrl = RAILWAY_DOMAIN; // ALWAYS use Railway domain, no conditions
 
           const fullUrl = imageUrl.startsWith('http')
             ? imageUrl
             : `${baseUrl}${imageUrl}`;
 
-          console.log('  Full URL for analysis:', fullUrl);
+          console.log('  ✅ Full URL for OpenAI Vision API:', fullUrl);
+          console.log('  ⚠️  If you still see localhost:5000, Railway is running OLD CODE!');
 
           // Default prompt for financial document analysis
           const systemPrompt = `Du bist ein Experte für Finanzanalyse und analysierst Dokumente aus Börsenzeitschriften.
