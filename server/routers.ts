@@ -1414,73 +1414,34 @@ export const appRouter = router({
           let extractedText = '';
 
           if (isPDF) {
-            console.log('📄 PDF detected - processing locally...');
+            console.log('📄 PDF detected - extracting text for analysis...');
+            console.log('   ⚠️  Note: Image conversion disabled due to Railway compatibility');
+            console.log('   ℹ️  For scanned PDFs, please upload as JPG/PNG instead');
 
-            // Try to convert PDF to image first
             try {
-              console.log('🖼️  Attempting PDF to image conversion with pdf-to-img...');
+              console.log('   ⏳ Extracting text from PDF...');
+              const pdfParse = (await import('pdf-parse')).default;
+              const pdfData = await pdfParse(fileBuffer);
 
-              const { pdf } = await import('pdf-to-img');
-              const sharp = await import('sharp');
+              console.log(`   📊 PDF Info: ${pdfData.numpages} page(s), ${pdfData.text.length} characters`);
 
-              console.log('   ⏳ Converting PDF buffer to image document...');
-              const pdfDoc = await pdf(fileBuffer, { scale: 2.0 });
-
-              console.log('   ✅ PDF document loaded successfully');
-              console.log('   ⏳ Extracting first page...');
-
-              // Get first page
-              let firstPageImage: Buffer | undefined;
-              for await (const page of pdfDoc) {
-                firstPageImage = page;
-                console.log(`   ✅ First page extracted (${page.length} bytes)`);
-                break;
+              if (pdfData.text && pdfData.text.trim().length > 0) {
+                extractedText = pdfData.text;
+                useTextFallback = true;
+                finalImageUrl = ''; // Not used for text analysis
+                console.log('   ✅ Text extracted successfully - using text-based analysis');
+              } else {
+                throw new Error(
+                  'PDF hat keinen extrahierbaren Text (wahrscheinlich gescannt/bildbasiert). ' +
+                  'Bitte laden Sie gescannte PDFs stattdessen als JPG oder PNG hoch, damit die KI sie analysieren kann.'
+                );
               }
-
-              if (!firstPageImage) {
-                throw new Error('No pages extracted from PDF - document may be empty');
-              }
-
-              console.log('   ⏳ Converting to JPEG...');
-
-              // Convert to JPEG base64
-              const jpegBuffer = await sharp.default(firstPageImage)
-                .jpeg({ quality: 90 })
-                .toBuffer();
-
-              const base64Image = jpegBuffer.toString('base64');
-              finalImageUrl = `data:image/jpeg;base64,${base64Image}`;
-
-              console.log(`✅ PDF successfully converted to JPEG image (${jpegBuffer.length} bytes, Base64: ${base64Image.length} chars)`);
-
-            } catch (imageConversionError: any) {
-              // FALLBACK: For scanned PDFs or when conversion fails,
-              // we still want to try sending the PDF as an image to OpenAI
-              console.error('❌ PDF to image conversion failed!');
-              console.error(`   Error type: ${imageConversionError.constructor.name}`);
-              console.error(`   Error message: ${imageConversionError.message}`);
-              console.error(`   Stack trace: ${imageConversionError.stack?.substring(0, 300)}`);
-
-              // Try text extraction as last resort
-              try {
-                console.log('🔄 Attempting text extraction as fallback...');
-                const pdfParse = (await import('pdf-parse')).default;
-                const pdfData = await pdfParse(fileBuffer);
-
-                console.log(`📝 Extracted text from PDF (${pdfData.numpages} page(s), ${pdfData.text.length} characters)`);
-
-                if (pdfData.text && pdfData.text.trim().length > 0) {
-                  extractedText = pdfData.text;
-                  useTextFallback = true;
-                  finalImageUrl = ''; // Not used for text analysis
-                  console.log('✅ Using text-based analysis for this PDF');
-                } else {
-                  throw new Error('PDF appears to be image-based (scanned) with no extractable text. Image conversion is required but failed. Please ensure pdf-to-img dependencies are installed on the server.');
-                }
-              } catch (textError: any) {
-                console.error('❌ Text extraction also failed:', textError.message);
-                throw new Error(`PDF analysis failed: Image conversion error: ${imageConversionError.message}. Text extraction error: ${textError.message}. This PDF may be scanned/image-based and requires proper image conversion libraries.`);
-              }
+            } catch (textError: any) {
+              console.error('❌ Text extraction failed:', textError.message);
+              throw new Error(
+                `PDF-Analyse fehlgeschlagen: ${textError.message}. ` +
+                'Tipp: Für gescannte Börsenzeitschriften verwenden Sie bitte Screenshot-Tools (JPG/PNG) statt PDF.'
+              );
             }
 
           } else if (isImage) {

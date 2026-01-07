@@ -186,21 +186,53 @@ export default function MediaInsightsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+          gap: '24px'
+        }}>
           {insights.map((insight: any) => (
-            <Card key={insight.id} className="group hover:shadow-lg transition-shadow flex flex-col">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-base line-clamp-2 mb-1.5">{insight.title}</CardTitle>
+            <Card
+              key={insight.id}
+              className="group hover:shadow-lg transition-shadow"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                minWidth: '320px',
+                maxWidth: '100%'
+              }}
+            >
+              <CardHeader style={{ paddingBottom: '12px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: '12px'
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <CardTitle
+                      className="text-base line-clamp-2"
+                      style={{ marginBottom: '6px', fontSize: '16px' }}
+                    >
+                      {insight.title}
+                    </CardTitle>
                     {insight.source && (
-                      <CardDescription className="text-xs">{insight.source}</CardDescription>
+                      <CardDescription style={{ fontSize: '12px' }}>
+                        {insight.source}
+                      </CardDescription>
                     )}
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 h-8 w-8 -mt-1 -mr-1"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{
+                      flexShrink: 0,
+                      width: '32px',
+                      height: '32px',
+                      marginTop: '-4px',
+                      marginRight: '-4px'
+                    }}
                     onClick={() => handleDelete(insight.id)}
                   >
                     <Trash2 className="w-4 h-4 text-destructive" />
@@ -208,35 +240,54 @@ export default function MediaInsightsPage() {
                 </div>
               </CardHeader>
 
-              <CardContent className="flex-1 flex flex-col space-y-3">
+              <CardContent
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
                 {/* Image Preview */}
                 {insight.imageUrl && (
                   <div
-                    className="w-full aspect-video rounded-md border bg-muted overflow-hidden cursor-pointer"
+                    className="rounded-md border bg-muted overflow-hidden cursor-pointer"
+                    style={{
+                      width: '100%',
+                      aspectRatio: '16 / 9',
+                      position: 'relative'
+                    }}
                     onClick={() => setSelectedInsight(insight)}
                   >
                     <img
                       src={insight.imageUrl}
                       alt={insight.title}
-                      className="w-full h-full object-contain"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain'
+                      }}
                     />
                   </div>
                 )}
 
                 {/* Summary */}
                 {insight.summary && (
-                  <p className="text-sm text-muted-foreground line-clamp-3 flex-1">
+                  <p
+                    className="text-sm text-muted-foreground line-clamp-3"
+                    style={{ flex: 1, fontSize: '14px' }}
+                  >
                     {insight.summary}
                   </p>
                 )}
 
                 {/* Action Buttons */}
-                <div className="flex flex-col gap-2 pt-2">
-                  <div className="flex gap-2">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
                     <Button
                       size="sm"
                       variant="outline"
-                      className="flex-1"
+                      style={{ flex: 1 }}
                       onClick={() => setSelectedInsight(insight)}
                     >
                       <Eye className="w-3.5 h-3.5 mr-1.5" />
@@ -244,7 +295,7 @@ export default function MediaInsightsPage() {
                     </Button>
                     <Button
                       size="sm"
-                      className="flex-1"
+                      style={{ flex: 1 }}
                       onClick={() => handleAnalyze(insight.id)}
                       disabled={analyzeMutation.isPending}
                     >
@@ -254,7 +305,10 @@ export default function MediaInsightsPage() {
                   </div>
 
                   {/* Date */}
-                  <p className="text-xs text-muted-foreground text-center">
+                  <p
+                    className="text-xs text-muted-foreground"
+                    style={{ textAlign: 'center', fontSize: '12px' }}
+                  >
                     {new Date(insight.createdAt).toLocaleDateString('de-DE')}
                   </p>
                 </div>
