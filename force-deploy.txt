@@ -1,0 +1,7 @@
+Force Update - Railway Deployment Trigger
+Timestamp: 2026-01-07 07:20:00 UTC
+Branch: claude/update-railway-domain-SH8wD
+
+This file forces Railway to rebuild and deploy the latest code.
+The hardcoded Railway domain is now active in server/routers.ts.
+No more localhost:5000!
