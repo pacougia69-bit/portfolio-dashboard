@@ -3,7 +3,7 @@
   "_comment": "Force rebuild - Updated 2026-01-07 07:20 UTC",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "rm -rf dist node_modules/.vite && pnpm install --frozen-lockfile && pnpm build"
+    "buildCommand": "rm -rf dist node_modules/.vite && pnpm install --no-frozen-lockfile && pnpm build"
   },
   "deploy": {
     "startCommand": "pnpm start",
