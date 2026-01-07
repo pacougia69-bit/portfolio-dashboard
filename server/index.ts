@@ -98,26 +98,6 @@ async function startServer() {
 
   console.log('✅ OAuth and tRPC routes registered');
 
-  // Media serving route - serve files from Railway Volume /app/uploads
-  // This must come BEFORE express.static to avoid conflicts
-  app.get('/uploads/:filename', (req, res) => {
-    const filename = req.params.filename;
-    const mediaPath = path.join('/', 'app', 'uploads', filename);
-
-    console.log(`📂 Media request: ${filename}`);
-    console.log(`   Looking at: ${mediaPath}`);
-
-    if (fs.existsSync(mediaPath)) {
-      console.log(`   ✅ Serving file: ${mediaPath}`);
-      res.sendFile(mediaPath);
-    } else {
-      console.log(`   ❌ File not found: ${mediaPath}`);
-      res.status(404).send('Media file not found');
-    }
-  });
-
-  console.log('✅ Media serving route registered: /uploads/:filename -> /app/uploads/');
-
   // Static file serving (Frontend CSS, JS, assets)
   const distPath = path.resolve(process.cwd(), 'dist', 'public');
 

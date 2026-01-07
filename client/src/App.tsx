@@ -20,7 +20,6 @@ import EinstellungenPage from "./pages/EinstellungenPage";
 import AIAssistantPage from "./pages/AIAssistantPage";
 import HilfePage from "./pages/HilfePage";
 import RebalancingPage from "./pages/RebalancingPage";
-import MediaInsightsPage from "./pages/MediaInsightsPage";
 import DebugPage from "./pages/DebugPage";
 
 function Router() {
@@ -37,7 +36,6 @@ function Router() {
       <Route path="/rebalancing" component={RebalancingPage} />
       <Route path="/einstellungen" component={EinstellungenPage} />
       <Route path="/ki-assistent" component={AIAssistantPage} />
-      <Route path="/mediathek" component={MediaInsightsPage} />
       <Route path="/hilfe" component={HilfePage} />
       <Route path="/debug" component={DebugPage} />
       <Route path="/404" component={NotFound} />

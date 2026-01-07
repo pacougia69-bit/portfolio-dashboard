@@ -24,7 +24,6 @@ import {
   ChevronRight,
   HelpCircle,
   Scale,
-  FileImage,
 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -42,7 +41,6 @@ const navItems = [
   { path: '/simulator', label: 'Simulator', icon: Calculator },
   { path: '/notizen', label: 'Notizen', icon: StickyNote },
   { path: '/ki-assistent', label: 'KI-Assistent', icon: Bot },
-  { path: '/mediathek', label: 'Mediathek', icon: FileImage },
   { path: '/hilfe', label: 'Hilfe', icon: HelpCircle },
   { path: '/einstellungen', label: 'Einstellungen', icon: Settings },
 ];
