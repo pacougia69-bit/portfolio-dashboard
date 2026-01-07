@@ -188,8 +188,9 @@ export default function MediaInsightsPage() {
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-          gap: '24px'
+          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+          gap: '28px',
+          width: '100%'
         }}>
           {insights.map((insight: any) => (
             <Card
@@ -198,26 +199,50 @@ export default function MediaInsightsPage() {
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                minWidth: '320px',
-                maxWidth: '100%'
+                minWidth: '340px',
+                minHeight: '480px',
+                maxWidth: '100%',
+                overflow: 'hidden'
               }}
             >
-              <CardHeader style={{ paddingBottom: '12px' }}>
+              <CardHeader style={{
+                paddingBottom: '16px',
+                paddingTop: '20px',
+                paddingLeft: '20px',
+                paddingRight: '20px'
+              }}>
                 <div style={{
                   display: 'flex',
                   alignItems: 'flex-start',
                   justifyContent: 'space-between',
-                  gap: '12px'
+                  gap: '16px'
                 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: 'hidden'
+                  }}>
                     <CardTitle
-                      className="text-base line-clamp-2"
-                      style={{ marginBottom: '6px', fontSize: '16px' }}
+                      className="text-base"
+                      style={{
+                        marginBottom: '8px',
+                        fontSize: '16px',
+                        lineHeight: '1.4',
+                        wordWrap: 'break-word',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical'
+                      }}
                     >
                       {insight.title}
                     </CardTitle>
                     {insight.source && (
-                      <CardDescription style={{ fontSize: '12px' }}>
+                      <CardDescription style={{
+                        fontSize: '13px',
+                        wordWrap: 'break-word'
+                      }}>
                         {insight.source}
                       </CardDescription>
                     )}
@@ -228,10 +253,10 @@ export default function MediaInsightsPage() {
                     className="opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{
                       flexShrink: 0,
-                      width: '32px',
-                      height: '32px',
-                      marginTop: '-4px',
-                      marginRight: '-4px'
+                      width: '36px',
+                      height: '36px',
+                      marginTop: '-8px',
+                      marginRight: '-8px'
                     }}
                     onClick={() => handleDelete(insight.id)}
                   >
@@ -245,7 +270,8 @@ export default function MediaInsightsPage() {
                   flex: 1,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '12px'
+                  gap: '16px',
+                  padding: '0 20px 20px 20px'
                 }}
               >
                 {/* Image Preview */}
@@ -255,7 +281,8 @@ export default function MediaInsightsPage() {
                     style={{
                       width: '100%',
                       aspectRatio: '16 / 9',
-                      position: 'relative'
+                      position: 'relative',
+                      flexShrink: 0
                     }}
                     onClick={() => setSelectedInsight(insight)}
                   >
@@ -274,40 +301,71 @@ export default function MediaInsightsPage() {
                 {/* Summary */}
                 {insight.summary && (
                   <p
-                    className="text-sm text-muted-foreground line-clamp-3"
-                    style={{ flex: 1, fontSize: '14px' }}
+                    className="text-sm text-muted-foreground"
+                    style={{
+                      flex: 1,
+                      fontSize: '14px',
+                      lineHeight: '1.6',
+                      wordWrap: 'break-word',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      padding: '0 4px'
+                    }}
                   >
                     {insight.summary}
                   </p>
                 )}
 
                 {/* Action Buttons */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px' }}>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  marginTop: 'auto',
+                  paddingTop: '16px'
+                }}>
+                  <div style={{ display: 'flex', gap: '12px' }}>
                     <Button
                       size="sm"
                       variant="outline"
-                      style={{ flex: 1 }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        padding: '8px 12px'
+                      }}
                       onClick={() => setSelectedInsight(insight)}
                     >
                       <Eye className="w-3.5 h-3.5 mr-1.5" />
-                      Ansehen
+                      <span style={{ whiteSpace: 'nowrap' }}>Ansehen</span>
                     </Button>
                     <Button
                       size="sm"
-                      style={{ flex: 1 }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        padding: '8px 12px'
+                      }}
                       onClick={() => handleAnalyze(insight.id)}
                       disabled={analyzeMutation.isPending}
                     >
                       <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                      Analysieren
+                      <span style={{ whiteSpace: 'nowrap' }}>
+                        {analyzeMutation.isPending ? 'Lädt...' : 'Analysieren'}
+                      </span>
                     </Button>
                   </div>
 
                   {/* Date */}
                   <p
                     className="text-xs text-muted-foreground"
-                    style={{ textAlign: 'center', fontSize: '12px' }}
+                    style={{
+                      textAlign: 'center',
+                      fontSize: '12px',
+                      padding: '4px 0'
+                    }}
                   >
                     {new Date(insight.createdAt).toLocaleDateString('de-DE')}
                   </p>
