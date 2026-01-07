@@ -1349,25 +1349,107 @@ export const appRouter = router({
             throw new Error('No file URL found');
           }
 
-          // Build full URL for the image - HARDCODED Railway domain
-          // NO environment variables, NO fallbacks - just the Railway domain
-          const RAILWAY_DOMAIN = 'https://portfolio-dashboard-production-e5c1.up.railway.app';
+          console.log('📂 [Media Analysis] Loading file from LOCAL filesystem');
+          console.log('   File path from DB:', imageUrl);
 
-          console.log('🚀 [Media Analysis] Using HARDCODED Railway domain:', RAILWAY_DOMAIN);
-          console.log('   Environment check (for debugging):');
-          console.log('     PUBLIC_URL:', process.env.PUBLIC_URL || '(not set)');
-          console.log('     RAILWAY_STATIC_URL:', process.env.RAILWAY_STATIC_URL || '(not set)');
-          console.log('     RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)');
-          console.log('     OAUTH_SERVER_URL:', process.env.OAUTH_SERVER_URL || '(not set)');
+          // Load file from LOCAL filesystem (not HTTP!)
+          // This is much more reliable than fetching via URL
+          const path = await import('path');
+          const fs = await import('fs/promises');
 
-          const baseUrl = RAILWAY_DOMAIN; // ALWAYS use Railway domain, no conditions
+          // Convert URL path to local filesystem path
+          // e.g., /uploads/media_123.pdf -> dist/public/uploads/media_123.pdf
+          const relativePath = imageUrl.startsWith('/') ? imageUrl.slice(1) : imageUrl;
+          const localFilePath = path.resolve(process.cwd(), 'dist', 'public', relativePath);
 
-          const fullUrl = imageUrl.startsWith('http')
-            ? imageUrl
-            : `${baseUrl}${imageUrl}`;
+          console.log('   Local file path:', localFilePath);
 
-          console.log('  ✅ Full URL for OpenAI Vision API:', fullUrl);
-          console.log('  ⚠️  If you still see localhost:5000, Railway is running OLD CODE!');
+          // Read file from filesystem
+          let fileBuffer: Buffer;
+          try {
+            fileBuffer = await fs.readFile(localFilePath);
+            console.log(`✅ File loaded from disk (${fileBuffer.length} bytes)`);
+          } catch (readError: any) {
+            console.error('❌ Failed to read file from disk:', readError.message);
+            throw new Error(`File not found on server: ${localFilePath}`);
+          }
+
+          // Determine file type
+          const isPDF = imageUrl.toLowerCase().endsWith('.pdf');
+          const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(imageUrl);
+
+          let finalImageUrl: string;
+          let useTextFallback = false;
+          let extractedText = '';
+
+          if (isPDF) {
+            console.log('📄 PDF detected - processing locally...');
+
+            // Try to convert PDF to image first
+            try {
+              console.log('🖼️  Attempting PDF to image conversion...');
+
+              const { pdf } = await import('pdf-to-img');
+              const pdfDoc = await pdf(fileBuffer, { scale: 2.0 });
+
+              // Get first page
+              let firstPageImage: Buffer | undefined;
+              for await (const page of pdfDoc) {
+                firstPageImage = page;
+                break;
+              }
+
+              if (!firstPageImage) {
+                throw new Error('No pages extracted from PDF');
+              }
+
+              // Convert to JPEG base64
+              const sharp = await import('sharp');
+              const jpegBuffer = await sharp.default(firstPageImage)
+                .jpeg({ quality: 90 })
+                .toBuffer();
+
+              const base64Image = jpegBuffer.toString('base64');
+              finalImageUrl = `data:image/jpeg;base64,${base64Image}`;
+
+              console.log('✅ PDF converted to JPEG image (Base64)');
+
+            } catch (imageConversionError: any) {
+              // FALLBACK: Extract text from PDF
+              console.warn('⚠️  Image conversion failed, using text extraction');
+              console.warn(`   Error: ${imageConversionError.message}`);
+
+              const pdfParse = (await import('pdf-parse')).default;
+              const pdfData = await pdfParse(fileBuffer);
+
+              console.log(`📝 Extracted text from PDF (${pdfData.numpages} page(s), ${pdfData.text.length} characters)`);
+
+              if (!pdfData.text || pdfData.text.trim().length === 0) {
+                throw new Error('PDF has no extractable text - may be image-based or encrypted');
+              }
+
+              extractedText = pdfData.text;
+              useTextFallback = true;
+              finalImageUrl = ''; // Not used for text analysis
+            }
+
+          } else if (isImage) {
+            console.log('🖼️  Image detected - converting to Base64...');
+
+            // Convert image to Base64 data URL
+            const mimeType = imageUrl.endsWith('.png') ? 'image/png' :
+                             imageUrl.endsWith('.gif') ? 'image/gif' :
+                             imageUrl.endsWith('.webp') ? 'image/webp' :
+                             'image/jpeg';
+
+            const base64Image = fileBuffer.toString('base64');
+            finalImageUrl = `data:${mimeType};base64,${base64Image}`;
+
+            console.log(`✅ Image converted to Base64 (${mimeType})`);
+
+          } else {
+            throw new Error(`Unsupported file type: ${imageUrl}`);
+          }
 
           // Default prompt for financial document analysis
           const systemPrompt = `Du bist ein Experte für Finanzanalyse und analysierst Dokumente aus Börsenzeitschriften.
@@ -1385,11 +1467,29 @@ Antworte auf Deutsch und strukturiert.`;
           const userPrompt = input.customPrompt ||
             'Analysiere dieses Dokument und extrahiere alle relevanten Finanzinformationen gemäß der Struktur.';
 
-          // Analyze with vision API
-          const analysis = await invokeLLMWithVision([
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ], fullUrl);
+          let analysis: string;
+
+          if (useTextFallback) {
+            // Use text-based analysis for PDFs that couldn't be converted to images
+            console.log('🔄 Using text-based LLM analysis');
+
+            const { invokeLLM } = await import('./_core/llm');
+            analysis = await invokeLLM([
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+              { role: 'user', content: `Hier ist der extrahierte Text aus dem PDF-Dokument:\n\n${extractedText}` }
+            ]);
+
+          } else {
+            // Use vision API for images and successfully converted PDFs
+            console.log('👁️  Using Vision API analysis');
+
+            const { invokeLLMWithVision } = await import('./_core/llm');
+            analysis = await invokeLLMWithVision([
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ], finalImageUrl);
+          }
 
           // Parse analysis to extract structured data
           const analysisData = {
