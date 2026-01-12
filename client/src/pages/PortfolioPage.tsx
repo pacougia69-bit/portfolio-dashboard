@@ -519,12 +519,20 @@ export default function PortfolioPage() {
                       </Select>
                     </div>
                     <div>
-                      <Label>Kategorie</Label>
-                      <Input
+                      <Label>Säule / Kategorie</Label>
+                      <Select
                         value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                        placeholder="Tech, Biotech..."
-                      />
+                        onValueChange={(value) => setFormData({ ...formData, category: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Säule wählen..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="A">A - Renten-Basis</SelectItem>
+                          <SelectItem value="B">B - Krypto</SelectItem>
+                          <SelectItem value="C">C - Zocker/Verkauf</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
