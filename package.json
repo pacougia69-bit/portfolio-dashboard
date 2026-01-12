@@ -105,10 +105,8 @@
     "typescript": "5.9.3",
     "vite": "^7.1.7",
     "vite-plugin-manus-runtime": "^0.0.57",
-    "vitest": "^2.1.4",
-    "onlyBuiltDependencies": [
-    "esbuild"
-  ],
+    "vitest": "^2.1.4"
+  },
   "engines": {
     "node": ">=20.0.0"
   }
