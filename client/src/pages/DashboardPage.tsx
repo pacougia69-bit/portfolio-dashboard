@@ -84,38 +84,62 @@ export default function DashboardPage() {
     },
   });
   
-  // Calculate stats
+  // Calculate stats with 3-pillar system
   const stats = useMemo(() => {
     const totalValue = portfolio.reduce((sum, p) => {
       const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
       return sum + value;
     }, 0);
-    
+
     const totalInvested = portfolio.reduce((sum, p) => sum + p.amount * p.buyPrice, 0);
     const totalGain = totalValue - totalInvested;
     const totalGainPercent = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
-    
+
+    // Group by pillar (A, B, C)
+    let pillarA = 0;
+    let pillarB = 0;
+    let pillarC = 0;
+
+    portfolio.forEach(p => {
+      const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
+      const pillar = p.category?.toUpperCase();
+
+      if (pillar === 'A') {
+        pillarA += value;
+      } else if (pillar === 'B') {
+        pillarB += value;
+      } else if (pillar === 'C') {
+        pillarC += value;
+      } else {
+        // Default uncategorized to pillar A for now
+        pillarA += value;
+      }
+    });
+
     // Group by type
     const assetsByType: Record<string, number> = {};
     portfolio.forEach(p => {
       const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
       assetsByType[p.type] = (assetsByType[p.type] || 0) + value;
     });
-    
-    // Group by category
+
+    // Group by category (old grouping, keeping for compatibility)
     const assetsByCategory: Record<string, number> = {};
     portfolio.forEach(p => {
       const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
       const category = p.category || 'Sonstige';
       assetsByCategory[category] = (assetsByCategory[category] || 0) + value;
     });
-    
+
     return {
       totalWealth: totalValue,
       totalValue,
       totalInvested,
       totalGain,
       totalGainPercent,
+      pillarA,
+      pillarB,
+      pillarC,
       assetsByType,
       assetsByCategory,
     };
@@ -239,34 +263,155 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+        {/* Net Worth - Ganz oben */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Card className="glass-card border-2 border-primary/30">
+            <CardContent className="p-4 sm:p-8">
+              <div className="flex items-start justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm sm:text-base text-muted-foreground">Gesamtvermögen (Net Worth)</p>
+                  <p className="font-mono text-3xl sm:text-5xl font-bold mt-2 text-primary">
+                    {formatCurrency(stats.totalWealth)}
+                  </p>
+                  <div className="flex items-center gap-3 mt-3">
+                    <Badge variant={stats.totalGainPercent >= 0 ? 'default' : 'destructive'} className="font-mono text-base px-3 py-1">
+                      {formatPercent(stats.totalGainPercent)}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {stats.totalGain >= 0 ? '+' : ''}{formatCurrency(stats.totalGain)}
+                    </span>
+                  </div>
+                </div>
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Wallet className="w-6 h-6 sm:w-8 sm:h-8 text-primary" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Fortschrittsbalken Säule A - Rentenziel */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Card className="glass-card border-2 border-green-500/30 bg-green-500/5">
+            <CardContent className="p-4 sm:p-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-base sm:text-lg text-green-400">Säule A - Rentenbasis</h3>
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                      Ziel: 1.000 € monatliche Zusatzrente
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono text-xl sm:text-2xl font-bold text-green-400">
+                      {formatCurrency(stats.pillarA)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">von {formatCurrency(180000)}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Progress
+                    value={(stats.pillarA / 180000) * 100}
+                    className="h-4 bg-green-950"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{((stats.pillarA / 180000) * 100).toFixed(1)}% erreicht</span>
+                    <span>{formatCurrency(180000 - stats.pillarA)} verbleibend</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* 3-Säulen Übersicht */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
+            transition={{ delay: 0.3 }}
           >
-            <Card className="glass-card">
-              <CardContent className="p-3 sm:p-6">
+            <Card className="glass-card border-green-500/30">
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-start justify-between">
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-muted-foreground truncate">Gesamtvermögen</p>
-                    <p className="font-mono text-lg sm:text-2xl font-bold mt-1 truncate">
-                      {formatCurrency(stats.totalWealth)}
+                    <p className="text-xs sm:text-sm text-green-400 font-semibold truncate">Säule A - Renten-Basis</p>
+                    <p className="font-mono text-xl sm:text-2xl font-bold mt-2 truncate">
+                      {formatCurrency(stats.pillarA)}
                     </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge variant={stats.totalGainPercent >= 0 ? 'default' : 'destructive'} className="font-mono">
-                        {formatPercent(stats.totalGainPercent)}
-                      </Badge>
-                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      ETFs + Behalten-Aktien
+                    </p>
                   </div>
-                  <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Wallet className="w-4 h-4 sm:w-6 sm:h-6 text-primary" />
+                  <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                    <Target className="w-5 h-5 text-green-400" />
                   </div>
                 </div>
               </CardContent>
             </Card>
           </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+          >
+            <Card className="glass-card border-blue-500/30">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-blue-400 font-semibold truncate">Säule B - Krypto</p>
+                    <p className="font-mono text-xl sm:text-2xl font-bold mt-2 truncate">
+                      {formatCurrency(stats.pillarB)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      BTC, ETH, SOL, ICP
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                    <Coins className="w-5 h-5 text-blue-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+          >
+            <Card className="glass-card border-amber-500/30">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-amber-400 font-semibold truncate">Säule C - Zocker/Verkauf</p>
+                    <p className="font-mono text-xl sm:text-2xl font-bold mt-2 truncate">
+                      {formatCurrency(stats.pillarC)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Biotech-Werte
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                    <TrendingUp className="w-5 h-5 text-amber-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+
+        {/* Stats Cards - Zusätzliche Infos */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
