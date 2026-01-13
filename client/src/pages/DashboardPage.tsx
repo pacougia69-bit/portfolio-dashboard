@@ -99,6 +99,8 @@ export default function DashboardPage() {
     let pillarA = 0;
     let pillarB = 0;
     let pillarC = 0;
+    let msciWorldValue = 0;
+    let emergingMarketsValue = 0;
 
     portfolio.forEach(p => {
       const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
@@ -113,6 +115,16 @@ export default function DashboardPage() {
       } else {
         // Default uncategorized to pillar A for now
         pillarA += value;
+      }
+
+      // Identify MSCI World and Emerging Markets within Pillar A
+      const name = p.name.toLowerCase();
+      const ticker = p.ticker.toLowerCase();
+      if (name.includes('msci world') || ticker.includes('msci world') || name.includes('world') && name.includes('etf')) {
+        msciWorldValue += value;
+      }
+      if (name.includes('emerging') || name.includes('em ') || ticker.includes('em ')) {
+        emergingMarketsValue += value;
       }
     });
 
@@ -131,6 +143,46 @@ export default function DashboardPage() {
       assetsByCategory[category] = (assetsByCategory[category] || 0) + value;
     });
 
+    // Rebalancing calculations
+    const targetPillarA = totalValue * 0.80; // 80%
+    const targetPillarB = totalValue * 0.05; // 5%
+    const targetPillarC = totalValue * 0.15; // 15%
+    const targetMSCIWorld = totalValue * 0.60; // 60% of total portfolio
+    const targetEM = totalValue * 0.20; // 20% of total portfolio
+
+    const rebalancing = {
+      pillarA: {
+        current: pillarA,
+        target: targetPillarA,
+        diff: pillarA - targetPillarA,
+        diffPercent: totalValue > 0 ? ((pillarA / totalValue) * 100) - 80 : 0,
+      },
+      pillarB: {
+        current: pillarB,
+        target: targetPillarB,
+        diff: pillarB - targetPillarB,
+        diffPercent: totalValue > 0 ? ((pillarB / totalValue) * 100) - 5 : 0,
+      },
+      pillarC: {
+        current: pillarC,
+        target: targetPillarC,
+        diff: pillarC - targetPillarC,
+        diffPercent: totalValue > 0 ? ((pillarC / totalValue) * 100) - 15 : 0,
+      },
+      msciWorld: {
+        current: msciWorldValue,
+        target: targetMSCIWorld,
+        diff: msciWorldValue - targetMSCIWorld,
+        diffPercent: totalValue > 0 ? ((msciWorldValue / totalValue) * 100) - 60 : 0,
+      },
+      emergingMarkets: {
+        current: emergingMarketsValue,
+        target: targetEM,
+        diff: emergingMarketsValue - targetEM,
+        diffPercent: totalValue > 0 ? ((emergingMarketsValue / totalValue) * 100) - 20 : 0,
+      },
+    };
+
     return {
       totalWealth: totalValue,
       totalValue,
@@ -142,6 +194,7 @@ export default function DashboardPage() {
       pillarC,
       assetsByType,
       assetsByCategory,
+      rebalancing,
     };
   }, [portfolio]);
   
@@ -327,6 +380,124 @@ export default function DashboardPage() {
                     <span>{formatCurrency(180000 - stats.pillarA)} verbleibend</span>
                   </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Rebalancing-Empfehlung */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          <Card className="glass-card border-2 border-cyan-500/30 bg-cyan-500/5">
+            <CardContent className="p-4 sm:p-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                    <BarChart3 className="w-5 h-5 text-cyan-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-base sm:text-lg text-cyan-400">Rebalancing-Empfehlung</h3>
+                    <p className="text-xs text-muted-foreground">Zielallokation: A(80%), B(5%), C(15%) | MSCI World(60%), EM(20%)</p>
+                  </div>
+                </div>
+
+                {/* Check for underrepresented areas */}
+                {(() => {
+                  const underrepresented = [];
+
+                  if (stats.rebalancing.pillarA.diff < 0) {
+                    underrepresented.push({
+                      name: 'Säule A (Renten-Basis)',
+                      current: stats.rebalancing.pillarA.current,
+                      target: stats.rebalancing.pillarA.target,
+                      diff: stats.rebalancing.pillarA.diff,
+                      diffPercent: stats.rebalancing.pillarA.diffPercent,
+                      targetPercent: 80,
+                    });
+                  }
+
+                  if (stats.rebalancing.pillarB.diff < 0) {
+                    underrepresented.push({
+                      name: 'Säule B (Krypto)',
+                      current: stats.rebalancing.pillarB.current,
+                      target: stats.rebalancing.pillarB.target,
+                      diff: stats.rebalancing.pillarB.diff,
+                      diffPercent: stats.rebalancing.pillarB.diffPercent,
+                      targetPercent: 5,
+                    });
+                  }
+
+                  if (stats.rebalancing.pillarC.diff < 0) {
+                    underrepresented.push({
+                      name: 'Säule C (Zocker/Verkauf)',
+                      current: stats.rebalancing.pillarC.current,
+                      target: stats.rebalancing.pillarC.target,
+                      diff: stats.rebalancing.pillarC.diff,
+                      diffPercent: stats.rebalancing.pillarC.diffPercent,
+                      targetPercent: 15,
+                    });
+                  }
+
+                  if (stats.rebalancing.msciWorld.diff < 0) {
+                    underrepresented.push({
+                      name: 'MSCI World ETF',
+                      current: stats.rebalancing.msciWorld.current,
+                      target: stats.rebalancing.msciWorld.target,
+                      diff: stats.rebalancing.msciWorld.diff,
+                      diffPercent: stats.rebalancing.msciWorld.diffPercent,
+                      targetPercent: 60,
+                    });
+                  }
+
+                  if (stats.rebalancing.emergingMarkets.diff < 0) {
+                    underrepresented.push({
+                      name: 'Emerging Markets ETF',
+                      current: stats.rebalancing.emergingMarkets.current,
+                      target: stats.rebalancing.emergingMarkets.target,
+                      diff: stats.rebalancing.emergingMarkets.diff,
+                      diffPercent: stats.rebalancing.emergingMarkets.diffPercent,
+                      targetPercent: 20,
+                    });
+                  }
+
+                  if (underrepresented.length === 0) {
+                    return (
+                      <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
+                        <p className="text-sm text-green-400 font-medium">
+                          ✓ Portfolio ist ausgewogen! Keine Rebalancing-Maßnahmen erforderlich.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      {underrepresented.map((item, index) => (
+                        <div key={index} className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <p className="font-semibold text-cyan-300 text-sm">{item.name}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Ist: {((item.current / stats.totalValue) * 100).toFixed(1)}% ({formatCurrency(item.current)})
+                                {' → '}
+                                Soll: {item.targetPercent}% ({formatCurrency(item.target)})
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <Badge variant="outline" className="bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
+                                {formatCurrency(Math.abs(item.diff))}
+                              </Badge>
+                              <p className="text-xs text-muted-foreground mt-1">zu investieren</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </CardContent>
           </Card>
