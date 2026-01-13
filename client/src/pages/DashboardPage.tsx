@@ -278,6 +278,12 @@ export default function DashboardPage() {
       'EM': 0.20, // Alternative name for Emerging Markets
     };
 
+    // Track which ETF types we've found and their values
+    let msciWorldFound = false;
+    let emergingMarketsFound = false;
+    let msciWorldValue = 0;
+    let emergingMarketsValue = 0;
+
     // Find matching ETFs in portfolio and calculate their deficits
     const etfDeficits: Array<{
       name: string;
@@ -299,6 +305,8 @@ export default function DashboardPage() {
       // Check if this is a MSCI World ETF
       if (nameLower.includes('msci world') || tickerLower.includes('msci world') ||
           (nameLower.includes('world') && nameLower.includes('etf'))) {
+        msciWorldFound = true;
+        msciWorldValue = value;
         const targetValue = stats.totalValue * targetAllocations['MSCI World'];
         const deficit = targetValue - value;
         if (deficit > 0) {
@@ -318,6 +326,8 @@ export default function DashboardPage() {
       // Check if this is an Emerging Markets ETF
       else if (nameLower.includes('emerging') || nameLower.includes('em ') ||
                tickerLower.includes('em ') || nameLower.includes('schwellenländer')) {
+        emergingMarketsFound = true;
+        emergingMarketsValue = value;
         const targetValue = stats.totalValue * targetAllocations['Emerging Markets'];
         const deficit = targetValue - value;
         if (deficit > 0) {
@@ -360,6 +370,16 @@ export default function DashboardPage() {
       }
     });
 
+    // Check if all primary ETF targets are actually met (not just not found)
+    const msciWorldTargetMet = msciWorldFound && msciWorldValue >= stats.totalValue * targetAllocations['MSCI World'];
+    const emTargetMet = emergingMarketsFound && emergingMarketsValue >= stats.totalValue * targetAllocations['Emerging Markets'];
+
+    // Only return empty if both primary ETFs exist AND meet their targets
+    if (etfDeficits.length === 0 && msciWorldTargetMet && emTargetMet) {
+      return [];
+    }
+
+    // If we have no deficits but ETFs don't meet targets (edge case), return empty for now
     if (etfDeficits.length === 0) {
       return [];
     }
