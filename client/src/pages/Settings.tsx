@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/_core/hooks/useAuth';
 import { usePortfolio } from '@/contexts/PortfolioContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,13 +20,23 @@ import { ArrowLeft, Key, Shield, Trash2, AlertTriangle, Download, Database, Lock
 
 export default function Settings() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, changePin, resetPin } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { assets, clearAllData, exportToCSV } = usePortfolio();
   
   const [oldPin, setOldPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmNewPin, setConfirmNewPin] = useState('');
   const [pinError, setPinError] = useState('');
+
+  // PIN management is now handled via Einstellungen page
+  const changePin = (_oldPin: string, _newPin: string) => {
+    console.warn('PIN management moved to Einstellungen page');
+    return false;
+  };
+
+  const resetPin = () => {
+    console.warn('PIN reset moved to Einstellungen page');
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {

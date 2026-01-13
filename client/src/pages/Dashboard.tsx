@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/_core/hooks/useAuth';
 import { usePortfolio, Asset } from '@/contexts/PortfolioContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

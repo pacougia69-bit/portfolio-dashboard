@@ -890,8 +890,8 @@ export const appRouter = router({
         }
 
         // Update only settings, keep existing PIN hash
-        const db = await import('./db').then(m => m.getDb());
-        const dbInstance = await db();
+        const { getDb } = await import('./db');
+        const dbInstance = await getDb();
         if (!dbInstance) throw new Error("Database not available");
 
         const { userSettings } = await import('../drizzle/schema');
