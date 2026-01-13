@@ -1,1 +1,0 @@
-ALTER TABLE `watchlist_items` ADD `wkn` varchar(20);
