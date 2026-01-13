@@ -106,7 +106,7 @@ export async function parseDKBPDF(pdfBuffer: Buffer): Promise<DKBTransaction> {
       type = 'Verkauf';
     }
     
-    // Extract ISIN and WKN - they appear together as IE00B1XNHC34(A0MW0M)
+    // Extract ISIN and WKN - they appear together as IE00B1XNHC34(A0MW0M) or DE000A0F5UF5(A0F5UF)
     const isinWknMatch = text.match(/([A-Z]{2}[A-Z0-9]{10})\s*\(([A-Z0-9]{6})\)/);
     if (!isinWknMatch) {
       throw new Error('ISIN nicht gefunden');
@@ -114,14 +114,14 @@ export async function parseDKBPDF(pdfBuffer: Buffer): Promise<DKBTransaction> {
     const isin = isinWknMatch[1];
     const wkn = isinWknMatch[2];
     
-    // Extract security name
-    const nameMatch = text.match(/St[üu]ck\s+[\d,]+\s*([^\n]+(?:\n[^\n]+)?)\s*IE00/);
+    // Extract security name (between quantity and ISIN which starts with 2 letters)
+    const nameMatch = text.match(/St[üu]ck\s+[\d,]+\s*([^\n]+(?:\n[^\n]+)?)\s*[A-Z]{2}[A-Z0-9]{10}/);
     let name = '';
     if (nameMatch) {
       name = nameMatch[1].replace(/\s+/g, ' ').trim();
     } else {
       // Fallback: extract text between quantity and ISIN
-      const nameMatch2 = text.match(/St[üu]ck\s+[\d,]+\s*([A-Z][^\n]+(?:\n[A-Z][^\n]+)?)\s*IE00/);
+      const nameMatch2 = text.match(/St[üu]ck\s+[\d,]+\s*([A-Z][^\n]+(?:\n[A-Z][^\n]+)?)\s*[A-Z]{2}[A-Z0-9]{10}/);
       if (nameMatch2) {
         name = nameMatch2[1].replace(/\s+/g, ' ').trim();
       }
