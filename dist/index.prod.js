@@ -2859,117 +2859,93 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
         };
       }
       const positions = await getPortfolioPositions(userId);
-      const positionMap = /* @__PURE__ */ new Map();
-      positions.forEach((pos) => {
-        positionMap.set(pos.ticker, pos);
-      });
-      const settings = await getUserSettings(userId);
-      if (!settings || !settings.targetAllocations) {
-        return {
-          success: false,
-          error: "Keine Ziel-Allokation in Einstellungen gefunden. Bitte setzen Sie Ihre Strategie.",
-          totalPortfolioValue: 0,
-          groups: [],
-          underweightGroups: [],
-          overweightGroups: [],
-          allocation: [],
-          allocationDetails: []
-        };
-      }
-      const targetAllocations = settings.targetAllocations;
-      const totalValue = activeETFs.reduce((sum, plan) => {
-        const position = positionMap.get(plan.ticker);
+      const totalValue = positions.reduce((sum, pos) => {
+        const price = pos.currentPrice || pos.buyPrice;
+        return sum + pos.amount * price;
+      }, 0);
+      const individualETFTargets = [
+        { wkn: "A0RPWH", name: "MSCI World", targetPercent: 60 },
+        { wkn: "A111X9", name: "Emerging Markets", targetPercent: 20 }
+      ];
+      const etfDeficits = [];
+      individualETFTargets.forEach((etfTarget) => {
+        const position = positions.find((p) => p.wkn === etfTarget.wkn);
+        let currentValue = 0;
         if (position) {
           const price = position.currentPrice || position.buyPrice;
-          return sum + position.amount * price;
+          currentValue = position.amount * price;
         }
-        return sum;
-      }, 0);
-      const groupedByCategory = /* @__PURE__ */ new Map();
-      const allCategories = /* @__PURE__ */ new Set();
-      activeETFs.forEach((plan) => {
-        const position = positionMap.get(plan.ticker);
-        const category = position?.category || "Sonstige";
-        const price = position?.currentPrice || position?.buyPrice || 0;
-        const value = position ? position.amount * price : 0;
-        allCategories.add(category);
-        groupedByCategory.set(
-          category,
-          (groupedByCategory.get(category) || 0) + value
-        );
-      });
-      const groups = [];
-      targetAllocations.forEach((target) => {
-        const currentValue = groupedByCategory.get(target.category) || 0;
         const currentPercent = totalValue > 0 ? currentValue / totalValue * 100 : 0;
-        const targetPercent = target.target || target.targetPercent || 0;
-        const difference = currentPercent - targetPercent;
-        groups.push({
-          category: target.category,
+        const targetValue = totalValue * (etfTarget.targetPercent / 100);
+        const deficit = targetValue - currentValue;
+        const difference = currentPercent - etfTarget.targetPercent;
+        etfDeficits.push({
+          wkn: etfTarget.wkn,
+          name: etfTarget.name,
           currentValue,
           currentPercent,
-          targetPercent,
+          targetPercent: etfTarget.targetPercent,
+          targetValue,
+          deficit,
           difference,
-          isUnderweight: difference < 0
+          isUnderweight: difference < 0,
+          position
         });
       });
-      allCategories.forEach((category) => {
-        const existsInTargets = targetAllocations.some((t2) => t2.category === category);
-        if (!existsInTargets) {
-          const currentValue = groupedByCategory.get(category) || 0;
-          const currentPercent = totalValue > 0 ? currentValue / totalValue * 100 : 0;
-          const targetPercent = 5;
-          const difference = currentPercent - targetPercent;
-          groups.push({
-            category,
-            currentValue,
-            currentPercent,
-            targetPercent,
-            difference,
-            isUnderweight: difference < 0
-            // Most likely underweight with 5% target
-          });
-        }
-      });
-      const underweightGroups = groups.filter((g) => g.isUnderweight).sort((a, b) => a.difference - b.difference);
-      const overweightGroups = groups.filter((g) => !g.isUnderweight).sort((a, b) => b.difference - a.difference);
+      const underweightGroups = etfDeficits.filter((g) => g.isUnderweight).sort((a, b) => a.difference - b.difference);
+      const overweightGroups = etfDeficits.filter((g) => !g.isUnderweight).sort((a, b) => b.difference - a.difference);
       const allocation = [];
       const allocationDetails = [];
       if (underweightGroups.length > 0 && availableCapital > 0) {
-        const totalUnderweight = underweightGroups.reduce((sum, g) => sum + Math.abs(g.difference), 0);
-        underweightGroups.forEach((group) => {
-          const proportion = Math.abs(group.difference) / totalUnderweight;
-          const categoryAmount = availableCapital * proportion;
+        const totalDeficit = underweightGroups.reduce((sum, g) => sum + g.deficit, 0);
+        underweightGroups.forEach((etf) => {
+          const proportion = etf.deficit / totalDeficit;
+          const allocatedAmount = Math.min(availableCapital * proportion, etf.deficit);
           allocation.push({
-            category: group.category,
-            amount: categoryAmount,
+            category: etf.name,
+            amount: allocatedAmount,
             proportion: proportion * 100,
-            reason: `${Math.abs(group.difference).toFixed(2)}% untergewichtet`
+            reason: `${Math.abs(etf.difference).toFixed(2)}% untergewichtet (Ziel: ${etf.targetPercent}%)`
           });
-          const categoryETFs = activeETFs.filter((plan) => {
-            const position = positionMap.get(plan.ticker);
-            return (position?.category || "Sonstige") === group.category;
+          const savingsPlan = activeETFs.find((plan) => {
+            const pos = positions.find((p) => p.ticker === plan.ticker);
+            return pos && pos.wkn === etf.wkn;
           });
-          if (categoryETFs.length > 0) {
-            const amountPerETF = categoryAmount / categoryETFs.length;
-            categoryETFs.forEach((plan) => {
-              const position = positionMap.get(plan.ticker);
-              const currentPrice = position?.currentPrice || position?.buyPrice || 0;
-              allocationDetails.push({
-                category: group.category,
-                name: plan.name,
-                ticker: plan.ticker,
-                wkn: position?.wkn || position?.isin || "N/A",
-                isin: position?.isin || "",
-                amount: amountPerETF,
-                currentPrice,
-                shares: currentPrice > 0 ? amountPerETF / currentPrice : 0,
-                monthlySavingsRate: Number(plan.monthlyAmount)
-              });
-            });
-          }
+          const currentPrice = etf.position?.currentPrice || etf.position?.buyPrice || 0;
+          allocationDetails.push({
+            category: etf.name,
+            name: savingsPlan?.name || etf.name,
+            ticker: etf.position?.ticker || savingsPlan?.ticker || "N/A",
+            wkn: etf.wkn,
+            isin: etf.position?.isin || "",
+            amount: allocatedAmount,
+            currentPrice,
+            shares: currentPrice > 0 ? allocatedAmount / currentPrice : 0,
+            monthlySavingsRate: savingsPlan ? Number(savingsPlan.monthlyAmount) : 0
+          });
         });
       }
+      const pillarAValue = etfDeficits.reduce((sum, etf) => sum + etf.currentValue, 0);
+      const pillarAPercent = totalValue > 0 ? pillarAValue / totalValue * 100 : 0;
+      const pillarATargetPercent = 80;
+      const groups = [
+        {
+          category: "S\xE4ule A (Aktien ETF)",
+          currentValue: pillarAValue,
+          currentPercent: pillarAPercent,
+          targetPercent: pillarATargetPercent,
+          difference: pillarAPercent - pillarATargetPercent,
+          isUnderweight: pillarAPercent < pillarATargetPercent
+        },
+        ...etfDeficits.map((etf) => ({
+          category: `${etf.name} (${etf.wkn})`,
+          currentValue: etf.currentValue,
+          currentPercent: etf.currentPercent,
+          targetPercent: etf.targetPercent,
+          difference: etf.difference,
+          isUnderweight: etf.isUnderweight
+        }))
+      ];
       return {
         success: true,
         totalPortfolioValue: totalValue,
@@ -2983,7 +2959,7 @@ Es wurden keine neuen Transaktionen hinzugef\xFCgt.`
           totalInvested: allocation.reduce((sum, a) => sum + a.amount, 0),
           numberOfUnderweightGroups: underweightGroups.length,
           numberOfOverweightGroups: overweightGroups.length,
-          largestUnderweight: underweightGroups[0]?.category || "Keine",
+          largestUnderweight: underweightGroups[0]?.name || "Keine",
           activeETFsCount: activeETFs.length
         }
       };
