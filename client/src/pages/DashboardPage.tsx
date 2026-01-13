@@ -255,61 +255,107 @@ export default function DashboardPage() {
     };
   }, [portfolio]);
 
-  // Investment suggestions based on available capital
+  // Investment suggestions based on available capital - focused on individual ETFs
   const investmentSuggestions = useMemo(() => {
     if (availableCapital <= 0 || stats.totalValue === 0) {
       return [];
     }
 
-    // Collect underrepresented areas with their deficits
-    const deficits = [];
+    // Define target allocations for specific ETFs (% of total portfolio)
+    const targetAllocations: Record<string, number> = {
+      'MSCI World': 0.60, // 60% of total portfolio
+      'Emerging Markets': 0.20, // 20% of total portfolio
+      'EM': 0.20, // Alternative name for Emerging Markets
+    };
 
-    if (stats.rebalancing.pillarA.diff < 0) {
-      deficits.push({
-        name: 'Säule A (Renten-Basis)',
-        deficit: Math.abs(stats.rebalancing.pillarA.diff),
-        priority: 1, // Highest priority for retirement base
-      });
-    }
+    // Find matching ETFs in portfolio and calculate their deficits
+    const etfDeficits: Array<{
+      name: string;
+      ticker: string;
+      currentValue: number;
+      targetValue: number;
+      deficit: number;
+      currentPercent: number;
+      targetPercent: number;
+      priority: number;
+    }> = [];
 
-    if (stats.rebalancing.msciWorld.diff < 0) {
-      deficits.push({
-        name: 'MSCI World ETF',
-        deficit: Math.abs(stats.rebalancing.msciWorld.diff),
-        priority: 1,
-      });
-    }
+    portfolio.forEach(p => {
+      const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
+      const name = p.name;
+      const nameLower = name.toLowerCase();
+      const tickerLower = p.ticker.toLowerCase();
 
-    if (stats.rebalancing.emergingMarkets.diff < 0) {
-      deficits.push({
-        name: 'Emerging Markets ETF',
-        deficit: Math.abs(stats.rebalancing.emergingMarkets.diff),
-        priority: 1,
-      });
-    }
+      // Check if this is a MSCI World ETF
+      if (nameLower.includes('msci world') || tickerLower.includes('msci world') ||
+          (nameLower.includes('world') && nameLower.includes('etf'))) {
+        const targetValue = stats.totalValue * targetAllocations['MSCI World'];
+        const deficit = targetValue - value;
+        if (deficit > 0) {
+          etfDeficits.push({
+            name: name,
+            ticker: p.ticker,
+            currentValue: value,
+            targetValue: targetValue,
+            deficit: deficit,
+            currentPercent: (value / stats.totalValue) * 100,
+            targetPercent: targetAllocations['MSCI World'] * 100,
+            priority: 1,
+          });
+        }
+      }
 
-    if (stats.rebalancing.pillarB.diff < 0) {
-      deficits.push({
-        name: 'Säule B (Krypto)',
-        deficit: Math.abs(stats.rebalancing.pillarB.diff),
-        priority: 2,
-      });
-    }
+      // Check if this is an Emerging Markets ETF
+      else if (nameLower.includes('emerging') || nameLower.includes('em ') ||
+               tickerLower.includes('em ') || nameLower.includes('schwellenländer')) {
+        const targetValue = stats.totalValue * targetAllocations['Emerging Markets'];
+        const deficit = targetValue - value;
+        if (deficit > 0) {
+          etfDeficits.push({
+            name: name,
+            ticker: p.ticker,
+            currentValue: value,
+            targetValue: targetValue,
+            deficit: deficit,
+            currentPercent: (value / stats.totalValue) * 100,
+            targetPercent: targetAllocations['Emerging Markets'] * 100,
+            priority: 1,
+          });
+        }
+      }
 
-    if (stats.rebalancing.pillarC.diff < 0) {
-      deficits.push({
-        name: 'Säule C (Zocker/Verkauf)',
-        deficit: Math.abs(stats.rebalancing.pillarC.diff),
-        priority: 3,
-      });
-    }
+      // Check for crypto assets in Pillar B
+      else if (p.category?.toUpperCase() === 'B' || p.type === 'Krypto') {
+        // For crypto, we check if Pillar B overall is under 5%
+        const pillarBPercent = (stats.pillarB / stats.totalValue) * 100;
+        if (pillarBPercent < 5) {
+          const targetValueForB = stats.totalValue * 0.05;
+          const currentB = stats.pillarB;
+          const deficitB = targetValueForB - currentB;
 
-    if (deficits.length === 0) {
+          // Only add this crypto if we haven't added one yet
+          if (deficitB > 0 && !etfDeficits.some(d => d.name.includes('Krypto'))) {
+            etfDeficits.push({
+              name: name,
+              ticker: p.ticker,
+              currentValue: currentB,
+              targetValue: targetValueForB,
+              deficit: deficitB,
+              currentPercent: pillarBPercent,
+              targetPercent: 5,
+              priority: 2,
+            });
+          }
+        }
+      }
+    });
+
+    if (etfDeficits.length === 0) {
       return [];
     }
 
-    // Sort by priority, then by deficit amount
-    deficits.sort((a, b) => {
+    // Sort by priority (1 = highest), then by deficit
+    etfDeficits.sort((a, b) => {
       if (a.priority !== b.priority) {
         return a.priority - b.priority;
       }
@@ -317,10 +363,10 @@ export default function DashboardPage() {
     });
 
     // Calculate total deficit
-    const totalDeficit = deficits.reduce((sum, d) => sum + d.deficit, 0);
+    const totalDeficit = etfDeficits.reduce((sum, d) => sum + d.deficit, 0);
 
     // Distribute available capital proportionally to deficits
-    const suggestions = deficits.map(d => {
+    const suggestions = etfDeficits.map(d => {
       const proportion = d.deficit / totalDeficit;
       const suggestedAmount = Math.min(
         Math.round(availableCapital * proportion),
@@ -328,8 +374,11 @@ export default function DashboardPage() {
       );
       return {
         name: d.name,
+        ticker: d.ticker,
         amount: suggestedAmount,
         deficit: d.deficit,
+        currentPercent: d.currentPercent,
+        targetPercent: d.targetPercent,
       };
     });
 
@@ -343,7 +392,7 @@ export default function DashboardPage() {
     }
 
     return suggestions.filter(s => s.amount > 0);
-  }, [availableCapital, stats]);
+  }, [availableCapital, stats, portfolio]);
 
   // Dividend stats
   const dividendStats = useMemo(() => {
@@ -750,44 +799,57 @@ export default function DashboardPage() {
                     step="100"
                     value={availableCapital || ''}
                     onChange={(e) => setAvailableCapital(Number(e.target.value) || 0)}
-                    placeholder="15000"
+                    placeholder="1350"
                     className="text-lg font-mono"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Monatliche Sparrate oder Einmalanlage
+                  </p>
                 </div>
 
-                {/* Investment Suggestions */}
+                {/* Investment Suggestions - Concrete Purchase List */}
                 {availableCapital > 0 && investmentSuggestions.length > 0 ? (
                   <div className="space-y-3 pt-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Empfohlene Aufteilung:</span>
+                    <div className="flex items-center justify-between text-sm pb-2 border-b border-purple-500/20">
+                      <span className="font-semibold text-purple-300">Kaufempfehlungen</span>
                       <span className="font-semibold text-purple-300">
-                        {formatCurrency(investmentSuggestions.reduce((sum, s) => sum + s.amount, 0))}
+                        Gesamt: {formatCurrency(investmentSuggestions.reduce((sum, s) => sum + s.amount, 0))}
                       </span>
                     </div>
                     {investmentSuggestions.map((suggestion, index) => (
                       <div
                         key={index}
-                        className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20"
+                        className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/15 transition-colors"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1">
-                            <p className="font-semibold text-purple-300 text-sm">{suggestion.name}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Progress
-                                value={(suggestion.amount / suggestion.deficit) * 100}
-                                className="h-2 flex-1 bg-purple-950"
-                              />
-                              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                {((suggestion.amount / suggestion.deficit) * 100).toFixed(0)}%
-                              </span>
+                        <div className="space-y-2">
+                          {/* Main buy recommendation */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <p className="font-semibold text-purple-200 text-sm leading-tight">
+                                Kauf {suggestion.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                WKN: {suggestion.ticker}
+                              </p>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-base font-mono">
+                            <Badge variant="outline" className="bg-purple-500/30 text-purple-100 border-purple-400/40 text-base font-mono font-bold shrink-0">
                               {formatCurrency(suggestion.amount)}
                             </Badge>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              von {formatCurrency(suggestion.deficit)}
+                          </div>
+
+                          {/* Progress and percentage info */}
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Progress
+                                value={(suggestion.currentPercent / suggestion.targetPercent) * 100}
+                                className="h-1.5 flex-1 bg-purple-950"
+                              />
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {suggestion.currentPercent.toFixed(1)}% → {suggestion.targetPercent.toFixed(0)}%
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Aktuell {suggestion.currentPercent.toFixed(1)}% vom Portfolio, Ziel: {suggestion.targetPercent.toFixed(0)}%
                             </p>
                           </div>
                         </div>
@@ -796,14 +858,20 @@ export default function DashboardPage() {
                   </div>
                 ) : availableCapital > 0 ? (
                   <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
-                    <p className="text-sm text-green-400 font-medium">
-                      ✓ Alle Bereiche sind ausgewogen! Sie können frei investieren.
+                    <p className="text-sm text-green-400 font-medium text-center">
+                      ✓ Portfolio ist optimal allokiert!
+                    </p>
+                    <p className="text-xs text-muted-foreground text-center mt-1">
+                      Alle ETFs haben ihre Zielgewichtung erreicht
                     </p>
                   </div>
                 ) : (
                   <div className="p-4 rounded-lg bg-muted/50">
                     <p className="text-sm text-muted-foreground text-center">
-                      Geben Sie Ihr verfügbares Kapital ein, um Investitionsvorschläge zu erhalten
+                      Geben Sie Ihr verfügbares Kapital ein, um konkrete Kaufempfehlungen zu erhalten
+                    </p>
+                    <p className="text-xs text-muted-foreground text-center mt-1">
+                      Empfehlung: {formatCurrency(1350)} (monatliche Sparrate)
                     </p>
                   </div>
                 )}
