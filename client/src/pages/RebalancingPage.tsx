@@ -209,7 +209,7 @@ export default function RebalancingPage() {
                           Gesamt
                         </TableCell>
                         <TableCell className="text-right font-bold text-green-600">
-                          {data.summary.totalInvested.toLocaleString('de-DE', {
+                          {data.summary?.totalInvested.toLocaleString('de-DE', {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })} €
