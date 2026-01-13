@@ -71,6 +71,11 @@ const DEFAULT_SETTINGS: DashboardSettings = {
 const SETTINGS_KEY = 'dashboard-settings';
 
 const loadSettings = (): DashboardSettings => {
+  // Check if localStorage is available (client-side only)
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return DEFAULT_SETTINGS;
+  }
+
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
     if (stored) {
@@ -83,6 +88,11 @@ const loadSettings = (): DashboardSettings => {
 };
 
 const saveSettings = (settings: DashboardSettings) => {
+  // Check if localStorage is available (client-side only)
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return;
+  }
+
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch (error) {
