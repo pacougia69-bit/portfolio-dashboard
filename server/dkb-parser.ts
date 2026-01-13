@@ -65,10 +65,13 @@ export async function parseDKBPDF(pdfBuffer: Buffer): Promise<DKBTransaction> {
   let text: string;
   try {
     text = await extractTextFromPDF(pdfBuffer);
+    console.log('[DKB Parser] Successfully extracted text, length:', text.length);
+    console.log('[DKB Parser] Text preview:', text.substring(0, 300));
   } catch (error) {
+    console.error('[DKB Parser] PDF extraction failed:', error);
     throw new Error('PDF konnte nicht analysiert werden. Bitte stellen Sie sicher, dass es sich um eine gültige DKB-PDF handelt.');
   }
-  
+
   // Wrap all parsing logic in try-catch to prevent server crashes
   try {
     // Extract order number
@@ -167,8 +170,10 @@ export async function parseDKBPDF(pdfBuffer: Buffer): Promise<DKBTransaction> {
     };
   } catch (error) {
     // Log detailed error for debugging
-    console.error('DKB PDF parsing error:', error);
-    
+    console.error('[DKB Parser] Parsing error:', error);
+    console.error('[DKB Parser] Extracted text length:', text?.length || 0);
+    console.error('[DKB Parser] Text preview:', text?.substring(0, 500) || 'No text extracted');
+
     // Return user-friendly error message
     const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler';
     throw new Error(`PDF konnte nicht analysiert werden: ${errorMessage}. Bitte stellen Sie sicher, dass es sich um eine gültige DKB-Wertpapierabrechnung handelt.`);
