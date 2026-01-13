@@ -3,7 +3,7 @@
  * Übersicht mit Gesamtvermögen, Charts, Risiko-Warnung, Action Items
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,12 +11,22 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { motion } from 'framer-motion';
 import { trpc } from '@/lib/trpc';
 import {
   Wallet, TrendingUp, TrendingDown, PieChart as PieChartIcon, BarChart3,
   AlertTriangle, ArrowRight, Briefcase, Coins, Target,
-  ArrowUpRight, ArrowDownRight, Clock, RefreshCw, Bot
+  ArrowUpRight, ArrowDownRight, Clock, RefreshCw, Bot, Settings
 } from 'lucide-react';
 import {
   PieChart as RechartsPie, Pie, Cell, ResponsiveContainer,
@@ -46,8 +56,55 @@ const formatPercent = (value: number) => {
   return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
 };
 
+// Settings interface
+interface DashboardSettings {
+  targetSum: number;
+  desiredPension: number;
+}
+
+const DEFAULT_SETTINGS: DashboardSettings = {
+  targetSum: 180000,
+  desiredPension: 1000,
+};
+
+// LocalStorage helpers
+const SETTINGS_KEY = 'dashboard-settings';
+
+const loadSettings = (): DashboardSettings => {
+  try {
+    const stored = localStorage.getItem(SETTINGS_KEY);
+    if (stored) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+    }
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+  }
+  return DEFAULT_SETTINGS;
+};
+
+const saveSettings = (settings: DashboardSettings) => {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+  }
+};
+
 export default function DashboardPage() {
   const [, setLocation] = useLocation();
+
+  // Settings state
+  const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tempSettings, setTempSettings] = useState<DashboardSettings>(settings);
+
+  // Available capital for investment suggestions
+  const [availableCapital, setAvailableCapital] = useState<number>(0);
+
+  // Save settings to localStorage when changed
+  useEffect(() => {
+    saveSettings(settings);
+  }, [settings]);
   
   // Fetch data from backend
   const { data: portfolio = [], isLoading: portfolioLoading, refetch: refetchPortfolio } = trpc.portfolio.list.useQuery();
@@ -197,7 +254,97 @@ export default function DashboardPage() {
       rebalancing,
     };
   }, [portfolio]);
-  
+
+  // Investment suggestions based on available capital
+  const investmentSuggestions = useMemo(() => {
+    if (availableCapital <= 0 || stats.totalValue === 0) {
+      return [];
+    }
+
+    // Collect underrepresented areas with their deficits
+    const deficits = [];
+
+    if (stats.rebalancing.pillarA.diff < 0) {
+      deficits.push({
+        name: 'Säule A (Renten-Basis)',
+        deficit: Math.abs(stats.rebalancing.pillarA.diff),
+        priority: 1, // Highest priority for retirement base
+      });
+    }
+
+    if (stats.rebalancing.msciWorld.diff < 0) {
+      deficits.push({
+        name: 'MSCI World ETF',
+        deficit: Math.abs(stats.rebalancing.msciWorld.diff),
+        priority: 1,
+      });
+    }
+
+    if (stats.rebalancing.emergingMarkets.diff < 0) {
+      deficits.push({
+        name: 'Emerging Markets ETF',
+        deficit: Math.abs(stats.rebalancing.emergingMarkets.diff),
+        priority: 1,
+      });
+    }
+
+    if (stats.rebalancing.pillarB.diff < 0) {
+      deficits.push({
+        name: 'Säule B (Krypto)',
+        deficit: Math.abs(stats.rebalancing.pillarB.diff),
+        priority: 2,
+      });
+    }
+
+    if (stats.rebalancing.pillarC.diff < 0) {
+      deficits.push({
+        name: 'Säule C (Zocker/Verkauf)',
+        deficit: Math.abs(stats.rebalancing.pillarC.diff),
+        priority: 3,
+      });
+    }
+
+    if (deficits.length === 0) {
+      return [];
+    }
+
+    // Sort by priority, then by deficit amount
+    deficits.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      return b.deficit - a.deficit;
+    });
+
+    // Calculate total deficit
+    const totalDeficit = deficits.reduce((sum, d) => sum + d.deficit, 0);
+
+    // Distribute available capital proportionally to deficits
+    const suggestions = deficits.map(d => {
+      const proportion = d.deficit / totalDeficit;
+      const suggestedAmount = Math.min(
+        Math.round(availableCapital * proportion),
+        d.deficit
+      );
+      return {
+        name: d.name,
+        amount: suggestedAmount,
+        deficit: d.deficit,
+      };
+    });
+
+    // Adjust if total suggested exceeds available capital
+    const totalSuggested = suggestions.reduce((sum, s) => sum + s.amount, 0);
+    if (totalSuggested > availableCapital) {
+      const ratio = availableCapital / totalSuggested;
+      suggestions.forEach(s => {
+        s.amount = Math.round(s.amount * ratio);
+      });
+    }
+
+    return suggestions.filter(s => s.amount > 0);
+  }, [availableCapital, stats]);
+
   // Dividend stats
   const dividendStats = useMemo(() => {
     const thisYear = dividends.reduce((sum, d) => sum + d.amount, 0);
@@ -294,6 +441,75 @@ export default function DashboardPage() {
             <p className="text-muted-foreground text-sm sm:text-base">Übersicht Ihrer Finanzen</p>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="touch-target text-xs sm:text-sm"
+                >
+                  <Settings className="w-4 h-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Einstellungen</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Dashboard Einstellungen</DialogTitle>
+                  <DialogDescription>
+                    Passen Sie Ihre Rentenziele an
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="targetSum">Zielsumme (€)</Label>
+                    <Input
+                      id="targetSum"
+                      type="number"
+                      value={tempSettings.targetSum}
+                      onChange={(e) => setTempSettings({ ...tempSettings, targetSum: Number(e.target.value) })}
+                      placeholder="180000"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Benötigtes Kapital für Ihre Zusatzrente
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="desiredPension">Wunsch-Rente (€/Monat)</Label>
+                    <Input
+                      id="desiredPension"
+                      type="number"
+                      value={tempSettings.desiredPension}
+                      onChange={(e) => setTempSettings({ ...tempSettings, desiredPension: Number(e.target.value) })}
+                      placeholder="1000"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Monatliche Zusatzrente (bei 4% Entnahmerate)
+                    </p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setTempSettings(settings);
+                      setSettingsOpen(false);
+                    }}
+                  >
+                    Abbrechen
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setSettings(tempSettings);
+                      setSettingsOpen(false);
+                      toast.success('Einstellungen gespeichert');
+                    }}
+                  >
+                    Speichern
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             <Button
               variant="outline"
               size="sm"
@@ -360,24 +576,24 @@ export default function DashboardPage() {
                   <div>
                     <h3 className="font-semibold text-base sm:text-lg text-green-400">Säule A - Rentenbasis</h3>
                     <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                      Ziel: 1.000 € monatliche Zusatzrente
+                      Ziel: {formatCurrency(settings.desiredPension)} monatliche Zusatzrente
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="font-mono text-xl sm:text-2xl font-bold text-green-400">
                       {formatCurrency(stats.pillarA)}
                     </p>
-                    <p className="text-xs text-muted-foreground">von {formatCurrency(180000)}</p>
+                    <p className="text-xs text-muted-foreground">von {formatCurrency(settings.targetSum)}</p>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Progress
-                    value={(stats.pillarA / 180000) * 100}
+                    value={(stats.pillarA / settings.targetSum) * 100}
                     className="h-4 bg-green-950"
                   />
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{((stats.pillarA / 180000) * 100).toFixed(1)}% erreicht</span>
-                    <span>{formatCurrency(180000 - stats.pillarA)} verbleibend</span>
+                    <span>{((stats.pillarA / settings.targetSum) * 100).toFixed(1)}% erreicht</span>
+                    <span>{formatCurrency(settings.targetSum - stats.pillarA)} verbleibend</span>
                   </div>
                 </div>
               </div>
@@ -498,6 +714,99 @@ export default function DashboardPage() {
                     </div>
                   );
                 })()}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Investment-Vorschläge */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="glass-card border-2 border-purple-500/30 bg-purple-500/5">
+            <CardContent className="p-4 sm:p-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                    <Coins className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-base sm:text-lg text-purple-400">Investment-Vorschläge</h3>
+                    <p className="text-xs text-muted-foreground">Optimale Verteilung Ihres verfügbaren Kapitals</p>
+                  </div>
+                </div>
+
+                {/* Available Capital Input */}
+                <div className="space-y-2">
+                  <Label htmlFor="availableCapital" className="text-sm font-medium">
+                    Verfügbares Kapital (€)
+                  </Label>
+                  <Input
+                    id="availableCapital"
+                    type="number"
+                    min="0"
+                    step="100"
+                    value={availableCapital || ''}
+                    onChange={(e) => setAvailableCapital(Number(e.target.value) || 0)}
+                    placeholder="15000"
+                    className="text-lg font-mono"
+                  />
+                </div>
+
+                {/* Investment Suggestions */}
+                {availableCapital > 0 && investmentSuggestions.length > 0 ? (
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Empfohlene Aufteilung:</span>
+                      <span className="font-semibold text-purple-300">
+                        {formatCurrency(investmentSuggestions.reduce((sum, s) => sum + s.amount, 0))}
+                      </span>
+                    </div>
+                    {investmentSuggestions.map((suggestion, index) => (
+                      <div
+                        key={index}
+                        className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1">
+                            <p className="font-semibold text-purple-300 text-sm">{suggestion.name}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Progress
+                                value={(suggestion.amount / suggestion.deficit) * 100}
+                                className="h-2 flex-1 bg-purple-950"
+                              />
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {((suggestion.amount / suggestion.deficit) * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-base font-mono">
+                              {formatCurrency(suggestion.amount)}
+                            </Badge>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              von {formatCurrency(suggestion.deficit)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : availableCapital > 0 ? (
+                  <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
+                    <p className="text-sm text-green-400 font-medium">
+                      ✓ Alle Bereiche sind ausgewogen! Sie können frei investieren.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-lg bg-muted/50">
+                    <p className="text-sm text-muted-foreground text-center">
+                      Geben Sie Ihr verfügbares Kapital ein, um Investitionsvorschläge zu erhalten
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
