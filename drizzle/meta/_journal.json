@@ -43,6 +43,20 @@
       "when": 1767186459490,
       "tag": "0005_big_adam_destine",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1768487073543,
+      "tag": "0006_gorgeous_the_twelve",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1768487175205,
+      "tag": "0007_rapid_firestar",
+      "breakpoints": true
     }
   ]
 }
