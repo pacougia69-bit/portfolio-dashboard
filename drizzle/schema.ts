@@ -220,3 +220,35 @@ export const aiChatHistory = mysqlTable("ai_chat_history", {
 export type AiChatHistory = typeof aiChatHistory.$inferSelect;
 export type InsertAiChatHistory = typeof aiChatHistory.$inferInsert;
 
+/**
+ * Tax sources (banks/brokers) with exemption orders
+ */
+export const taxSources = mysqlTable("tax_sources", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  exemptionOrder: decimal("exemptionOrder", { precision: 10, scale: 2 }).notNull().default("0"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TaxSource = typeof taxSources.$inferSelect;
+export type InsertTaxSource = typeof taxSources.$inferInsert;
+
+/**
+ * Tax settings (loss pots and exemption limit)
+ */
+export const taxSettings = mysqlTable("tax_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  stockLossPot: decimal("stockLossPot", { precision: 10, scale: 2 }).notNull().default("0"),
+  otherLossPot: decimal("otherLossPot", { precision: 10, scale: 2 }).notNull().default("0"),
+  maxExemptionOrder: decimal("maxExemptionOrder", { precision: 10, scale: 2 }).notNull().default("1000"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TaxSettings = typeof taxSettings.$inferSelect;
+export type InsertTaxSettings = typeof taxSettings.$inferInsert;
+
