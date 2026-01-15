@@ -822,3 +822,151 @@ export async function updatePortfolioFromTransaction(
     return { updated: false, positionId: Number(result[0].insertId) };
   }
 }
+
+// ============================================
+// TAX MANAGEMENT FUNCTIONS
+// ============================================
+
+/**
+ * Get all tax sources for a user
+ */
+export async function getTaxSources(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { taxSources } = await import('../drizzle/schema');
+
+  const result = await db.select().from(taxSources)
+    .where(eq(taxSources.userId, userId));
+
+  return result.map(source => ({
+    ...source,
+    exemptionOrder: parseFloat(source.exemptionOrder),
+  }));
+}
+
+/**
+ * Create a tax source
+ */
+export async function createTaxSource(userId: number, data: { name: string; exemptionOrder: number; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { taxSources } = await import('../drizzle/schema');
+
+  const result = await db.insert(taxSources).values({
+    userId,
+    name: data.name,
+    exemptionOrder: String(data.exemptionOrder),
+    notes: data.notes,
+  });
+
+  return { id: Number(result[0].insertId) };
+}
+
+/**
+ * Update a tax source
+ */
+export async function updateTaxSource(userId: number, id: number, data: Partial<{ name: string; exemptionOrder: number; notes: string }>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { taxSources } = await import('../drizzle/schema');
+
+  const updateData: Record<string, unknown> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.exemptionOrder !== undefined) updateData.exemptionOrder = String(data.exemptionOrder);
+  if (data.notes !== undefined) updateData.notes = data.notes;
+
+  await db.update(taxSources)
+    .set(updateData)
+    .where(and(eq(taxSources.id, id), eq(taxSources.userId, userId)));
+
+  return { success: true };
+}
+
+/**
+ * Delete a tax source
+ */
+export async function deleteTaxSource(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { taxSources } = await import('../drizzle/schema');
+
+  await db.delete(taxSources)
+    .where(and(eq(taxSources.id, id), eq(taxSources.userId, userId)));
+
+  return { success: true };
+}
+
+/**
+ * Get tax settings for a user
+ */
+export async function getTaxSettings(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const { taxSettings } = await import('../drizzle/schema');
+
+  const result = await db.select().from(taxSettings)
+    .where(eq(taxSettings.userId, userId));
+
+  if (result.length === 0) {
+    return {
+      userId,
+      stockLossPot: 0,
+      otherLossPot: 0,
+      maxExemptionOrder: 1000,
+    };
+  }
+
+  return {
+    ...result[0],
+    stockLossPot: parseFloat(result[0].stockLossPot),
+    otherLossPot: parseFloat(result[0].otherLossPot),
+    maxExemptionOrder: parseFloat(result[0].maxExemptionOrder),
+  };
+}
+
+/**
+ * Update or create tax settings
+ */
+export async function saveTaxSettings(userId: number, data: { stockLossPot?: number; otherLossPot?: number; maxExemptionOrder?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { taxSettings } = await import('../drizzle/schema');
+
+  const existing = await getTaxSettings(userId);
+
+  const updateData: Record<string, unknown> = {};
+  if (data.stockLossPot !== undefined) updateData.stockLossPot = String(data.stockLossPot);
+  if (data.otherLossPot !== undefined) updateData.otherLossPot = String(data.otherLossPot);
+  if (data.maxExemptionOrder !== undefined) updateData.maxExemptionOrder = String(data.maxExemptionOrder);
+
+  if (existing && 'id' in existing && existing.id) {
+    // Update existing
+    await db.update(taxSettings)
+      .set(updateData)
+      .where(eq(taxSettings.userId, userId));
+  } else {
+    // Create new
+    await db.insert(taxSettings).values({
+      userId,
+      stockLossPot: String(data.stockLossPot || 0),
+      otherLossPot: String(data.otherLossPot || 0),
+      maxExemptionOrder: String(data.maxExemptionOrder || 1000),
+    });
+  }
+
+  return { success: true };
+}
+
+/**
+ * Calculate total exemption orders across all sources
+ */
+export async function getTotalExemptionOrders(userId: number): Promise<number> {
+  const sources = await getTaxSources(userId);
+  return sources.reduce((sum, source) => sum + source.exemptionOrder, 0);
+}
