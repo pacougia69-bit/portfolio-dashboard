@@ -4,10 +4,10 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { 
-  getPortfolioPositions, 
-  createPortfolioPosition, 
-  updatePortfolioPosition, 
+import {
+  getPortfolioPositions,
+  createPortfolioPosition,
+  updatePortfolioPosition,
   deletePortfolioPosition,
   getWatchlistItems,
   createWatchlistItem,
@@ -33,6 +33,13 @@ import {
   createTransaction,
   getTransactions,
   updatePortfolioFromTransaction,
+  getTaxSources,
+  createTaxSource,
+  updateTaxSource,
+  deleteTaxSource,
+  getTaxSettings,
+  saveTaxSettings,
+  getTotalExemptionOrders,
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
 
@@ -1106,6 +1113,86 @@ export const appRouter = router({
             activeETFsCount: activeETFs.length,
           },
         };
+      }),
+  }),
+
+  // Tax Management
+  tax: router({
+    listSources: protectedProcedure.query(async ({ ctx }) => {
+      return getTaxSources(ctx.user.id);
+    }),
+
+    createSource: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1, { message: "Name ist erforderlich" }),
+        exemptionOrder: z.number().min(0, { message: "Freistellungsauftrag muss positiv sein" }),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const currentTotal = await getTotalExemptionOrders(ctx.user.id);
+        const settings = await getTaxSettings(ctx.user.id);
+        const maxLimit = settings?.maxExemptionOrder || 1000;
+
+        if (currentTotal + input.exemptionOrder > maxLimit) {
+          throw new Error(`Freistellungsauftrag würde das Limit von ${maxLimit}€ überschreiten (aktuell: ${currentTotal}€)`);
+        }
+
+        return createTaxSource(ctx.user.id, input);
+      }),
+
+    updateSource: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        exemptionOrder: z.number().min(0).optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+
+        if (data.exemptionOrder !== undefined) {
+          const sources = await getTaxSources(ctx.user.id);
+          const currentSource = sources.find(s => s.id === id);
+          const otherSourcesTotal = sources
+            .filter(s => s.id !== id)
+            .reduce((sum, s) => sum + s.exemptionOrder, 0);
+
+          const settings = await getTaxSettings(ctx.user.id);
+          const maxLimit = settings?.maxExemptionOrder || 1000;
+
+          if (otherSourcesTotal + data.exemptionOrder > maxLimit) {
+            throw new Error(`Freistellungsauftrag würde das Limit von ${maxLimit}€ überschreiten`);
+          }
+        }
+
+        return updateTaxSource(ctx.user.id, id, data);
+      }),
+
+    deleteSource: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return deleteTaxSource(ctx.user.id, input.id);
+      }),
+
+    getTotalExemption: protectedProcedure.query(async ({ ctx }) => {
+      const total = await getTotalExemptionOrders(ctx.user.id);
+      return { total };
+    }),
+
+    getSettings: protectedProcedure.query(async ({ ctx }) => {
+      return getTaxSettings(ctx.user.id);
+    }),
+
+    saveSettings: protectedProcedure
+      .input(z.object({
+        stockLossPot: z.number().min(0).optional(),
+        otherLossPot: z.number().min(0).optional(),
+        maxExemptionOrder: z.number().min(0).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return saveTaxSettings(ctx.user.id, input);
       }),
   }),
 });

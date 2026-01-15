@@ -5,8 +5,9 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "rm -rf dist && vite build && esbuild server/_core/index.prod.ts --platform=node --packages=external --bundle --format=esm --outdir=dist && cp -r drizzle dist/drizzle",
-    "start": "node --no-warnings dist/index.prod.js",
+    "build": "rm -rf dist && vite build && esbuild server/_core/index.prod.ts --platform=node --packages=external --bundle --format=esm --outdir=dist && esbuild init-db.ts --platform=node --packages=external --bundle --format=esm --outdir=dist && cp -r drizzle dist/drizzle",
+    "db:init": "node --no-warnings dist/init-db.js",
+    "start": "npm run db:init && node --no-warnings dist/index.prod.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
