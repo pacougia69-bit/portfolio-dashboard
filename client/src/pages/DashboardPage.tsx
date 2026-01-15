@@ -119,6 +119,10 @@ export default function DashboardPage() {
   // Fetch data from backend
   const { data: portfolio = [], isLoading: portfolioLoading, refetch: refetchPortfolio } = trpc.portfolio.list.useQuery();
   const { data: dividends = [], isLoading: dividendsLoading } = trpc.dividends.list.useQuery({});
+  const { data: taxSettings } = trpc.tax.getSettings.useQuery();
+  const { data: taxSources = [] } = trpc.tax.listSources.useQuery();
+  const { data: totalExemptionData } = trpc.tax.getTotalExemption.useQuery();
+  const totalExemptionOrder = totalExemptionData?.total || 0;
   
   // Check if Twelve Data API key is configured
   const { data: apiKeyStatus } = trpc.prices.hasApiKey.useQuery();
@@ -161,6 +165,28 @@ export default function DashboardPage() {
     const totalInvested = portfolio.reduce((sum, p) => sum + p.amount * p.buyPrice, 0);
     const totalGain = totalValue - totalInvested;
     const totalGainPercent = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
+
+    // Tax estimation
+    const stockLossPot = taxSettings?.stockLossPot || 0;
+    const otherLossPot = taxSettings?.otherLossPot || 0;
+    const maxExemptionOrder = taxSettings?.maxExemptionOrder || 1000;
+
+    // Estimate taxable gains (simplified)
+    let taxableGain = Math.max(0, totalGain);
+
+    // Apply loss pots
+    taxableGain = Math.max(0, taxableGain - stockLossPot - otherLossPot);
+
+    // Apply exemption order
+    taxableGain = Math.max(0, taxableGain - totalExemptionOrder);
+
+    // Calculate estimated tax (25% Abgeltungssteuer + 5.5% Soli = 26.375%)
+    const taxRate = 0.26375;
+    const estimatedTax = taxableGain * taxRate;
+
+    // Net gain after taxes
+    const netGain = totalGain - estimatedTax;
+    const netGainPercent = totalInvested > 0 ? (netGain / totalInvested) * 100 : 0;
 
     // Group by pillar (A, B, C)
     let pillarA = 0;
@@ -256,6 +282,10 @@ export default function DashboardPage() {
       totalInvested,
       totalGain,
       totalGainPercent,
+      netGain,
+      netGainPercent,
+      estimatedTax,
+      taxableGain,
       pillarA,
       pillarB,
       pillarC,
@@ -263,7 +293,7 @@ export default function DashboardPage() {
       assetsByCategory,
       rebalancing,
     };
-  }, [portfolio]);
+  }, [portfolio, taxSettings, totalExemptionOrder]);
 
   // Investment suggestions based on available capital - focused on individual ETFs
   const investmentSuggestions = useMemo(() => {
@@ -1046,6 +1076,41 @@ export default function DashboardPage() {
                     ) : (
                       <TrendingDown className="w-4 h-4 sm:w-6 sm:h-6 text-red-400" />
                     )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Net Returns After Tax Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+          >
+            <Card className="glass-card border-blue-500/30">
+              <CardContent className="p-3 sm:p-6">
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-muted-foreground truncate flex items-center gap-1">
+                      Netto-Rendite (nach Steuern)
+                    </p>
+                    <p className={`font-mono text-lg sm:text-2xl font-bold mt-1 truncate ${stats.netGain >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                      {formatCurrency(stats.netGain)}
+                    </p>
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <span className={`text-xs sm:text-sm ${stats.netGain >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                        {formatPercent(stats.netGainPercent)}
+                      </span>
+                      {stats.estimatedTax > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          (Steuer: ~{formatCurrency(stats.estimatedTax)})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className={`w-8 h-8 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${stats.netGain >= 0 ? 'bg-blue-500/10' : 'bg-red-500/10'}`}>
+                    <Target className="w-4 h-4 sm:w-6 sm:h-6 text-blue-400" />
                   </div>
                 </div>
               </CardContent>
