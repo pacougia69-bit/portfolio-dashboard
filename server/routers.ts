@@ -40,6 +40,14 @@ import {
   getTaxSettings,
   saveTaxSettings,
   getTotalExemptionOrders,
+  getAllowances,
+  createAllowance,
+  updateAllowance,
+  deleteAllowance,
+  getLossCarryforwards,
+  createLossCarryforward,
+  updateLossCarryforward,
+  deleteLossCarryforward,
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
 
@@ -1193,6 +1201,80 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         return saveTaxSettings(ctx.user.id, input);
+      }),
+
+    // Tax Allowances (Freibeträge)
+    getAllowances: protectedProcedure.query(async ({ ctx }) => {
+      return getAllowances(ctx.user.id);
+    }),
+
+    createAllowance: protectedProcedure
+      .input(z.object({
+        year: z.number(),
+        amount: z.number().min(0),
+        used: z.number().min(0).default(0),
+        broker: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return createAllowance(ctx.user.id, input);
+      }),
+
+    updateAllowance: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        year: z.number().optional(),
+        amount: z.number().min(0).optional(),
+        used: z.number().min(0).optional(),
+        broker: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+        return updateAllowance(ctx.user.id, id, data);
+      }),
+
+    deleteAllowance: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return deleteAllowance(ctx.user.id, input.id);
+      }),
+
+    // Loss Carryforwards (Verlustvorträge)
+    getLossCarryforwards: protectedProcedure.query(async ({ ctx }) => {
+      return getLossCarryforwards(ctx.user.id);
+    }),
+
+    createLossCarryforward: protectedProcedure
+      .input(z.object({
+        year: z.number(),
+        category: z.enum(["general", "stocks", "other"]),
+        amount: z.number(),
+        broker: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return createLossCarryforward(ctx.user.id, input);
+      }),
+
+    updateLossCarryforward: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        year: z.number().optional(),
+        category: z.enum(["general", "stocks", "other"]).optional(),
+        amount: z.number().optional(),
+        broker: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+        return updateLossCarryforward(ctx.user.id, id, data);
+      }),
+
+    deleteLossCarryforward: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return deleteLossCarryforward(ctx.user.id, input.id);
       }),
   }),
 });

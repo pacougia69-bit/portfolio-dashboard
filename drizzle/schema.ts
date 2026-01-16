@@ -252,3 +252,39 @@ export const taxSettings = mysqlTable("tax_settings", {
 export type TaxSettings = typeof taxSettings.$inferSelect;
 export type InsertTaxSettings = typeof taxSettings.$inferInsert;
 
+/**
+ * Tax Allowances (Freibeträge) - Yearly tax exemptions per broker
+ */
+export const taxAllowances = mysqlTable("tax_allowances", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  year: int("year").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  used: decimal("used", { precision: 10, scale: 2 }).notNull().default("0"),
+  broker: varchar("broker", { length: 100 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TaxAllowance = typeof taxAllowances.$inferSelect;
+export type InsertTaxAllowance = typeof taxAllowances.$inferInsert;
+
+/**
+ * Loss Carryforwards (Verlustvorträge) - Tax loss pots from previous years
+ */
+export const lossCarryforwards = mysqlTable("loss_carryforwards", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  year: int("year").notNull(),
+  category: mysqlEnum("category", ["general", "stocks", "other"]).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  broker: varchar("broker", { length: 100 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LossCarryforward = typeof lossCarryforwards.$inferSelect;
+export type InsertLossCarryforward = typeof lossCarryforwards.$inferInsert;
+
