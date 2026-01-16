@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { useAuth } from '@/_core/hooks/useAuth';
+import TaxManagement from '@/components/TaxManagement';
 import {
   Settings, Upload, Download, Trash2, FileJson, Database,
   AlertTriangle, RefreshCw, User, Lock, Shield, Eye, EyeOff, FileText, History,
@@ -356,6 +357,9 @@ export default function EinstellungenPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Tax Management */}
+        <TaxManagement />
 
         {/* PIN-Sperre */}
         <Card className="glass-card">
