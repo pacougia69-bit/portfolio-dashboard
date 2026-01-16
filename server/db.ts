@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, inArray, desc } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, desc, asc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, 
@@ -983,7 +983,7 @@ export async function getAllowances(userId: number) {
 
   const result = await db.select().from(taxAllowances)
     .where(eq(taxAllowances.userId, userId))
-    .orderBy(taxAllowances.year);
+    .orderBy(desc(taxAllowances.year));
 
   return result.map(row => ({
     ...row,
@@ -1066,7 +1066,7 @@ export async function getLossCarryforwards(userId: number) {
 
   const result = await db.select().from(lossCarryforwards)
     .where(eq(lossCarryforwards.userId, userId))
-    .orderBy(lossCarryforwards.year);
+    .orderBy(desc(lossCarryforwards.year));
 
   return result.map(row => ({
     ...row,
