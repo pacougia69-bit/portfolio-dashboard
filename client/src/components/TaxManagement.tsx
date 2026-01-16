@@ -51,7 +51,7 @@ export default function TaxManagement() {
 
   // State for editable total limit
   const [isEditingLimit, setIsEditingLimit] = useState(false);
-  const [editLimitValue, setEditLimitValue] = useState('1000');
+  const [editLimitValue, setEditLimitValue] = useState('2000');
 
   // Form state for Allowance
   const [allowanceYear, setAllowanceYear] = useState(String(currentYear));
@@ -209,7 +209,7 @@ export default function TaxManagement() {
     }
 
     // Check against total limit
-    const maxLimit = taxSettings?.maxExemptionOrder || 1000;
+    const maxLimit = taxSettings?.maxExemptionOrder || 2000;
     const otherAllowancesTotal = allowances
       .filter((a: TaxAllowance) => editingAllowance ? a.id !== editingAllowance.id : true)
       .reduce((sum: number, a: TaxAllowance) => sum + a.amount, 0);
@@ -288,8 +288,34 @@ export default function TaxManagement() {
     }
   };
 
+  // Initialize default tax allowances (DKB, C24, Trade Republic, Oskar)
+  const initializeDefaultAllowances = async () => {
+    const defaultAllowances = [
+      { broker: 'DKB', amount: 1300 },
+      { broker: 'C24', amount: 400 },
+      { broker: 'Trade Republic', amount: 200 },
+      { broker: 'Oskar', amount: 100 },
+    ];
+
+    try {
+      for (const allowance of defaultAllowances) {
+        await createAllowance.mutateAsync({
+          year: currentYear,
+          amount: allowance.amount,
+          used: 0,
+          broker: allowance.broker,
+          notes: 'Automatisch erstellt',
+        });
+      }
+      toast.success('Standard-Freibeträge wurden erstellt');
+      refetchAllowances();
+    } catch (error: any) {
+      toast.error('Fehler beim Erstellen der Standard-Freibeträge: ' + error.message);
+    }
+  };
+
   // Calculate totals
-  const maxLimit = taxSettings?.maxExemptionOrder || 1000;
+  const maxLimit = taxSettings?.maxExemptionOrder || 2000;
   const totalAllocated = allowances.reduce((sum: number, a: TaxAllowance) => sum + a.amount, 0);
   const totalUsed = allowances.reduce((sum: number, a: TaxAllowance) => sum + a.used, 0);
   const remainingToAllocate = maxLimit - totalAllocated;
@@ -348,7 +374,7 @@ export default function TaxManagement() {
                 Gesamt-Freibetrag
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                {maxLimit === 1000 ? 'Single (1.000 €)' : maxLimit === 2000 ? 'Verheiratet (2.000 €)' : 'Individuell'}
+                {maxLimit === 2000 ? 'Verheiratet (2.000 €)' : maxLimit === 1000 ? 'Single (1.000 €)' : 'Individuell'}
               </CardDescription>
             </div>
             {!isEditingLimit && (
@@ -556,6 +582,20 @@ export default function TaxManagement() {
               <PiggyBank className="w-12 h-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">Keine Freibeträge erfasst</p>
               <p className="text-xs mt-1">Erstellen Sie Ihren ersten Freistellungsauftrag</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={initializeDefaultAllowances}
+                className="mt-4"
+                disabled={createAllowance.isPending}
+              >
+                {createAllowance.isPending ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4 mr-2" />
+                )}
+                Standard-Freibeträge erstellen (DKB, C24, TR, Oskar)
+              </Button>
             </div>
           ) : (
             <div className="space-y-2">

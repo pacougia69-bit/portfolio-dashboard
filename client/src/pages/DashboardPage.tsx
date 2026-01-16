@@ -169,7 +169,7 @@ export default function DashboardPage() {
     // Tax estimation
     const stockLossPot = taxSettings?.stockLossPot || 0;
     const otherLossPot = taxSettings?.otherLossPot || 0;
-    const maxExemptionOrder = taxSettings?.maxExemptionOrder || 1000;
+    const maxExemptionOrder = taxSettings?.maxExemptionOrder || 2000;
 
     // Estimate taxable gains (simplified)
     let taxableGain = Math.max(0, totalGain);
