@@ -49,6 +49,10 @@ export default function TaxManagement() {
   const [editingAllowance, setEditingAllowance] = useState<TaxAllowance | null>(null);
   const [editingLoss, setEditingLossCarryforward] = useState<LossCarryforward | null>(null);
 
+  // State for editable total limit
+  const [isEditingLimit, setIsEditingLimit] = useState(false);
+  const [editLimitValue, setEditLimitValue] = useState('1000');
+
   // Form state for Allowance
   const [allowanceYear, setAllowanceYear] = useState(String(currentYear));
   const [allowanceAmount, setAllowanceAmount] = useState('1000');
@@ -66,6 +70,14 @@ export default function TaxManagement() {
   // Fetch data
   const { data: allowances = [], refetch: refetchAllowances } = trpc.tax.getAllowances.useQuery();
   const { data: lossCarryforwards = [], refetch: refetchLosses } = trpc.tax.getLossCarryforwards.useQuery();
+  const { data: taxSettings, refetch: refetchSettings } = trpc.tax.getSettings.useQuery();
+
+  // Initialize edit limit value when settings load
+  useEffect(() => {
+    if (taxSettings?.maxExemptionOrder) {
+      setEditLimitValue(String(taxSettings.maxExemptionOrder));
+    }
+  }, [taxSettings]);
 
   // Mutations for Allowances
   const createAllowance = trpc.tax.createAllowance.useMutation({
@@ -92,6 +104,16 @@ export default function TaxManagement() {
     onSuccess: () => {
       toast.success('Freibetrag wurde gelöscht');
       refetchAllowances();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  // Mutation for updating tax settings (limit)
+  const saveTaxSettings = trpc.tax.saveSettings.useMutation({
+    onSuccess: () => {
+      toast.success('Gesamt-Freibetrag wurde aktualisiert');
+      setIsEditingLimit(false);
+      refetchSettings();
     },
     onError: (error) => toast.error(error.message),
   });
@@ -186,6 +208,17 @@ export default function TaxManagement() {
       return;
     }
 
+    // Check against total limit
+    const maxLimit = taxSettings?.maxExemptionOrder || 1000;
+    const otherAllowancesTotal = allowances
+      .filter((a: TaxAllowance) => editingAllowance ? a.id !== editingAllowance.id : true)
+      .reduce((sum: number, a: TaxAllowance) => sum + a.amount, 0);
+
+    if (otherAllowancesTotal + amount > maxLimit) {
+      toast.error(`Der Gesamtbetrag würde das Limit von ${formatCurrency(maxLimit)} überschreiten (aktuell: ${formatCurrency(otherAllowancesTotal)})`);
+      return;
+    }
+
     const data = {
       year,
       amount,
@@ -199,6 +232,24 @@ export default function TaxManagement() {
     } else {
       createAllowance.mutate(data);
     }
+  };
+
+  const handleSaveLimit = () => {
+    const newLimit = parseFloat(editLimitValue);
+
+    if (isNaN(newLimit) || newLimit < 0) {
+      toast.error('Bitte geben Sie einen gültigen Betrag ein');
+      return;
+    }
+
+    // Check if current allowances exceed new limit
+    const totalAllocated = allowances.reduce((sum: number, a: TaxAllowance) => sum + a.amount, 0);
+    if (totalAllocated > newLimit) {
+      toast.error(`Das neue Limit kann nicht niedriger als die bereits verteilten ${formatCurrency(totalAllocated)} sein`);
+      return;
+    }
+
+    saveTaxSettings.mutate({ maxExemptionOrder: newLimit });
   };
 
   const handleSaveLoss = () => {
@@ -238,11 +289,13 @@ export default function TaxManagement() {
   };
 
   // Calculate totals
-  const currentYearAllowance = allowances.find((a: TaxAllowance) => a.year === currentYear);
-  const totalAllowance = currentYearAllowance?.amount || 0;
-  const usedAllowance = currentYearAllowance?.used || 0;
-  const remainingAllowance = totalAllowance - usedAllowance;
-  const allowanceUsagePercent = totalAllowance > 0 ? (usedAllowance / totalAllowance) * 100 : 0;
+  const maxLimit = taxSettings?.maxExemptionOrder || 1000;
+  const totalAllocated = allowances.reduce((sum: number, a: TaxAllowance) => sum + a.amount, 0);
+  const totalUsed = allowances.reduce((sum: number, a: TaxAllowance) => sum + a.used, 0);
+  const remainingToAllocate = maxLimit - totalAllocated;
+  const remainingAvailable = maxLimit - totalUsed;
+  const allocationPercent = maxLimit > 0 ? (totalAllocated / maxLimit) * 100 : 0;
+  const usagePercent = maxLimit > 0 ? (totalUsed / maxLimit) * 100 : 0;
 
   const totalLosses = lossCarryforwards.reduce((sum: number, loss: LossCarryforward) => sum + Math.abs(loss.amount), 0);
   const stocksLosses = lossCarryforwards
@@ -285,17 +338,118 @@ export default function TaxManagement() {
         </p>
       </div>
 
+      {/* Gesamt-Limit Card */}
+      <Card className="glass-card border-primary/30">
+        <CardHeader className="p-3 sm:p-6 pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                <Euro className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                Gesamt-Freibetrag
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                {maxLimit === 1000 ? 'Single (1.000 €)' : maxLimit === 2000 ? 'Verheiratet (2.000 €)' : 'Individuell'}
+              </CardDescription>
+            </div>
+            {!isEditingLimit && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsEditingLimit(true)}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Ändern
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-3 sm:p-6 pt-0">
+          {isEditingLimit ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Neues Limit (€)</Label>
+                <Input
+                  type="number"
+                  value={editLimitValue}
+                  onChange={(e) => setEditLimitValue(e.target.value)}
+                  placeholder="1000 oder 2000"
+                  min="0"
+                  step="100"
+                />
+                <p className="text-xs text-muted-foreground">
+                  💡 Single: 1.000 € | Verheiratet: 2.000 €
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleSaveLimit}
+                  disabled={saveTaxSettings.isPending}
+                >
+                  {saveTaxSettings.isPending ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                  )}
+                  Speichern
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditingLimit(false);
+                    setEditLimitValue(String(maxLimit));
+                  }}
+                >
+                  Abbrechen
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-2xl sm:text-3xl font-bold font-mono text-primary">
+                    {formatCurrency(maxLimit)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Gesamtlimit</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-medium">{formatCurrency(totalAllocated)}</p>
+                  <p className="text-xs text-muted-foreground">verteilt</p>
+                </div>
+              </div>
+
+              <Progress value={allocationPercent} className="h-2" />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Noch verteilbar: {formatCurrency(remainingToAllocate)}</span>
+                <span>{allocationPercent.toFixed(1)}%</span>
+              </div>
+
+              {remainingToAllocate < 0 && (
+                <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-red-600 font-medium">
+                    WARNUNG: Sie haben {formatCurrency(Math.abs(remainingToAllocate))} zu viel verteilt!
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Current Year Allowance */}
+        {/* Current Status */}
         <Card className="glass-card">
           <CardHeader className="p-3 sm:p-6 pb-2">
             <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
               <PiggyBank className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
-              Freibetrag {currentYear}
+              Aktueller Status
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm">
-              Sparerpauschbetrag / Freistellungsauftrag
+              Noch verfügbarer Freibetrag
             </CardDescription>
           </CardHeader>
           <CardContent className="p-3 sm:p-6 pt-0">
@@ -303,31 +457,27 @@ export default function TaxManagement() {
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-2xl sm:text-3xl font-bold font-mono text-green-600">
-                    {formatCurrency(remainingAllowance)}
+                    {formatCurrency(remainingAvailable)}
                   </p>
                   <p className="text-xs text-muted-foreground">noch verfügbar</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-medium">{formatCurrency(totalAllowance)}</p>
-                  <p className="text-xs text-muted-foreground">gesamt</p>
+                  <p className="text-sm font-medium">{formatCurrency(totalUsed)}</p>
+                  <p className="text-xs text-muted-foreground">genutzt</p>
                 </div>
               </div>
 
-              {totalAllowance > 0 && (
-                <>
-                  <Progress value={allowanceUsagePercent} className="h-2" />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Genutzt: {formatCurrency(usedAllowance)}</span>
-                    <span>{allowanceUsagePercent.toFixed(1)}%</span>
-                  </div>
-                </>
-              )}
+              <Progress value={usagePercent} className="h-2" />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Von {formatCurrency(maxLimit)} Limit</span>
+                <span>{usagePercent.toFixed(1)}%</span>
+              </div>
 
-              {!currentYearAllowance && (
+              {allowances.length === 0 && (
                 <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
                   <Info className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
                   <p className="text-xs text-muted-foreground">
-                    Noch kein Freibetrag für {currentYear} angelegt. Erstellen Sie einen Freistellungsauftrag.
+                    Noch keine Freibeträge angelegt. Erstellen Sie Freistellungsaufträge für Ihre Banken.
                   </p>
                 </div>
               )}
