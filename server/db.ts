@@ -970,3 +970,168 @@ export async function getTotalExemptionOrders(userId: number): Promise<number> {
   const sources = await getTaxSources(userId);
   return sources.reduce((sum, source) => sum + source.exemptionOrder, 0);
 }
+
+/**
+ * Tax Allowances (Freibeträge) Functions
+ */
+
+export async function getAllowances(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { taxAllowances } = await import('../drizzle/schema');
+
+  const result = await db.select().from(taxAllowances)
+    .where(eq(taxAllowances.userId, userId))
+    .orderBy(taxAllowances.year);
+
+  return result.map(row => ({
+    ...row,
+    amount: parseFloat(row.amount),
+    used: parseFloat(row.used),
+  }));
+}
+
+export async function createAllowance(userId: number, data: {
+  year: number;
+  amount: number;
+  used: number;
+  broker?: string;
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { taxAllowances } = await import('../drizzle/schema');
+
+  const result = await db.insert(taxAllowances).values({
+    userId,
+    year: data.year,
+    amount: String(data.amount),
+    used: String(data.used),
+    broker: data.broker,
+    notes: data.notes,
+  });
+
+  return { success: true, id: result[0].insertId };
+}
+
+export async function updateAllowance(userId: number, id: number, data: {
+  year?: number;
+  amount?: number;
+  used?: number;
+  broker?: string;
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { taxAllowances } = await import('../drizzle/schema');
+
+  const updateData: Record<string, unknown> = {};
+  if (data.year !== undefined) updateData.year = data.year;
+  if (data.amount !== undefined) updateData.amount = String(data.amount);
+  if (data.used !== undefined) updateData.used = String(data.used);
+  if (data.broker !== undefined) updateData.broker = data.broker;
+  if (data.notes !== undefined) updateData.notes = data.notes;
+
+  await db.update(taxAllowances)
+    .set(updateData)
+    .where(and(eq(taxAllowances.id, id), eq(taxAllowances.userId, userId)));
+
+  return { success: true };
+}
+
+export async function deleteAllowance(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { taxAllowances } = await import('../drizzle/schema');
+
+  await db.delete(taxAllowances)
+    .where(and(eq(taxAllowances.id, id), eq(taxAllowances.userId, userId)));
+
+  return { success: true };
+}
+
+/**
+ * Loss Carryforwards (Verlustvorträge) Functions
+ */
+
+export async function getLossCarryforwards(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { lossCarryforwards } = await import('../drizzle/schema');
+
+  const result = await db.select().from(lossCarryforwards)
+    .where(eq(lossCarryforwards.userId, userId))
+    .orderBy(lossCarryforwards.year);
+
+  return result.map(row => ({
+    ...row,
+    amount: parseFloat(row.amount),
+  }));
+}
+
+export async function createLossCarryforward(userId: number, data: {
+  year: number;
+  category: "general" | "stocks" | "other";
+  amount: number;
+  broker?: string;
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { lossCarryforwards } = await import('../drizzle/schema');
+
+  const result = await db.insert(lossCarryforwards).values({
+    userId,
+    year: data.year,
+    category: data.category,
+    amount: String(data.amount),
+    broker: data.broker,
+    notes: data.notes,
+  });
+
+  return { success: true, id: result[0].insertId };
+}
+
+export async function updateLossCarryforward(userId: number, id: number, data: {
+  year?: number;
+  category?: "general" | "stocks" | "other";
+  amount?: number;
+  broker?: string;
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { lossCarryforwards } = await import('../drizzle/schema');
+
+  const updateData: Record<string, unknown> = {};
+  if (data.year !== undefined) updateData.year = data.year;
+  if (data.category !== undefined) updateData.category = data.category;
+  if (data.amount !== undefined) updateData.amount = String(data.amount);
+  if (data.broker !== undefined) updateData.broker = data.broker;
+  if (data.notes !== undefined) updateData.notes = data.notes;
+
+  await db.update(lossCarryforwards)
+    .set(updateData)
+    .where(and(eq(lossCarryforwards.id, id), eq(lossCarryforwards.userId, userId)));
+
+  return { success: true };
+}
+
+export async function deleteLossCarryforward(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { lossCarryforwards } = await import('../drizzle/schema');
+
+  await db.delete(lossCarryforwards)
+    .where(and(eq(lossCarryforwards.id, id), eq(lossCarryforwards.userId, userId)));
+
+  return { success: true };
+}

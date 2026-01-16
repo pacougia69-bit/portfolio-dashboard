@@ -159,51 +159,85 @@ async function checkAndRepairDatabase() {
     }
 
     const connection = await mysql.createConnection(databaseUrl);
-    
+
     try {
       // Check if transactions table exists and has the correct schema
       const [tables] = await connection.query("SHOW TABLES LIKE 'transactions'");
       if (!Array.isArray(tables) || tables.length === 0) {
         console.log('[DB Check] Transactions table does not exist yet, will be created later');
-        return;
+      } else {
+        const [columns]: any = await connection.query("DESCRIBE transactions");
+        const columnNames = columns.map((col: any) => col.Field);
+
+        // Check if we have the corrupted 'world' column or missing 'userId' column
+        if (columnNames.includes('world') || !columnNames.includes('userId')) {
+          console.log('[DB Repair] 🔧 Detected corrupted transactions table! Starting auto-repair...');
+          console.log('[DB Repair] Current columns:', columnNames.join(', '));
+
+          // Drop and recreate the table
+          await connection.query("DROP TABLE IF EXISTS transactions");
+          console.log('[DB Repair] ✅ Dropped corrupted table');
+
+          const createTableSQL = `
+            CREATE TABLE transactions (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              userId INT NOT NULL,
+              date TIMESTAMP NOT NULL,
+              type ENUM('Kauf', 'Verkauf', 'Sparplan') NOT NULL,
+              isin VARCHAR(20) NOT NULL,
+              wkn VARCHAR(20) DEFAULT NULL,
+              name VARCHAR(255) NOT NULL,
+              quantity DECIMAL(18, 8) NOT NULL,
+              price DECIMAL(18, 4) NOT NULL,
+              fees DECIMAL(18, 4) DEFAULT '0' NOT NULL,
+              totalAmount DECIMAL(18, 4) NOT NULL,
+              orderNumber VARCHAR(100) NOT NULL UNIQUE,
+              invoiceNumber VARCHAR(100) DEFAULT NULL,
+              createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+          `;
+          await connection.query(createTableSQL);
+          console.log('[DB Repair] ✅ Created new table with correct schema');
+          console.log('[DB Repair] ✅ Auto-repair completed successfully!');
+        } else {
+          console.log('[DB Check] ✅ Transactions table schema is correct');
+        }
       }
 
-      const [columns]: any = await connection.query("DESCRIBE transactions");
-      const columnNames = columns.map((col: any) => col.Field);
-      
-      // Check if we have the corrupted 'world' column or missing 'userId' column
-      if (columnNames.includes('world') || !columnNames.includes('userId')) {
-        console.log('[DB Repair] 🔧 Detected corrupted transactions table! Starting auto-repair...');
-        console.log('[DB Repair] Current columns:', columnNames.join(', '));
-        
-        // Drop and recreate the table
-        await connection.query("DROP TABLE IF EXISTS transactions");
-        console.log('[DB Repair] ✅ Dropped corrupted table');
-        
-        const createTableSQL = `
-          CREATE TABLE transactions (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            userId INT NOT NULL,
-            date TIMESTAMP NOT NULL,
-            type ENUM('Kauf', 'Verkauf', 'Sparplan') NOT NULL,
-            isin VARCHAR(20) NOT NULL,
-            wkn VARCHAR(20) DEFAULT NULL,
-            name VARCHAR(255) NOT NULL,
-            quantity DECIMAL(18, 8) NOT NULL,
-            price DECIMAL(18, 4) NOT NULL,
-            fees DECIMAL(18, 4) DEFAULT '0' NOT NULL,
-            totalAmount DECIMAL(18, 4) NOT NULL,
-            orderNumber VARCHAR(100) NOT NULL UNIQUE,
-            invoiceNumber VARCHAR(100) DEFAULT NULL,
-            createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `;
-        await connection.query(createTableSQL);
-        console.log('[DB Repair] ✅ Created new table with correct schema');
-        console.log('[DB Repair] ✅ Auto-repair completed successfully!');
-      } else {
-        console.log('[DB Check] ✅ Transactions table schema is correct');
-      }
+      // Create tax_allowances table if not exists
+      console.log('[DB Check] Checking tax_allowances table...');
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS tax_allowances (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          year INT NOT NULL,
+          amount DECIMAL(10,2) NOT NULL DEFAULT '0',
+          used DECIMAL(10,2) NOT NULL DEFAULT '0',
+          broker VARCHAR(100),
+          notes TEXT,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('[DB Check] ✅ tax_allowances table ready');
+
+      // Create loss_carryforwards table if not exists
+      console.log('[DB Check] Checking loss_carryforwards table...');
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS loss_carryforwards (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          year INT NOT NULL,
+          category ENUM('general','stocks','other') NOT NULL,
+          amount DECIMAL(10,2) NOT NULL DEFAULT '0',
+          broker VARCHAR(100),
+          notes TEXT,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('[DB Check] ✅ loss_carryforwards table ready');
+
     } finally {
       await connection.end();
     }
