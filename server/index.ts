@@ -247,11 +247,16 @@ async function checkAndRepairDatabase() {
 }
 
 async function startServer() {
-  // Run database check and repair on startup
-  await checkAndRepairDatabase();
-  
+  console.log('🚀 STEP 1: Server starting...');
+
+  // TEMPORARILY DISABLED - Database check causing ELIFECYCLE crash
+  // await checkAndRepairDatabase();
+  console.log('⏭️  STEP 2: DB check skipped (will be added later)');
+
+  console.log('📦 STEP 3: Initializing Express app...');
   const app = express();
   const server = createServer(app);
+  console.log('✅ STEP 4: Express initialized');
 
   // Admin endpoint to fix database schema (adds missing columns)
   app.get("/admin/fix-schema", async (req, res) => {
@@ -311,10 +316,19 @@ async function startServer() {
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
+  console.log('🌐 STEP 5: Starting HTTP server...');
   const port = process.env.PORT || 3000;
   server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+    console.log('');
+    console.log('✅✅✅ SUCCESS! Server is RUNNING ✅✅✅');
+    console.log(`🚀 Server URL: http://localhost:${port}/`);
+    console.log('');
   });
 }
 
-startServer().catch(console.error);
+console.log('🔥 Starting server initialization...');
+startServer().catch((error) => {
+  console.error('❌❌❌ FATAL ERROR during server start:');
+  console.error(error);
+  process.exit(1);
+});
