@@ -33,6 +33,7 @@ import {
   createTransaction,
   getTransactions,
   updatePortfolioFromTransaction,
+  removeFromWatchlistByISINOrWKN,
   getTaxSources,
   createTaxSource,
   updateTaxSource,
@@ -781,15 +782,16 @@ export const appRouter = router({
     uploadDKBPDF: protectedProcedure
       .input(z.object({
         pdfBase64: z.string(),
+        fileName: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         try {
           // Decode base64 PDF
           const pdfBuffer = Buffer.from(input.pdfBase64, 'base64');
-          
+
           // Parse DKB PDF (dynamic import to avoid pdf-parse initialization at server startup)
           const { parseDKBPDF } = await import("./dkb-parser");
-          const transactionData = await parseDKBPDF(pdfBuffer);
+          const transactionData = await parseDKBPDF(pdfBuffer, input.fileName);
           
           // Create transaction record (with duplicate check)
           // Ensure orderNumber is ALWAYS a string to prevent type coercion issues
@@ -827,10 +829,23 @@ export const appRouter = router({
             transactionData.category
           );
           
+          // Auto-remove from watchlist if this security was on it
+          let watchlistMessage = '';
+          if (transactionData.type === 'Kauf' || transactionData.type === 'Sparplan') {
+            const watchlistResult = await removeFromWatchlistByISINOrWKN(
+              ctx.user.id,
+              transactionData.isin,
+              transactionData.wkn
+            );
+            if (watchlistResult.removed) {
+              watchlistMessage = `\n"${watchlistResult.name}" wurde automatisch von der Watchlist ins Portfolio verschoben.`;
+            }
+          }
+
           return {
             success: true,
             duplicate: false,
-            message: '1 Transaktion erfolgreich importiert.',
+            message: `1 Transaktion erfolgreich importiert.${watchlistMessage}`,
             transaction: transactionData,
           };
         } catch (error) {
