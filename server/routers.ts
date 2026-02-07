@@ -815,7 +815,7 @@ export const appRouter = router({
             };
           }
           
-          // Update portfolio position
+          // Update portfolio position (with strategy category from WKN mapping)
           await updatePortfolioFromTransaction(
             ctx.user.id,
             transactionData.isin,
@@ -823,7 +823,8 @@ export const appRouter = router({
             transactionData.name,
             transactionData.type,
             transactionData.quantity,
-            transactionData.totalAmount
+            transactionData.totalAmount,
+            transactionData.category
           );
           
           return {

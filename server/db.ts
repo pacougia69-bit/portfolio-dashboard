@@ -752,7 +752,8 @@ export async function updatePortfolioFromTransaction(
   name: string,
   transactionType: 'Kauf' | 'Verkauf' | 'Sparplan',
   quantity: number,
-  totalAmount: number
+  totalAmount: number,
+  category?: string | null
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -794,11 +795,15 @@ export async function updatePortfolioFromTransaction(
     
     const newAvgPrice = newQuantity > 0 ? newInvestedCapital / newQuantity : 0;
     
+    const updateFields: Record<string, unknown> = {
+      amount: String(newQuantity),
+      buyPrice: String(newAvgPrice),
+    };
+    if (category && !existingPosition.category) {
+      updateFields.category = category;
+    }
     await db.update(portfolioPositions)
-      .set({
-        amount: String(newQuantity),
-        buyPrice: String(newAvgPrice),
-      })
+      .set(updateFields)
       .where(eq(portfolioPositions.id, existingPosition.id));
     
     return { updated: true, positionId: existingPosition.id };
@@ -810,7 +815,7 @@ export async function updatePortfolioFromTransaction(
       ticker: isin, // Use ISIN as ticker for now
       name,
       type: 'ETF', // Default to ETF, can be changed by user
-      category: null,
+      category: category || null,
       amount: String(quantity),
       buyPrice: String(totalAmount / quantity),
       currentPrice: null,
