@@ -225,6 +225,28 @@ export async function deleteWatchlistItem(userId: number, id: number) {
   return { success: true };
 }
 
+export async function removeFromWatchlistByISINOrWKN(userId: number, isin: string, wkn?: string) {
+  const db = await getDb();
+  if (!db) return { removed: false };
+
+  // Find watchlist item matching by ticker (ISIN) or WKN
+  const conditions = [and(eq(watchlistItems.userId, userId), eq(watchlistItems.ticker, isin))];
+  if (wkn) {
+    conditions.push(and(eq(watchlistItems.userId, userId), eq(watchlistItems.wkn, wkn)));
+  }
+
+  for (const condition of conditions) {
+    const items = await db.select().from(watchlistItems).where(condition!).limit(1);
+    if (items.length > 0) {
+      await db.delete(watchlistItems).where(eq(watchlistItems.id, items[0].id));
+      console.log(`[Watchlist] Removed "${items[0].name}" (${items[0].ticker}) from watchlist after successful buy import`);
+      return { removed: true, name: items[0].name };
+    }
+  }
+
+  return { removed: false };
+}
+
 // Dividends functions
 export async function getDividends(userId: number, year?: number) {
   const db = await getDb();

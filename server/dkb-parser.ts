@@ -88,7 +88,7 @@ async function extractTextFromPDF(pdfBuffer: Buffer): Promise<string> {
 /**
  * Parse DKB PDF to extract transaction information
  */
-export async function parseDKBPDF(pdfBuffer: Buffer): Promise<DKBTransaction> {
+export async function parseDKBPDF(pdfBuffer: Buffer, fileName?: string): Promise<DKBTransaction> {
   // Extract text from PDF using pdf2json
   let text: string;
   try {
@@ -116,7 +116,11 @@ export async function parseDKBPDF(pdfBuffer: Buffer): Promise<DKBTransaction> {
     }
     const invoiceNumber = invoiceNumberMatch[1];
 
-    // Extract date: try "Schlusstag/-Zeit DD.MM.YYYY HH:MM:SS" first, then "Schlusstag DD.MM.YYYY", then "Datum DD.MM.YYYY"
+    // Extract date with cascading fallbacks:
+    // 1. "Schlusstag/-Zeit DD.MM.YYYY HH:MM:SS" (with time)
+    // 2. "Schlusstag DD.MM.YYYY" (without time)
+    // 3. "Datum DD.MM.YYYY" (header field)
+    // 4. Date from filename (e.g. "vom_02.02.2026" or leading "2026-02-03_")
     let date: Date;
     const dateTimeMatch = text.match(/Schlusstag\/?-?Zeit\s*(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2}:\d{2})/);
     if (dateTimeMatch) {
@@ -126,11 +130,25 @@ export async function parseDKBPDF(pdfBuffer: Buffer): Promise<DKBTransaction> {
     } else {
       const dateOnlyMatch = text.match(/Schlusstag\s+(\d{2}\.\d{2}\.\d{4})/)
         || text.match(/Datum\s+(\d{2}\.\d{2}\.\d{4})/);
-      if (!dateOnlyMatch) {
-        throw new Error('Datum nicht gefunden');
+      if (dateOnlyMatch) {
+        const [day, month, year] = dateOnlyMatch[1].split('.').map(Number);
+        date = new Date(year, month - 1, day, 12, 0, 0);
+      } else if (fileName) {
+        // Last resort: extract date from filename
+        const filenameDateDE = fileName.match(/vom_(\d{2})\.(\d{2})\.(\d{4})/);
+        const filenameDateISO = fileName.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (filenameDateDE) {
+          date = new Date(Number(filenameDateDE[3]), Number(filenameDateDE[2]) - 1, Number(filenameDateDE[1]), 12, 0, 0);
+          console.log(`[DKB Parser] Datum aus Dateiname extrahiert: ${filenameDateDE[1]}.${filenameDateDE[2]}.${filenameDateDE[3]}`);
+        } else if (filenameDateISO) {
+          date = new Date(Number(filenameDateISO[1]), Number(filenameDateISO[2]) - 1, Number(filenameDateISO[3]), 12, 0, 0);
+          console.log(`[DKB Parser] Datum aus Dateiname extrahiert: ${filenameDateISO[0]}`);
+        } else {
+          throw new Error(`Datum nicht gefunden. Debug: Erste 500 Zeichen des PDF-Textes:\n${text.substring(0, 500)}`);
+        }
+      } else {
+        throw new Error(`Datum nicht gefunden. Debug: Erste 500 Zeichen des PDF-Textes:\n${text.substring(0, 500)}`);
       }
-      const [day, month, year] = dateOnlyMatch[1].split('.').map(Number);
-      date = new Date(year, month - 1, day, 12, 0, 0);
     }
 
     // Determine transaction type

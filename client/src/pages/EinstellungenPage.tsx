@@ -174,7 +174,7 @@ export default function EinstellungenPage() {
       }
       const base64 = btoa(binary);
       
-      uploadDKBPDF.mutate({ pdfBase64: base64 });
+      uploadDKBPDF.mutate({ pdfBase64: base64, fileName: file.name });
     };
     reader.onerror = () => {
       setIsPdfUploading(false);
