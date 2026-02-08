@@ -51,6 +51,7 @@ import {
   deleteLossCarryforward,
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
+import { getEurUsdRate } from "./currency";
 
 export const appRouter = router({
   system: systemRouter,
@@ -300,12 +301,15 @@ export const appRouter = router({
       .input(z.object({ tickers: z.array(z.string()) }))
       .mutation(async ({ ctx, input }) => {
         const prices = await fetchLivePrices(input.tickers);
-        
+
+        // Get dynamic EUR/USD rate for conversion
+        const eurUsdRate = await getEurUsdRate();
+
         // Update portfolio positions with new prices (nur wenn autoUpdate = true)
         const positions = await getPortfolioPositions(ctx.user.id);
         let updatedCount = 0;
         let skippedCount = 0;
-        
+
         for (const priceData of prices) {
           const position = positions.find(p => p.ticker === priceData.ticker);
           if (position) {
@@ -317,7 +321,8 @@ export const appRouter = router({
             // Convert to EUR if needed
             let priceInEur = priceData.price;
             if (priceData.currency === 'USD') {
-              priceInEur = priceData.price / 1.08; // Approximate EUR/USD rate
+              priceInEur = priceData.price / eurUsdRate;
+              console.log(`[Prices] USD→EUR: ${priceData.ticker} ${priceData.price.toFixed(2)} USD / ${eurUsdRate.toFixed(4)} = ${priceInEur.toFixed(2)} EUR`);
             }
             await updatePortfolioPosition(ctx.user.id, position.id, {
               currentPrice: String(priceInEur),
