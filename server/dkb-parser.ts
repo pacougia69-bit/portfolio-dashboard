@@ -6,8 +6,10 @@ export interface DKBTransaction {
   name: string;
   quantity: number;
   price: number;
+  priceCurrency: string;
   fees: number;
   totalAmount: number;
+  totalAmountCurrency: string;
   orderNumber: string;
   invoiceNumber: string;
   category: string | null;
@@ -190,23 +192,25 @@ export async function parseDKBPDF(pdfBuffer: Buffer, fileName?: string): Promise
     }
     const quantity = parseGermanNumber(quantityMatch[1]);
 
-    // Extract execution price (Ausführungskurs) - supports German number format
-    const priceMatch = text.match(/Ausf[üu]hrungskurs\s*([\d.,]+)\s+EUR/);
+    // Extract execution price (Ausführungskurs) - supports EUR and USD
+    const priceMatch = text.match(/Ausf[üu]hrungskurs\s*([\d.,]+)\s+(EUR|USD)/);
     if (!priceMatch) {
       throw new Error('Ausführungskurs nicht gefunden');
     }
     const price = parseGermanNumber(priceMatch[1]);
+    const priceCurrency = priceMatch[2];
 
     // Extract fees (Provision) - supports German number format with thousands separator
     const feesMatch = text.match(/Provision\s*([\d.,]+)-?\s*EUR/);
     const fees = feesMatch ? parseGermanNumber(feesMatch[1]) : 0;
 
-    // Extract total amount (Ausmachender Betrag) - supports German number format with thousands separator
-    const totalMatch = text.match(/Ausmachender Betrag\s*([\d.,]+)-?\s*EUR/);
+    // Extract total amount (Ausmachender Betrag) - supports EUR and USD
+    const totalMatch = text.match(/Ausmachender Betrag\s*([\d.,]+)-?\s*(EUR|USD)/);
     if (!totalMatch) {
       throw new Error('Gesamtbetrag nicht gefunden');
     }
     const totalAmount = parseGermanNumber(totalMatch[1]);
+    const totalAmountCurrency = totalMatch[2];
 
     // Map WKN to strategy category
     const category = getStrategyCategory(wkn);
@@ -219,8 +223,10 @@ export async function parseDKBPDF(pdfBuffer: Buffer, fileName?: string): Promise
       name,
       quantity,
       price,
+      priceCurrency,
       fees,
       totalAmount,
+      totalAmountCurrency,
       orderNumber,
       invoiceNumber,
       category,

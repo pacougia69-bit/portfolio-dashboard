@@ -818,6 +818,7 @@ export const appRouter = router({
           }
           
           // Update portfolio position (with strategy category from WKN mapping)
+          // Pass totalAmountCurrency so USD amounts get converted to EUR
           await updatePortfolioFromTransaction(
             ctx.user.id,
             transactionData.isin,
@@ -826,7 +827,8 @@ export const appRouter = router({
             transactionData.type,
             transactionData.quantity,
             transactionData.totalAmount,
-            transactionData.category
+            transactionData.category,
+            transactionData.totalAmountCurrency
           );
           
           // Auto-remove from watchlist if this security was on it
