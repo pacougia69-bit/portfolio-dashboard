@@ -1,35 +1,6 @@
 import { invokeLLM } from "./_core/llm";
 import { updatePriceCache, saveAiAnalysis } from "./db";
-
-// EUR/USD exchange rate cache
-let eurUsdRate: number | null = null;
-let eurUsdLastFetch: number = 0;
-const RATE_CACHE_DURATION = 60 * 60 * 1000; // 1 hour
-
-// Fetch EUR/USD exchange rate
-async function getEurUsdRate(apiKey: string): Promise<number> {
-  const now = Date.now();
-  if (eurUsdRate && (now - eurUsdLastFetch) < RATE_CACHE_DURATION) {
-    return eurUsdRate;
-  }
-  
-  try {
-    const response = await fetch(
-      `https://api.twelvedata.com/exchange_rate?symbol=EUR/USD&apikey=${apiKey}`
-    );
-    const data = await response.json();
-    if (data.rate) {
-      eurUsdRate = parseFloat(data.rate);
-      eurUsdLastFetch = now;
-      return eurUsdRate;
-    }
-  } catch (error) {
-    console.error("Error fetching EUR/USD rate:", error);
-  }
-  
-  // Fallback rate
-  return eurUsdRate || 1.08;
-}
+import { getEurUsdRate } from "./currency";
 
 // Known ticker mappings from German/European to US/Twelve Data symbols
 const TICKER_MAPPINGS: Record<string, string> = {

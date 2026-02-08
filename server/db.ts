@@ -21,6 +21,7 @@ import {
   InsertTransaction,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { getEurUsdRate, USD_DENOMINATED_WKNS } from './currency';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -775,11 +776,25 @@ export async function updatePortfolioFromTransaction(
   transactionType: 'Kauf' | 'Verkauf' | 'Sparplan',
   quantity: number,
   totalAmount: number,
-  category?: string | null
+  category?: string | null,
+  currency?: string
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
+
+  // Determine if this is a USD-denominated position and convert to EUR if needed
+  let totalAmountEur = totalAmount;
+  const isUsd = currency === 'USD' || (!currency && wkn && USD_DENOMINATED_WKNS.has(wkn));
+
+  if (isUsd) {
+    const eurUsdRate = await getEurUsdRate();
+    totalAmountEur = totalAmount / eurUsdRate;
+    console.log(
+      `[Portfolio] USD→EUR Umrechnung für ${name} (WKN: ${wkn}): ` +
+      `${totalAmount.toFixed(2)} USD / ${eurUsdRate.toFixed(4)} = ${totalAmountEur.toFixed(2)} EUR`
+    );
+  }
+
   // Find existing position by ISIN or WKN
   let existingPosition = null;
   if (isin) {
@@ -794,29 +809,29 @@ export async function updatePortfolioFromTransaction(
       }
     }
   }
-  
+
   if (existingPosition) {
     // Update existing position
     const oldQuantity = Number(existingPosition.amount);
     const oldBuyPrice = Number(existingPosition.buyPrice);
     const oldInvestedCapital = oldQuantity * oldBuyPrice;
-    
+
     let newQuantity: number;
     let newInvestedCapital: number;
-    
+
     if (transactionType === 'Verkauf') {
       // Selling - reduce quantity and invested capital proportionally
       newQuantity = oldQuantity - quantity;
       if (newQuantity < 0) newQuantity = 0;
       newInvestedCapital = newQuantity > 0 ? oldInvestedCapital * (newQuantity / oldQuantity) : 0;
     } else {
-      // Buying - add quantity and invested capital
+      // Buying - add quantity and invested capital (always in EUR)
       newQuantity = oldQuantity + quantity;
-      newInvestedCapital = oldInvestedCapital + totalAmount;
+      newInvestedCapital = oldInvestedCapital + totalAmountEur;
     }
-    
+
     const newAvgPrice = newQuantity > 0 ? newInvestedCapital / newQuantity : 0;
-    
+
     const updateFields: Record<string, unknown> = {
       amount: String(newQuantity),
       buyPrice: String(newAvgPrice),
@@ -827,7 +842,7 @@ export async function updatePortfolioFromTransaction(
     await db.update(portfolioPositions)
       .set(updateFields)
       .where(eq(portfolioPositions.id, existingPosition.id));
-    
+
     return { updated: true, positionId: existingPosition.id };
   } else {
     // Create new position
@@ -839,13 +854,13 @@ export async function updatePortfolioFromTransaction(
       type: 'ETF', // Default to ETF, can be changed by user
       category: category || null,
       amount: String(quantity),
-      buyPrice: String(totalAmount / quantity),
+      buyPrice: String(totalAmountEur / quantity),
       currentPrice: null,
       status: 'Halten',
       autoUpdate: true,
       notes: `Importiert aus DKB-Abrechnung am ${new Date().toLocaleDateString('de-DE')}`,
     });
-    
+
     return { updated: false, positionId: Number(result[0].insertId) };
   }
 }
