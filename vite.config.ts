@@ -22,6 +22,9 @@ export default defineConfig({
   root: path.resolve(import.meta.dirname, "client"),
   publicDir: path.resolve(import.meta.dirname, "client", "public"),
   build: {
+    commonjsOptions: {
+      ignore: ["mermaid"],
+    },
     outDir: "../dist/public",
     emptyOutDir: true,
     rollupOptions: {
