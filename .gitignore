@@ -1,3 +1,4 @@
 node_modules
+dist
 # Ignore PDF test files
 test/data/*.pdf
