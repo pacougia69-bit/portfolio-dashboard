@@ -21,7 +21,7 @@ export default function PinLock({
   onCancel,
   title = "PIN eingeben",
   subtitle = "Geben Sie Ihren PIN ein um fortzufahren",
-  pinLength = 4,
+  pinLength = 6,
   verifyPin
 }: PinLockProps) {
   const [pin, setPin] = useState<string>('');
