@@ -469,10 +469,18 @@ const WKN_DATABASE: Record<string, { ticker: string; name: string; type: string 
   'A0F5UF': { ticker: 'EXXT.DE', name: 'iShares Nasdaq 100 UCITS ETF', type: 'ETF' },
   'A2N6LC': { ticker: 'XAIX.DE', name: 'Xtrackers AI & Big Data UCITS ETF', type: 'ETF' },
   
-  // ETFs - Themen
+  // ETFs - Themen (aktiv)
+  'A113FD': { ticker: 'XDWH.DE', name: 'Xtrackers MSCI World Health Care UCITS ETF', type: 'ETF' },
+  'A3D6N1': { ticker: 'CBUX.DE', name: 'iShares Global Infrastructure UCITS ETF', type: 'ETF' },
+  'A40L9T': { ticker: 'AIFS.DE', name: 'iShares AI Infrastructure UCITS ETF', type: 'ETF' },
+
+  // ETFs - Themen (eingefroren / nicht mehr aktiv besparen)
   'A0MW0M': { ticker: 'IQQH.DE', name: 'iShares Global Clean Energy UCITS ETF', type: 'ETF' },
   'A3D47K': { ticker: 'NUCL.DE', name: 'VanEck Uranium and Nuclear Technologies UCITS ETF', type: 'ETF' },
   'A3EB9T': { ticker: 'NATO.DE', name: 'HANetf Future of Defence UCITS ETF', type: 'ETF' },
+
+  // Anleihen-ETF (iBonds)
+  'A40KHS': { ticker: '30IA.DE', name: 'iShares iBonds Dec 2030 Term EUR Corp UCITS ETF', type: 'ETF' },
   
   // Gold/Commodities
   'A0S9GB': { ticker: '4GLD.DE', name: 'Xetra-Gold', type: 'ETF' },
@@ -750,23 +758,4 @@ export async function lookupByTicker(ticker: string): Promise<{
     let price = meta.regularMarketPrice || meta.previousClose || 0;
     const currency = meta.currency || 'EUR';
     
-    if (currency === 'USD') {
-      price = price / 1.08;
-    }
-    
-    return {
-      success: true,
-      data: {
-        name: meta.longName || meta.shortName || ticker,
-        ticker: ticker,
-        currentPrice: price,
-        currency: 'EUR',
-        type: type,
-        exchange: meta.exchangeName || 'Unknown',
-      }
-    };
-  } catch (error) {
-    console.error('Error looking up ticker:', error);
-    return { success: false, error: 'Fehler beim Abrufen der Daten' };
-  }
-}
+    if 

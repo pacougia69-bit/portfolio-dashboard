@@ -1013,10 +1013,14 @@ export const appRouter = router({
           return sum + (pos.amount * price);
         }, 0);
 
-        // 3. Define individual ETF targets (60% World, 20% EM) - FIXED from category-based
+        // 3. Define individual ETF targets (50/15/10/10/10/5 strategy)
         const individualETFTargets = [
-          { wkn: 'A0RPWH', name: 'MSCI World', targetPercent: 60 },
-          { wkn: 'A111X9', name: 'Emerging Markets', targetPercent: 20 },
+          { wkn: 'A0RPWH', name: 'MSCI World',           targetPercent: 50 },
+          { wkn: 'A111X9', name: 'Emerging Markets',      targetPercent: 15 },
+          { wkn: 'A40L9T', name: 'AI Infrastructure',     targetPercent: 10 },
+          { wkn: 'A3D6N1', name: 'Global Infrastructure', targetPercent: 10 },
+          { wkn: 'A113FD', name: 'Healthcare',            targetPercent: 10 },
+          { wkn: 'A40KHS', name: 'iBonds 2030',           targetPercent:  5 },
         ];
 
         // 4. Find matching positions by WKN and calculate deficits
@@ -1291,15 +1295,4 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { id, ...data } = input;
-        return updateLossCarryforward(ctx.user.id, id, data);
-      }),
-
-    deleteLossCarryforward: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        return deleteLossCarryforward(ctx.user.id, input.id);
-      }),
-  }),
-});
-
-export type AppRouter = typeof appRouter;
+        return updateLossCarr

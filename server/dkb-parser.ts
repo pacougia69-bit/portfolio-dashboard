@@ -16,18 +16,22 @@ export interface DKBTransaction {
 }
 
 /**
- * WKN → Strategy category mapping (60/20/10/5/5 strategy)
+ * WKN → Strategy category mapping (50/15/10/10/10/5 strategy)
  */
 const WKN_STRATEGY_MAP: Record<string, string> = {
-  'A0RPWH': 'Basis 60%',
-  'A111X9': 'EM 20%',
-  'A3D47K': 'Tech 10%',
-  'A2N6LC': 'Thema 5%',
-  'A3EB9T': 'Thema 5%',
-  'A0LGP4': 'Rest/Einzel 5%',
-  'A1KWPR': 'Rest/Einzel 5%',
-  'A0MW0M': 'Rest/Einzel 5%',
-  'A2DWBY': 'Rest/Einzel 5%',
+  // Aktive Kernpositionen
+  'A0RPWH': 'Basis 50%',
+  'A111X9': 'EM 15%',
+  'A40L9T': 'Thema AI 10%',
+  'A3D6N1': 'Infra 10%',
+  'A113FD': 'Healthcare 10%',
+  'A40KHS': 'Anleihen 5%',
+  // Eingefroren (Halten, kein aktiver Kauf)
+  'A2N6LC': 'Eingefroren',
+  'A3EB9T': 'Eingefroren',
+  // Sonstige Positionen
+  'A0LGP4': 'Rest/Einzel',
+  'A2DWBY': 'Rest/Einzel',
 };
 
 function getStrategyCategory(wkn: string): string | null {
@@ -239,6 +243,4 @@ export async function parseDKBPDF(pdfBuffer: Buffer, fileName?: string): Promise
 
     // Return user-friendly error message
     const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler';
-    throw new Error(`PDF konnte nicht analysiert werden: ${errorMessage}. Bitte stellen Sie sicher, dass es sich um eine gültige DKB-Wertpapierabrechnung handelt.`);
-  }
-}
+    throw new Error(`PDF konnte nicht analysi
