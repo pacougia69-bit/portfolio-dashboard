@@ -52,13 +52,14 @@ const formatPercent = (value: number) => {
   return `${value.toFixed(1)}%`;
 };
 
-// Vordefinierte ETF-Kategorien mit Ziel-Allokationen
+// 5+1 Wellen-Strategie: Ziel-Allokationen
 const DEFAULT_ALLOCATIONS = [
-  { category: 'Welt-ETF', targetPercent: 50, description: 'Breite Diversifikation (MSCI World, FTSE All-World)' },
-  { category: 'EM-ETF', targetPercent: 20, description: 'Emerging Markets für Wachstum' },
-  { category: 'Tech-ETF', targetPercent: 15, description: 'Technologie & Innovation' },
-  { category: 'Themen-ETF', targetPercent: 10, description: 'Thematische ETFs (Clean Energy, Defence, etc.)' },
-  { category: 'Sonstige', targetPercent: 5, description: 'Andere ETFs' },
+  { category: 'Kern (MSCI World)', targetPercent: 50, description: 'Breite Diversifikation (MSCI World, WKN: A0RPWH)' },
+  { category: 'EM', targetPercent: 15, description: 'Emerging Markets (WKN: A111X9)' },
+  { category: 'KI-Infrastruktur', targetPercent: 10, description: 'AI & Daten-Infrastruktur (WKN: A40L9T)' },
+  { category: 'Infrastruktur', targetPercent: 10, description: 'Globale Infrastruktur (WKN: A3D6N1)' },
+  { category: 'Healthcare', targetPercent: 10, description: 'Gesundheitswesen (WKN: A113FD)' },
+  { category: 'Puffer (iBonds)', targetPercent: 5, description: 'Anleihen-Puffer (WKN: A40KHS)' },
 ];
 
 export default function StrategiePage() {

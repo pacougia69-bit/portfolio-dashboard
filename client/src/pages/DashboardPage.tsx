@@ -155,7 +155,17 @@ export default function DashboardPage() {
     },
   });
   
-  // Calculate stats with 3-pillar system
+  // 5+1 Wellen-Strategie: Zielwerte pro Welle
+  const STRATEGY_TARGETS = [
+    { name: 'Kern (MSCI World)', wkn: 'A0RPWH', targetPercent: 50 },
+    { name: 'EM', wkn: 'A111X9', targetPercent: 15 },
+    { name: 'KI-Infrastruktur', wkn: 'A40L9T', targetPercent: 10 },
+    { name: 'Infrastruktur', wkn: 'A3D6N1', targetPercent: 10 },
+    { name: 'Healthcare', wkn: 'A113FD', targetPercent: 10 },
+    { name: 'Puffer (iBonds)', wkn: 'A40KHS', targetPercent: 5 },
+  ];
+
+  // Calculate stats with 5+1 Wellen-Strategie
   const stats = useMemo(() => {
     const totalValue = portfolio.reduce((sum, p) => {
       const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
@@ -169,57 +179,15 @@ export default function DashboardPage() {
     // Tax estimation
     const stockLossPot = taxSettings?.stockLossPot || 0;
     const otherLossPot = taxSettings?.otherLossPot || 0;
-    const maxExemptionOrder = taxSettings?.maxExemptionOrder || 2000;
 
-    // Estimate taxable gains (simplified)
     let taxableGain = Math.max(0, totalGain);
-
-    // Apply loss pots
     taxableGain = Math.max(0, taxableGain - stockLossPot - otherLossPot);
-
-    // Apply exemption order
     taxableGain = Math.max(0, taxableGain - totalExemptionOrder);
 
-    // Calculate estimated tax (25% Abgeltungssteuer + 5.5% Soli = 26.375%)
     const taxRate = 0.26375;
     const estimatedTax = taxableGain * taxRate;
-
-    // Net gain after taxes
     const netGain = totalGain - estimatedTax;
     const netGainPercent = totalInvested > 0 ? (netGain / totalInvested) * 100 : 0;
-
-    // Group by pillar (A, B, C)
-    let pillarA = 0;
-    let pillarB = 0;
-    let pillarC = 0;
-    let msciWorldValue = 0;
-    let emergingMarketsValue = 0;
-
-    portfolio.forEach(p => {
-      const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
-      const pillar = p.category?.toUpperCase();
-
-      if (pillar === 'A') {
-        pillarA += value;
-      } else if (pillar === 'B') {
-        pillarB += value;
-      } else if (pillar === 'C') {
-        pillarC += value;
-      } else {
-        // Default uncategorized to pillar A for now
-        pillarA += value;
-      }
-
-      // Identify MSCI World and Emerging Markets within Pillar A
-      const name = p.name.toLowerCase();
-      const ticker = p.ticker.toLowerCase();
-      if (name.includes('msci world') || ticker.includes('msci world') || name.includes('world') && name.includes('etf')) {
-        msciWorldValue += value;
-      }
-      if (name.includes('emerging') || name.includes('em ') || ticker.includes('em ')) {
-        emergingMarketsValue += value;
-      }
-    });
 
     // Group by type
     const assetsByType: Record<string, number> = {};
@@ -228,7 +196,7 @@ export default function DashboardPage() {
       assetsByType[p.type] = (assetsByType[p.type] || 0) + value;
     });
 
-    // Group by category (old grouping, keeping for compatibility)
+    // Group by category
     const assetsByCategory: Record<string, number> = {};
     portfolio.forEach(p => {
       const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
@@ -236,45 +204,29 @@ export default function DashboardPage() {
       assetsByCategory[category] = (assetsByCategory[category] || 0) + value;
     });
 
-    // Rebalancing calculations
-    const targetPillarA = totalValue * 0.80; // 80%
-    const targetPillarB = totalValue * 0.05; // 5%
-    const targetPillarC = totalValue * 0.15; // 15%
-    const targetMSCIWorld = totalValue * 0.60; // 60% of total portfolio
-    const targetEM = totalValue * 0.20; // 20% of total portfolio
+    // 5+1 Wellen-Strategie Rebalancing
+    const waveValues = STRATEGY_TARGETS.map(target => {
+      const position = portfolio.find(p => p.wkn === target.wkn);
+      const currentValue = position
+        ? (position.currentPrice ? position.amount * position.currentPrice : position.amount * position.buyPrice)
+        : 0;
+      const targetValue = totalValue * (target.targetPercent / 100);
+      const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
 
-    const rebalancing = {
-      pillarA: {
-        current: pillarA,
-        target: targetPillarA,
-        diff: pillarA - targetPillarA,
-        diffPercent: totalValue > 0 ? ((pillarA / totalValue) * 100) - 80 : 0,
-      },
-      pillarB: {
-        current: pillarB,
-        target: targetPillarB,
-        diff: pillarB - targetPillarB,
-        diffPercent: totalValue > 0 ? ((pillarB / totalValue) * 100) - 5 : 0,
-      },
-      pillarC: {
-        current: pillarC,
-        target: targetPillarC,
-        diff: pillarC - targetPillarC,
-        diffPercent: totalValue > 0 ? ((pillarC / totalValue) * 100) - 15 : 0,
-      },
-      msciWorld: {
-        current: msciWorldValue,
-        target: targetMSCIWorld,
-        diff: msciWorldValue - targetMSCIWorld,
-        diffPercent: totalValue > 0 ? ((msciWorldValue / totalValue) * 100) - 60 : 0,
-      },
-      emergingMarkets: {
-        current: emergingMarketsValue,
-        target: targetEM,
-        diff: emergingMarketsValue - targetEM,
-        diffPercent: totalValue > 0 ? ((emergingMarketsValue / totalValue) * 100) - 20 : 0,
-      },
-    };
+      return {
+        name: target.name,
+        wkn: target.wkn,
+        current: currentValue,
+        target: targetValue,
+        diff: currentValue - targetValue,
+        currentPercent,
+        targetPercent: target.targetPercent,
+        diffPercent: currentPercent - target.targetPercent,
+      };
+    });
+
+    // ETF total (all waves combined)
+    const etfTotal = waveValues.reduce((sum, w) => sum + w.current, 0);
 
     return {
       totalWealth: totalValue,
@@ -286,163 +238,46 @@ export default function DashboardPage() {
       netGainPercent,
       estimatedTax,
       taxableGain,
-      pillarA,
-      pillarB,
-      pillarC,
+      etfTotal,
       assetsByType,
       assetsByCategory,
-      rebalancing,
+      waveValues,
     };
   }, [portfolio, taxSettings, totalExemptionOrder]);
 
-  // Investment suggestions based on available capital - focused on individual ETFs
+  // Investment suggestions based on 5+1 Wellen-Strategie
   const investmentSuggestions = useMemo(() => {
     if (availableCapital <= 0 || stats.totalValue === 0) {
       return [];
     }
 
-    // Define target allocations for specific ETFs (% of total portfolio)
-    const targetAllocations: Record<string, number> = {
-      'MSCI World': 0.60, // 60% of total portfolio
-      'Emerging Markets': 0.20, // 20% of total portfolio
-      'EM': 0.20, // Alternative name for Emerging Markets
-    };
+    // Find underweight waves and distribute capital proportionally
+    const underweightWaves = stats.waveValues
+      .filter(w => w.diff < 0)
+      .sort((a, b) => a.diff - b.diff);
 
-    // Track which ETF types we've found and their values
-    let msciWorldFound = false;
-    let emergingMarketsFound = false;
-    let msciWorldValue = 0;
-    let emergingMarketsValue = 0;
-
-    // Find matching ETFs in portfolio and calculate their deficits
-    const etfDeficits: Array<{
-      name: string;
-      ticker: string;
-      currentValue: number;
-      targetValue: number;
-      deficit: number;
-      currentPercent: number;
-      targetPercent: number;
-      priority: number;
-    }> = [];
-
-    portfolio.forEach(p => {
-      const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
-      const name = p.name;
-      const nameLower = name.toLowerCase();
-      const tickerLower = p.ticker.toLowerCase();
-
-      // Check if this is a MSCI World ETF
-      if (nameLower.includes('msci world') || tickerLower.includes('msci world') ||
-          (nameLower.includes('world') && nameLower.includes('etf'))) {
-        msciWorldFound = true;
-        msciWorldValue = value;
-        const targetValue = stats.totalValue * targetAllocations['MSCI World'];
-        const deficit = targetValue - value;
-        if (deficit > 0) {
-          etfDeficits.push({
-            name: name,
-            ticker: p.ticker,
-            currentValue: value,
-            targetValue: targetValue,
-            deficit: deficit,
-            currentPercent: (value / stats.totalValue) * 100,
-            targetPercent: targetAllocations['MSCI World'] * 100,
-            priority: 1,
-          });
-        }
-      }
-
-      // Check if this is an Emerging Markets ETF
-      else if (nameLower.includes('emerging') || nameLower.includes('em ') ||
-               tickerLower.includes('em ') || nameLower.includes('schwellenländer')) {
-        emergingMarketsFound = true;
-        emergingMarketsValue = value;
-        const targetValue = stats.totalValue * targetAllocations['Emerging Markets'];
-        const deficit = targetValue - value;
-        if (deficit > 0) {
-          etfDeficits.push({
-            name: name,
-            ticker: p.ticker,
-            currentValue: value,
-            targetValue: targetValue,
-            deficit: deficit,
-            currentPercent: (value / stats.totalValue) * 100,
-            targetPercent: targetAllocations['Emerging Markets'] * 100,
-            priority: 1,
-          });
-        }
-      }
-
-      // Check for crypto assets in Pillar B
-      else if (p.category?.toUpperCase() === 'B' || p.type === 'Krypto') {
-        // For crypto, we check if Pillar B overall is under 5%
-        const pillarBPercent = (stats.pillarB / stats.totalValue) * 100;
-        if (pillarBPercent < 5) {
-          const targetValueForB = stats.totalValue * 0.05;
-          const currentB = stats.pillarB;
-          const deficitB = targetValueForB - currentB;
-
-          // Only add this crypto if we haven't added one yet
-          if (deficitB > 0 && !etfDeficits.some(d => d.name.includes('Krypto'))) {
-            etfDeficits.push({
-              name: name,
-              ticker: p.ticker,
-              currentValue: currentB,
-              targetValue: targetValueForB,
-              deficit: deficitB,
-              currentPercent: pillarBPercent,
-              targetPercent: 5,
-              priority: 2,
-            });
-          }
-        }
-      }
-    });
-
-    // Check if all primary ETF targets are actually met (not just not found)
-    const msciWorldTargetMet = msciWorldFound && msciWorldValue >= stats.totalValue * targetAllocations['MSCI World'];
-    const emTargetMet = emergingMarketsFound && emergingMarketsValue >= stats.totalValue * targetAllocations['Emerging Markets'];
-
-    // Only return empty if both primary ETFs exist AND meet their targets
-    if (etfDeficits.length === 0 && msciWorldTargetMet && emTargetMet) {
+    if (underweightWaves.length === 0) {
       return [];
     }
 
-    // If we have no deficits but ETFs don't meet targets (edge case), return empty for now
-    if (etfDeficits.length === 0) {
-      return [];
-    }
+    const totalDeficit = underweightWaves.reduce((sum, w) => sum + Math.abs(w.diff), 0);
 
-    // Sort by priority (1 = highest), then by deficit
-    etfDeficits.sort((a, b) => {
-      if (a.priority !== b.priority) {
-        return a.priority - b.priority;
-      }
-      return b.deficit - a.deficit;
-    });
-
-    // Calculate total deficit
-    const totalDeficit = etfDeficits.reduce((sum, d) => sum + d.deficit, 0);
-
-    // Distribute available capital proportionally to deficits
-    const suggestions = etfDeficits.map(d => {
-      const proportion = d.deficit / totalDeficit;
+    const suggestions = underweightWaves.map(w => {
+      const proportion = Math.abs(w.diff) / totalDeficit;
       const suggestedAmount = Math.min(
         Math.round(availableCapital * proportion),
-        d.deficit
+        Math.abs(w.diff)
       );
       return {
-        name: d.name,
-        ticker: d.ticker,
+        name: w.name,
+        ticker: w.wkn,
         amount: suggestedAmount,
-        deficit: d.deficit,
-        currentPercent: d.currentPercent,
-        targetPercent: d.targetPercent,
+        deficit: Math.abs(w.diff),
+        currentPercent: w.currentPercent,
+        targetPercent: w.targetPercent,
       };
     });
 
-    // Adjust if total suggested exceeds available capital
     const totalSuggested = suggestions.reduce((sum, s) => sum + s.amount, 0);
     if (totalSuggested > availableCapital) {
       const ratio = availableCapital / totalSuggested;
@@ -452,7 +287,7 @@ export default function DashboardPage() {
     }
 
     return suggestions.filter(s => s.amount > 0);
-  }, [availableCapital, stats, portfolio]);
+  }, [availableCapital, stats]);
 
   // Dividend stats
   const dividendStats = useMemo(() => {
@@ -672,7 +507,7 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
-        {/* Fortschrittsbalken Säule A - Rentenziel */}
+        {/* Fortschrittsbalken ETF-Portfolio - Rentenziel */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -683,26 +518,26 @@ export default function DashboardPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-semibold text-base sm:text-lg text-green-400">Säule A - Rentenbasis</h3>
+                    <h3 className="font-semibold text-base sm:text-lg text-green-400">ETF-Portfolio - Rentenbasis</h3>
                     <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                       Ziel: {formatCurrency(settings.desiredPension)} monatliche Zusatzrente
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="font-mono text-xl sm:text-2xl font-bold text-green-400">
-                      {formatCurrency(stats.pillarA)}
+                      {formatCurrency(stats.etfTotal)}
                     </p>
                     <p className="text-xs text-muted-foreground">von {formatCurrency(settings.targetSum)}</p>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Progress
-                    value={(stats.pillarA / settings.targetSum) * 100}
+                    value={(stats.etfTotal / settings.targetSum) * 100}
                     className="h-4 bg-green-950"
                   />
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{((stats.pillarA / settings.targetSum) * 100).toFixed(1)}% erreicht</span>
-                    <span>{formatCurrency(settings.targetSum - stats.pillarA)} verbleibend</span>
+                    <span>{((stats.etfTotal / settings.targetSum) * 100).toFixed(1)}% erreicht</span>
+                    <span>{formatCurrency(settings.targetSum - stats.etfTotal)} verbleibend</span>
                   </div>
                 </div>
               </div>
@@ -710,7 +545,7 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
-        {/* Rebalancing-Empfehlung */}
+        {/* Rebalancing-Empfehlung - 5+1 Wellen-Strategie */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -724,75 +559,19 @@ export default function DashboardPage() {
                     <BarChart3 className="w-5 h-5 text-cyan-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-base sm:text-lg text-cyan-400">Rebalancing-Empfehlung</h3>
-                    <p className="text-xs text-muted-foreground">Zielallokation: A(80%), B(5%), C(15%) | MSCI World(60%), EM(20%)</p>
+                    <h3 className="font-semibold text-base sm:text-lg text-cyan-400">Rebalancing - 5+1 Wellen-Strategie</h3>
+                    <p className="text-xs text-muted-foreground">Kern 50% | EM 15% | KI-Infra 10% | Infra 10% | Health 10% | Puffer 5%</p>
                   </div>
                 </div>
 
-                {/* Check for underrepresented areas */}
                 {(() => {
-                  const underrepresented = [];
-
-                  if (stats.rebalancing.pillarA.diff < 0) {
-                    underrepresented.push({
-                      name: 'Säule A (Renten-Basis)',
-                      current: stats.rebalancing.pillarA.current,
-                      target: stats.rebalancing.pillarA.target,
-                      diff: stats.rebalancing.pillarA.diff,
-                      diffPercent: stats.rebalancing.pillarA.diffPercent,
-                      targetPercent: 80,
-                    });
-                  }
-
-                  if (stats.rebalancing.pillarB.diff < 0) {
-                    underrepresented.push({
-                      name: 'Säule B (Krypto)',
-                      current: stats.rebalancing.pillarB.current,
-                      target: stats.rebalancing.pillarB.target,
-                      diff: stats.rebalancing.pillarB.diff,
-                      diffPercent: stats.rebalancing.pillarB.diffPercent,
-                      targetPercent: 5,
-                    });
-                  }
-
-                  if (stats.rebalancing.pillarC.diff < 0) {
-                    underrepresented.push({
-                      name: 'Säule C (Zocker/Verkauf)',
-                      current: stats.rebalancing.pillarC.current,
-                      target: stats.rebalancing.pillarC.target,
-                      diff: stats.rebalancing.pillarC.diff,
-                      diffPercent: stats.rebalancing.pillarC.diffPercent,
-                      targetPercent: 15,
-                    });
-                  }
-
-                  if (stats.rebalancing.msciWorld.diff < 0) {
-                    underrepresented.push({
-                      name: 'MSCI World ETF',
-                      current: stats.rebalancing.msciWorld.current,
-                      target: stats.rebalancing.msciWorld.target,
-                      diff: stats.rebalancing.msciWorld.diff,
-                      diffPercent: stats.rebalancing.msciWorld.diffPercent,
-                      targetPercent: 60,
-                    });
-                  }
-
-                  if (stats.rebalancing.emergingMarkets.diff < 0) {
-                    underrepresented.push({
-                      name: 'Emerging Markets ETF',
-                      current: stats.rebalancing.emergingMarkets.current,
-                      target: stats.rebalancing.emergingMarkets.target,
-                      diff: stats.rebalancing.emergingMarkets.diff,
-                      diffPercent: stats.rebalancing.emergingMarkets.diffPercent,
-                      targetPercent: 20,
-                    });
-                  }
+                  const underrepresented = stats.waveValues.filter(w => w.diff < 0);
 
                   if (underrepresented.length === 0) {
                     return (
                       <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
                         <p className="text-sm text-green-400 font-medium">
-                          ✓ Portfolio ist ausgewogen! Keine Rebalancing-Maßnahmen erforderlich.
+                          Portfolio ist ausgewogen! Keine Rebalancing-Maßnahmen erforderlich.
                         </p>
                       </div>
                     );
@@ -806,7 +585,7 @@ export default function DashboardPage() {
                             <div className="flex-1">
                               <p className="font-semibold text-cyan-300 text-sm">{item.name}</p>
                               <p className="text-xs text-muted-foreground mt-1">
-                                Ist: {((item.current / stats.totalValue) * 100).toFixed(1)}% ({formatCurrency(item.current)})
+                                Ist: {item.currentPercent.toFixed(1)}% ({formatCurrency(item.current)})
                                 {' → '}
                                 Soll: {item.targetPercent}% ({formatCurrency(item.target)})
                               </p>
@@ -940,82 +719,40 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
-        {/* 3-Säulen Übersicht */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <Card className="glass-card border-green-500/30">
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-green-400 font-semibold truncate">Säule A - Renten-Basis</p>
-                    <p className="font-mono text-xl sm:text-2xl font-bold mt-2 truncate">
-                      {formatCurrency(stats.pillarA)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      ETFs + Behalten-Aktien
-                    </p>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center flex-shrink-0">
-                    <Target className="w-5 h-5 text-green-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+        {/* 5+1 Wellen-Übersicht */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
+          {stats.waveValues.map((wave, index) => {
+            const colors = [
+              { border: 'border-green-500/30', text: 'text-green-400', bg: 'bg-green-500/10' },
+              { border: 'border-blue-500/30', text: 'text-blue-400', bg: 'bg-blue-500/10' },
+              { border: 'border-purple-500/30', text: 'text-purple-400', bg: 'bg-purple-500/10' },
+              { border: 'border-amber-500/30', text: 'text-amber-400', bg: 'bg-amber-500/10' },
+              { border: 'border-pink-500/30', text: 'text-pink-400', bg: 'bg-pink-500/10' },
+              { border: 'border-cyan-500/30', text: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+            ];
+            const color = colors[index % colors.length];
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <Card className="glass-card border-blue-500/30">
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-blue-400 font-semibold truncate">Säule B - Krypto</p>
-                    <p className="font-mono text-xl sm:text-2xl font-bold mt-2 truncate">
-                      {formatCurrency(stats.pillarB)}
+            return (
+              <motion.div
+                key={wave.name}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 + index * 0.05 }}
+              >
+                <Card className={`glass-card ${color.border}`}>
+                  <CardContent className="p-3 sm:p-4">
+                    <p className={`text-xs font-semibold ${color.text} truncate`}>{wave.name}</p>
+                    <p className="font-mono text-sm sm:text-lg font-bold mt-1 truncate">
+                      {formatCurrency(wave.current)}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      BTC, ETH, SOL, ICP
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {wave.currentPercent.toFixed(1)}% / {wave.targetPercent}%
                     </p>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                    <Coins className="w-5 h-5 text-blue-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-          >
-            <Card className="glass-card border-amber-500/30">
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-amber-400 font-semibold truncate">Säule C - Zocker/Verkauf</p>
-                    <p className="font-mono text-xl sm:text-2xl font-bold mt-2 truncate">
-                      {formatCurrency(stats.pillarC)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Biotech-Werte
-                    </p>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                    <TrendingUp className="w-5 h-5 text-amber-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
         </div>
 
         {/* Stats Cards - Zusätzliche Infos */}

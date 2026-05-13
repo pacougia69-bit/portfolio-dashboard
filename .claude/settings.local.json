@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(ls node_modules/.bin/tsc*)",
+      "Bash(ls node_modules/typescript/bin/)",
+      "Bash(npm install *)",
+      "Bash(node_modules/.bin/vite build *)",
+      "Bash(grep -c \"auto-install-peers\" pnpm-lock.yaml)",
+      "Bash(grep \"autoInstallPeers\" pnpm-lock.yaml)",
+      "Bash(node_modules/.bin/esbuild server/_core/index.prod.ts --platform=node --packages=external --bundle --format=esm --outdir=dist)",
+      "Bash(node_modules/.bin/esbuild init-db.ts --platform=node --packages=external --bundle --format=esm --outdir=dist)"
+    ]
+  }
+}
