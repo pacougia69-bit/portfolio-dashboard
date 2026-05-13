@@ -758,4 +758,23 @@ export async function lookupByTicker(ticker: string): Promise<{
     let price = meta.regularMarketPrice || meta.previousClose || 0;
     const currency = meta.currency || 'EUR';
     
-    if 
+    if (currency === 'USD') {
+      price = price / 1.08;
+    }
+    
+    return {
+      success: true,
+      data: {
+        name: meta.longName || meta.shortName || ticker,
+        ticker: ticker,
+        currentPrice: price,
+        currency: 'EUR',
+        type: type,
+        exchange: meta.exchangeName || 'Unknown',
+      }
+    };
+  } catch (error) {
+    console.error('Error looking up ticker:', error);
+    return { success: false, error: 'Fehler beim Abrufen der Daten' };
+  }
+}

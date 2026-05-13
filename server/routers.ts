@@ -1295,4 +1295,15 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { id, ...data } = input;
-        return updateLossCarr
+        return updateLossCarryforward(ctx.user.id, id, data);
+      }),
+
+    deleteLossCarryforward: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return deleteLossCarryforward(ctx.user.id, input.id);
+      }),
+  }),
+});
+
+export type AppRouter = typeof appRouter;

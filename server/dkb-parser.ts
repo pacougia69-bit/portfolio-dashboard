@@ -243,4 +243,6 @@ export async function parseDKBPDF(pdfBuffer: Buffer, fileName?: string): Promise
 
     // Return user-friendly error message
     const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler';
-    throw new Error(`PDF konnte nicht analysi
+    throw new Error(`PDF konnte nicht analysiert werden: ${errorMessage}. Bitte stellen Sie sicher, dass es sich um eine gültige DKB-Wertpapierabrechnung handelt.`);
+  }
+}
