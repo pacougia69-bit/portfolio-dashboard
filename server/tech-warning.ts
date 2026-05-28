@@ -62,8 +62,12 @@ const RATES_CORE_CPI_THRESHOLD = 3.5;        // % YoY
 const BREADTH_TOLERANCE = 3.0;               // % über/unter SMA200
 
 // Tickers für Indikator 5 (Twelve Data Symbol-Konvention)
-const SP500_SYMBOL = "SPX";
-const NASDAQ_SYMBOL = "IXIC";
+// Wir nutzen ETFs statt Indizes, weil Indizes (SPX, IXIC) im Free Tier nicht verfügbar sind.
+// SPY trackt S&P 500, QQQ trackt Nasdaq 100 — Korrelation jeweils ~99.9% mit dem Index.
+const SP500_SYMBOL = "SPY";
+const NASDAQ_SYMBOL = "QQQ";
+const SP500_LABEL = "S&P 500 (SPY)";
+const NASDAQ_LABEL = "Nasdaq 100 (QQQ)";
 
 // FRED Series für Indikator 4
 const FRED_FED_FUNDS_SERIES = "DFF";          // Effective Fed Funds Rate (daily)
@@ -389,7 +393,7 @@ async function fetchMarketBreadth(): Promise<IndicatorResult> {
     return {
       label: "Marktbreite (S&P 500 + Nasdaq vs. GD200)",
       signal,
-      value: `S&P 500: ${sp500Diff >= 0 ? "+" : ""}${sp500Diff.toFixed(2)}% zum GD200 · Nasdaq: ${nasdaqDiff >= 0 ? "+" : ""}${nasdaqDiff.toFixed(2)}% zum GD200`,
+      value: `${SP500_LABEL}: ${sp500Diff >= 0 ? "+" : ""}${sp500Diff.toFixed(2)}% zum GD200 · ${NASDAQ_LABEL}: ${nasdaqDiff >= 0 ? "+" : ""}${nasdaqDiff.toFixed(2)}% zum GD200`,
       reasoning,
       sources: [
         `TwelveData:${SP500_SYMBOL}`,

@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Activity,
   ExternalLink,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -32,7 +33,7 @@ type Indicators = {
   market_breadth: IndicatorResult;
 };
 
-// Reihenfolge der Anzeige im Grid
+// Reihenfolge im Grid
 const INDICATOR_KEYS: (keyof Indicators)[] = [
   "capex_revenue",
   "circular_financing",
@@ -42,7 +43,7 @@ const INDICATOR_KEYS: (keyof Indicators)[] = [
 ];
 
 // ============================================================================
-// Helper: Farbgebung pro Signal
+// Farb-/Styling-Helfer pro Signal
 // ============================================================================
 
 function getSignalStyles(signal: Signal) {
@@ -52,6 +53,7 @@ function getSignalStyles(signal: Signal) {
         bg: "bg-green-500/10",
         border: "border-green-500/40",
         text: "text-green-600 dark:text-green-400",
+        ring: "ring-green-500/30",
         Icon: CheckCircle2,
         label: "GRÜN",
       };
@@ -60,6 +62,7 @@ function getSignalStyles(signal: Signal) {
         bg: "bg-yellow-500/10",
         border: "border-yellow-500/40",
         text: "text-yellow-600 dark:text-yellow-400",
+        ring: "ring-yellow-500/30",
         Icon: AlertTriangle,
         label: "GELB",
       };
@@ -68,6 +71,7 @@ function getSignalStyles(signal: Signal) {
         bg: "bg-red-500/10",
         border: "border-red-500/40",
         text: "text-red-600 dark:text-red-400",
+        ring: "ring-red-500/30",
         Icon: AlertOctagon,
         label: "ROT",
       };
@@ -87,8 +91,19 @@ function formatRelativeTime(date: Date | string): string {
   return d.toLocaleDateString("de-DE");
 }
 
+function formatAbsoluteTime(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 // ============================================================================
-// Komponente: Einzelne Indikator-Karte
+// Indikator-Karte (großzügig, lesbar)
 // ============================================================================
 
 function IndicatorCard({ indicator }: { indicator: IndicatorResult }) {
@@ -96,54 +111,78 @@ function IndicatorCard({ indicator }: { indicator: IndicatorResult }) {
   const Icon = styles.Icon;
 
   return (
-    <Card className={`${styles.bg} ${styles.border} border-2`}>
-      <CardHeader className="p-4 sm:p-5 pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-sm sm:text-base leading-tight">
+    <Card className={`${styles.bg} ${styles.border} border-2 shadow-sm`}>
+      <CardHeader className="p-5 sm:p-6 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <CardTitle className="text-base sm:text-lg leading-tight">
             {indicator.label}
           </CardTitle>
-          <div className={`flex items-center gap-1 ${styles.text} font-bold text-xs sm:text-sm whitespace-nowrap`}>
-            <Icon className="h-4 w-4" />
+          <div className={`flex items-center gap-1.5 ${styles.text} font-bold text-sm sm:text-base whitespace-nowrap shrink-0`}>
+            <Icon className="h-5 w-5" />
             {styles.label}
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-4 sm:p-5 pt-0 space-y-3">
-        <div className="text-sm font-medium">{indicator.value}</div>
+      <CardContent className="p-5 sm:p-6 pt-0 space-y-4">
+        {/* Wert / Faktenzeile */}
+        <div className="bg-background/60 rounded-lg p-3 sm:p-4 border border-border/40">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 font-medium">
+            Wert
+          </div>
+          <div className="text-sm sm:text-base font-semibold leading-relaxed">
+            {indicator.value}
+          </div>
+        </div>
+
+        {/* Begründung */}
         {indicator.reasoning && (
-          <div className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-            {indicator.reasoning}
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 font-medium">
+              Begründung
+            </div>
+            <div className="text-sm sm:text-base text-foreground/90 leading-relaxed">
+              {indicator.reasoning}
+            </div>
           </div>
         )}
+
+        {/* Quellen */}
         {indicator.sources.length > 0 && (
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-border/40">
-            {indicator.sources.map((src, idx) => {
-              const isUrl = src.startsWith("http://") || src.startsWith("https://");
-              if (isUrl) {
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 font-medium">
+              Quellen
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {indicator.sources.map((src, idx) => {
+                const isUrl = src.startsWith("http://") || src.startsWith("https://");
+                if (isUrl) {
+                  return (
+                    <a
+                      key={idx}
+                      href={src}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm bg-background/60 hover:bg-background border border-border/50 px-3 py-1.5 rounded-md text-primary hover:underline transition-colors"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Quelle {idx + 1}
+                    </a>
+                  );
+                }
                 return (
-                  <a
-                    key={idx}
-                    href={src}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Quelle {idx + 1}
-                  </a>
+                  <span key={idx} className="inline-flex items-center text-xs text-muted-foreground font-mono bg-muted/60 px-2 py-1 rounded">
+                    {src}
+                  </span>
                 );
-              }
-              return (
-                <span key={idx} className="text-xs text-muted-foreground font-mono">
-                  {src}
-                </span>
-              );
-            })}
+              })}
+            </div>
           </div>
         )}
+
+        {/* Fehler-Hinweis */}
         {indicator.error && (
-          <div className="text-xs text-red-600 dark:text-red-400 italic">
-            Hinweis: {indicator.error}
+          <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 text-sm text-red-600 dark:text-red-400">
+            <strong>Hinweis:</strong> {indicator.error}
           </div>
         )}
       </CardContent>
@@ -177,126 +216,147 @@ export default function TechFruehwarnsystemPage() {
 
   return (
     <Layout>
-      <div className="space-y-4 sm:space-y-6">
+      <div className="space-y-6 sm:space-y-8 max-w-7xl">
         {/* Header */}
         <div className="pt-12 sm:pt-0">
-          <h1 className="text-xl sm:text-3xl font-bold tracking-tight flex items-center gap-2 sm:gap-3">
-            <Activity className="h-5 w-5 sm:h-8 sm:w-8 text-primary" />
+          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight flex items-center gap-3">
+            <Activity className="h-7 w-7 sm:h-10 sm:w-10 text-primary" />
             Tech-Frühwarnsystem
           </h1>
-          <p className="text-muted-foreground text-xs sm:text-base mt-1">
+          <p className="text-muted-foreground text-sm sm:text-lg mt-2">
             Fünf Indikatoren, die einen Tech-Crash früh erkennen sollen
           </p>
         </div>
 
-        {/* Gesamt-Ampel + Aktion */}
+        {/* Gesamt-Ampel + Aktion (PROMINENT) */}
         <Card
-          className={overallStyles ? `${overallStyles.bg} ${overallStyles.border} border-2` : ""}
+          className={
+            overallStyles
+              ? `${overallStyles.bg} ${overallStyles.border} border-2 shadow-lg`
+              : "border-2 border-dashed border-border/60"
+          }
         >
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="flex items-center gap-4">
-                {overallStyles ? (
-                  <>
-                    <overallStyles.Icon className={`h-12 w-12 sm:h-16 sm:w-16 ${overallStyles.text}`} />
-                    <div>
-                      <div className={`text-3xl sm:text-4xl font-bold ${overallStyles.text}`}>
-                        {overallStyles.label}
-                      </div>
-                      {snapshot && (
-                        <div className="text-xs sm:text-sm text-muted-foreground mt-1">
-                          Letzter Snapshot: {formatRelativeTime(snapshot.createdAt)}
+          <CardContent className="p-6 sm:p-8">
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                {/* Linke Seite: Status */}
+                <div className="flex items-center gap-5 sm:gap-6">
+                  {overallStyles ? (
+                    <>
+                      <overallStyles.Icon className={`h-16 w-16 sm:h-24 sm:w-24 ${overallStyles.text} flex-shrink-0`} />
+                      <div>
+                        <div className="text-xs sm:text-sm uppercase tracking-wider text-muted-foreground font-medium mb-1">
+                          Gesamt-Ampel
                         </div>
-                      )}
+                        <div className={`text-5xl sm:text-7xl font-black ${overallStyles.text} leading-none`}>
+                          {overallStyles.label}
+                        </div>
+                        {snapshot && (
+                          <div className="text-sm sm:text-base text-muted-foreground mt-3">
+                            Letzter Snapshot: <strong>{formatRelativeTime(snapshot.createdAt)}</strong>
+                            <span className="hidden sm:inline"> · {formatAbsoluteTime(snapshot.createdAt)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <div className="text-xl sm:text-2xl font-semibold text-foreground">
+                        {isLoadingLatest ? "Lade letzten Snapshot…" : "Noch kein Snapshot vorhanden"}
+                      </div>
+                      <div className="text-sm sm:text-base text-muted-foreground mt-2">
+                        {isLoadingLatest
+                          ? "Einen Moment bitte."
+                          : "Klicke auf den Button, um zum ersten Mal Daten zu holen."}
+                      </div>
                     </div>
-                  </>
-                ) : (
-                  <div>
-                    <div className="text-xl sm:text-2xl font-semibold text-muted-foreground">
-                      {isLoadingLatest ? "Lade letzten Snapshot…" : "Noch kein Snapshot vorhanden"}
-                    </div>
-                    <div className="text-xs sm:text-sm text-muted-foreground mt-1">
-                      {isLoadingLatest
-                        ? ""
-                        : "Klicke auf den Button, um zum ersten Mal Daten zu holen."}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
+
+                {/* Rechte Seite: Button */}
+                <Button
+                  size="lg"
+                  onClick={() => fetchSnapshot.mutate()}
+                  disabled={isFetching}
+                  className="w-full lg:w-auto text-base sm:text-lg py-6 sm:py-7 px-6 sm:px-8 shadow-md"
+                >
+                  {isFetching ? (
+                    <>
+                      <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 mr-2 animate-spin" />
+                      Hole Daten… (10-30 Sek.)
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-5 w-5 sm:h-6 sm:w-6 mr-2" />
+                      {snapshot ? "Neuer Snapshot" : "Snapshot holen"}
+                    </>
+                  )}
+                </Button>
               </div>
 
-              <Button
-                size="lg"
-                onClick={() => fetchSnapshot.mutate()}
-                disabled={isFetching}
-                className="w-full sm:w-auto"
-              >
-                {isFetching ? (
-                  <>
-                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                    Hole Daten… (10-30 Sek.)
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-5 w-5 mr-2" />
-                    {snapshot ? "Neuer Snapshot" : "Snapshot holen"}
-                  </>
-                )}
-              </Button>
+              {/* Zusammenfassung */}
+              {snapshot?.summary && (
+                <div className="pt-4 border-t border-border/40 text-sm sm:text-base text-foreground/80 leading-relaxed">
+                  {snapshot.summary}
+                </div>
+              )}
+
+              {/* Fehler-Hinweise */}
+              {snapshot?.errorMessage && (
+                <div className="pt-4 border-t border-border/40 bg-yellow-500/5 -mx-6 sm:-mx-8 -mb-6 sm:-mb-8 px-6 sm:px-8 py-3 sm:py-4 rounded-b text-sm text-yellow-700 dark:text-yellow-400">
+                  <strong>Hinweise zu einzelnen Indikatoren:</strong> {snapshot.errorMessage}
+                </div>
+              )}
             </div>
-
-            {snapshot?.summary && (
-              <div className="mt-4 pt-4 border-t border-border/40 text-sm text-muted-foreground">
-                {snapshot.summary}
-              </div>
-            )}
-
-            {snapshot?.errorMessage && (
-              <div className="mt-4 pt-4 border-t border-border/40 text-xs text-yellow-600 dark:text-yellow-400">
-                <strong>Hinweise zu einzelnen Indikatoren:</strong> {snapshot.errorMessage}
-              </div>
-            )}
           </CardContent>
         </Card>
 
-        {/* Indikator-Grid */}
+        {/* Indikator-Grid — 2 Spalten auf Desktop, 1 Spalte sonst */}
         {indicators && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
             {INDICATOR_KEYS.map((key) => (
               <IndicatorCard key={key} indicator={indicators[key]} />
             ))}
           </div>
         )}
 
-        {/* Erklär-Karte */}
+        {/* Erklär-Karte (kompakter, am Ende) */}
         <Card className="bg-primary/5 border-primary/20">
-          <CardHeader>
-            <CardTitle className="text-base">Wie funktioniert das Frühwarnsystem?</CardTitle>
-            <CardDescription>
+          <CardHeader className="p-5 sm:p-6 pb-3">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              Wie funktioniert das Frühwarnsystem?
+            </CardTitle>
+            <CardDescription className="text-sm">
               Fünf Indikatoren, die zusammen ein Stimmungsbild geben
             </CardDescription>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-2 leading-relaxed">
+          <CardContent className="p-5 sm:p-6 pt-0 text-sm text-muted-foreground space-y-3 leading-relaxed">
             <p>
-              <strong>1. Capex/Umsatz-Schere:</strong> Investieren MSFT, GOOGL, AMZN und NVDA stärker
-              als ihr Umsatz wächst? Eine sich öffnende Schere ist ein Warnzeichen.
+              <strong className="text-foreground">1. Capex/Umsatz-Schere:</strong> Investieren MSFT,
+              GOOGL, AMZN und NVDA stärker als ihr Umsatz wächst? Eine sich öffnende Schere ist ein
+              Warnzeichen.
             </p>
             <p>
-              <strong>2. Circular Financing:</strong> Finanzieren sich AI-Akteure gegenseitig im Kreis
-              (Chipanbieter finanziert Kunden, der dann Chips kauft)? Klassisches Blasen-Muster.
+              <strong className="text-foreground">2. Circular Financing:</strong> Finanzieren sich
+              AI-Akteure gegenseitig im Kreis (Chipanbieter finanziert Kunden, der dann Chips kauft)?
+              Klassisches Blasen-Muster.
             </p>
             <p>
-              <strong>3. Effizienz-Sprünge:</strong> Gibt es disruptive Effizienz-Releases (à la
-              DeepSeek), die GPU-Bedarf und Tech-Bewertungen unterhöhlen?
+              <strong className="text-foreground">3. Effizienz-Sprünge:</strong> Gibt es disruptive
+              Effizienz-Releases (à la DeepSeek), die GPU-Bedarf und Tech-Bewertungen unterhöhlen?
             </p>
             <p>
-              <strong>4. Zinsen & Inflation:</strong> Fed Funds Rate und Core CPI (US). Hohe Werte
-              drücken Tech-Bewertungen, persistente Inflation hält den Druck aufrecht.
+              <strong className="text-foreground">4. Zinsen &amp; Inflation:</strong> Fed Funds Rate
+              und Core CPI (US). Hohe Werte drücken Tech-Bewertungen, persistente Inflation hält den
+              Druck aufrecht.
             </p>
             <p>
-              <strong>5. Marktbreite:</strong> Stehen S&P 500 und Nasdaq über ihrem 200-Tage-Schnitt?
-              Fallen unter den GD200 ist klassisches Bärenmarkt-Signal.
+              <strong className="text-foreground">5. Marktbreite:</strong> Stehen S&amp;P 500 (SPY)
+              und Nasdaq 100 (QQQ) über ihrem 200-Tage-Schnitt? Fallen unter den GD200 ist
+              klassisches Bärenmarkt-Signal.
             </p>
-            <p className="pt-2 text-xs italic">
+            <p className="pt-3 text-xs italic border-t border-border/30">
               Die Indikatoren sind ein Beobachtungs-Werkzeug, keine Handelsempfehlung. Letzte
               Entscheidung liegt immer bei dir.
             </p>
