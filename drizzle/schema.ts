@@ -288,3 +288,20 @@ export const lossCarryforwards = mysqlTable("loss_carryforwards", {
 export type LossCarryforward = typeof lossCarryforwards.$inferSelect;
 export type InsertLossCarryforward = typeof lossCarryforwards.$inferInsert;
 
+/**
+ * Tech-Frühwarnsystem - Snapshots der 5 Indikatoren
+ * Eine Zeile = ein vollständiger Knopfdruck-Snapshot
+ */
+export const techWarningSignals = mysqlTable("tech_warning_signals", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  overallSignal: mysqlEnum("overallSignal", ["gruen", "gelb", "rot"]).notNull(),
+  indicators: json("indicators").notNull(),
+  summary: text("summary"),
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TechWarningSignal = typeof techWarningSignals.$inferSelect;
+export type InsertTechWarningSignal = typeof techWarningSignals.$inferInsert;
+

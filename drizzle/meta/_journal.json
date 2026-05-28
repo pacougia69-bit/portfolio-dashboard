@@ -57,6 +57,13 @@
       "when": 1768487175205,
       "tag": "0007_rapid_firestar",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1779954789174,
+      "tag": "0008_tech_warning_signals",
+      "breakpoints": true
     }
   ]
 }

@@ -52,6 +52,7 @@ import {
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
 import { getEurUsdRate } from "./currency";
+import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot } from "./tech-warning";
 
 export const appRouter = router({
   system: systemRouter,
@@ -1303,6 +1304,20 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         return deleteLossCarryforward(ctx.user.id, input.id);
       }),
+  }),
+
+  // Tech-Frühwarnsystem (Tech-Crash-Indikatoren als 4. Säule)
+  techWarning: router({
+    // Holt einen frischen Snapshot (alle 5 Indikatoren parallel) und speichert ihn in der DB.
+    // Wird vom Button im Frontend ausgelöst, dauert je nach OpenAI-Web-Suche 10-30 Sekunden.
+    fetchSnapshot: protectedProcedure.mutation(async ({ ctx }) => {
+      return fetchTechWarningSnapshot(ctx.user.id);
+    }),
+
+    // Liest den zuletzt gespeicherten Snapshot aus der DB. Liefert null, wenn noch keiner existiert.
+    getLatest: protectedProcedure.query(async ({ ctx }) => {
+      return getLatestTechWarningSnapshot(ctx.user.id);
+    }),
   }),
 });
 

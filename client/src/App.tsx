@@ -20,6 +20,7 @@ import EinstellungenPage from "./pages/EinstellungenPage";
 import AIAssistantPage from "./pages/AIAssistantPage";
 import HilfePage from "./pages/HilfePage";
 import RebalancingPage from "./pages/RebalancingPage";
+import TechFruehwarnsystemPage from "./pages/TechFruehwarnsystemPage";
 
 function Router() {
   return (
@@ -35,6 +36,7 @@ function Router() {
       <Route path="/rebalancing" component={RebalancingPage} />
       <Route path="/einstellungen" component={EinstellungenPage} />
       <Route path="/ki-assistent" component={AIAssistantPage} />
+      <Route path="/tech-fruehwarnsystem" component={TechFruehwarnsystemPage} />
       <Route path="/hilfe" component={HilfePage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
