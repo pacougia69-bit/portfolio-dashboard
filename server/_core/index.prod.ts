@@ -146,9 +146,32 @@ async function runDatabaseMigration() {
     } catch (schemaError: any) {
       console.error('⚠️  Error checking/fixing transactions schema:', schemaError.message);
     }
-    
+
+    // === Tech-Frühwarnsystem: tech_warning_signals Tabelle sicherstellen ===
+    // Defensiv per CREATE TABLE IF NOT EXISTS — gleiches Pattern wie für
+    // tax_allowances / loss_carryforwards. Falls die Drizzle-Migration 0008
+    // aus irgendeinem Grund nicht durchläuft, wird die Tabelle hier angelegt.
+    try {
+      console.log('🔍 Checking tech_warning_signals table...');
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS tech_warning_signals (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          overallSignal ENUM('gruen','gelb','rot') NOT NULL,
+          indicators JSON NOT NULL,
+          summary TEXT,
+          errorMessage TEXT,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ tech_warning_signals table ready');
+    } catch (twsError: any) {
+      console.error('⚠️  Error creating tech_warning_signals table:', twsError.message);
+      // Bewusst kein throw — Server soll trotzdem starten, andere Features funktionieren weiter.
+    }
+
     await connection.end();
-    
+
     console.log('✅ Database migration completed successfully');
   } catch (error) {
     console.error('❌ Database migration failed:', error);
