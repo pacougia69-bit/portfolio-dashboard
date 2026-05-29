@@ -52,7 +52,7 @@ import {
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
 import { getEurUsdRate } from "./currency";
-import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot } from "./tech-warning";
+import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningHistory } from "./tech-warning";
 
 export const appRouter = router({
   system: systemRouter,
@@ -1318,6 +1318,13 @@ export const appRouter = router({
     getLatest: protectedProcedure.query(async ({ ctx }) => {
       return getLatestTechWarningSnapshot(ctx.user.id);
     }),
+
+    // Liest die letzten N Snapshots (Default 10) für die Verlaufs-Leiste.
+    getHistory: protectedProcedure
+      .input(z.object({ limit: z.number().min(1).max(50).default(10) }).optional())
+      .query(async ({ ctx, input }) => {
+        return getTechWarningHistory(ctx.user.id, input?.limit ?? 10);
+      }),
   }),
 });
 

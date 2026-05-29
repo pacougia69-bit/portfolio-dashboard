@@ -203,6 +203,65 @@ function IndicatorCard({ indicator }: { indicator: IndicatorResult }) {
 }
 
 // ============================================================================
+// Verlaufs-Leiste — kompakte Reihe der letzten Snapshots
+// ============================================================================
+
+function HistoryStrip({
+  history,
+  activeId,
+  onSelect,
+}: {
+  history: any[];
+  activeId: number | undefined;
+  onSelect: (snap: LocalSnapshot) => void;
+}) {
+  // Erst sinnvoll ab 2 Snapshots
+  if (!history || history.length <= 1) return null;
+
+  // Älteste links, neueste rechts — Lese-Richtung
+  const ordered = [...history].reverse();
+
+  return (
+    <Card className="border-border/40">
+      <CardContent className="p-5 sm:p-6">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground mb-4 font-medium">
+          Verlauf · Klick auf einen Punkt zeigt den damaligen Snapshot
+        </div>
+        <div className="flex flex-wrap gap-3 sm:gap-4 items-end">
+          {ordered.map((snap: any) => {
+            const styles = getSignalStyles(snap.overallSignal as Signal);
+            const Icon = styles.Icon;
+            const isActive = snap.id === activeId;
+            const d = new Date(snap.createdAt);
+            return (
+              <button
+                key={snap.id}
+                onClick={() => onSelect(snap as LocalSnapshot)}
+                className={`flex flex-col items-center gap-1.5 transition-all ${
+                  isActive ? "opacity-100 scale-110" : "opacity-60 hover:opacity-100"
+                }`}
+                title={d.toLocaleString("de-DE")}
+              >
+                <div
+                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full ${styles.bg} border-2 ${styles.border} flex items-center justify-center ${
+                    isActive ? `ring-4 ${styles.ring}` : ""
+                  }`}
+                >
+                  <Icon className={`h-5 w-5 sm:h-6 sm:w-6 ${styles.text}`} />
+                </div>
+                <div className="text-xs text-muted-foreground whitespace-nowrap font-mono">
+                  {d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================================
 // Haupt-Seite
 // ============================================================================
 
@@ -212,6 +271,9 @@ export default function TechFruehwarnsystemPage() {
   // Aus DB geladener Snapshot (initial null wenn kein Eintrag, oder als Fallback)
   const { data: dbSnapshot, isLoading: isLoadingLatest } =
     trpc.techWarning.getLatest.useQuery();
+
+  // Verlaufs-Liste der letzten 10 Snapshots
+  const { data: history = [] } = trpc.techWarning.getHistory.useQuery();
 
   // Lokaler State: das ist, was die Seite anzeigt. Wird mit DB-Daten initialisiert
   // und durch Mutation-Antworten aktualisiert. Bleibt sichtbar, auch wenn getLatest
@@ -232,6 +294,7 @@ export default function TechFruehwarnsystemPage() {
       setActiveSnapshot(data as unknown as LocalSnapshot);
       // Cache trotzdem auffrischen, damit beim nächsten Seitenladen alles passt
       utils.techWarning.getLatest.invalidate();
+      utils.techWarning.getHistory.invalidate();
     },
     onError: (err) => {
       toast.error("Fehler beim Holen des Snapshots: " + err.message);
@@ -341,6 +404,13 @@ export default function TechFruehwarnsystemPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Verlaufs-Leiste */}
+        <HistoryStrip
+          history={history}
+          activeId={snapshot?.id}
+          onSelect={(snap) => setActiveSnapshot(snap)}
+        />
 
         {/* Indikator-Grid — 2 Spalten auf Desktop, 1 Spalte sonst */}
         {indicators && (

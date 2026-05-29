@@ -1,76 +1,130 @@
-# NOTFALLPLAN: Portfolio Dashboard (Stand: 05.01.2026)
+# NOTFALLPLAN: Portfolio Dashboard (Stand: 29.05.2026)
 
 ## 1. Technischer Überblick (Dashboard)
-- **Backend:** Node.js mit Hono Framework.
-- **Frontend:** React mit Vite (JavaScript/TypeScript).
-- **Datenbank:** SQLite (lokale Datei `portfolio.sqlite` im Projektordner).
-- **Hosting:** Railway (automatisch verbunden mit GitHub).
+- **Frontend:** React 19 + TypeScript, Tailwind CSS 4, shadcn/ui, Wouter (Routing), tRPC + TanStack React Query
+- **Backend:** Node.js + Express, tRPC v11 (Type-Safe API), Drizzle ORM
+- **Datenbank:** MySQL (Railway-interner Service, Connection via `DATABASE_URL`)
+- **Build:** Vite (Client) + esbuild (Server) → `dist/`
+- **Paketmanager:** pnpm (Railway nutzt `--frozen-lockfile`)
+- **Hosting:** Railway, auto-deploy bei jedem `git push origin main`
+- **Auth:** OAuth + JWT-Cookies, optional PIN-Sperre
 
-## 2. Übersicht & Technik
-Dieses Dashboard ist mein zentrales Tool zur Portfolio-Verwaltung.
-- **Technik:** Node.js (Backend: Hono) & React (Frontend: Vite/JavaScript).
-- **Datenbank:** SQLite (lokale Datei im Projektordner).
-- **Hosting:** Railway (automatisch verbunden mit GitHub).
-- **KI-Unterstützung:** Abacus.ai (ChatLLM) für Strategie & OpenAI API für Dashboard-Analysen.
+## 2. KI- und Datenquellen
+- **OpenAI API:** Portfolio-Analysen, Sparplan-Empfehlungen, KI-Chat, Tech-Frühwarnsystem (Chat Completions + Responses API mit `web_search_preview`)
+- **Twelve Data:** Live-Aktienkurse, EUR/USD-Rate, Marktbreite (SPY/QQQ vs. GD200) — Free Tier 800 Calls/Tag
+- **Yahoo Finance:** Fallback für Kurse, läuft auf Home Assistant (siehe CLAUDE.md im Userverzeichnis)
+- **FRED API:** Fed Funds Rate + Core CPI YoY für das Tech-Frühwarnsystem — kostenlos, registrierungspflichtig
 
-## 3. Wichtiger Hinweis zu Daten & Railway (Persistenz)
-**ACHTUNG:** Das Dashboard auf Railway hat aktuell **kein Volume** (festen Speicher) direkt eingebunden. 
-- Änderungen, die NUR online im Dashboard gemacht werden, gehen bei einem neuen Deployment verloren!
-- **Die "Master-Wahrheit" liegt lokal auf meinem Laptop** in der SQLite-Datei.
-- **Sicherheits-Routine:** 
-  1. Änderungen bevorzugt lokal machen -> `git push` zu GitHub.
-  2. Nach jeder Online-Änderung sofort einen **JSON-Export** ziehen.
-  3. Monatliches ZIP-Backup des gesamten Ordners in die Cloud.
+## 3. Datenbank & Persistenz
+**WICHTIG — anders als früher:** Das Dashboard nutzt jetzt **MySQL auf Railway** (kein SQLite mehr, keine lokale Datei). Railway hat persistenten Speicher, deshalb sind die Daten online sicher.
+
+- Alle User-Daten (Portfolio, Watchlist, Dividenden, Transaktionen, Notizen, Sparpläne, Tech-Frühwarnsystem-Snapshots) liegen in der MySQL auf Railway
+- Schema-Quelle: `drizzle/schema.ts` im Code-Repo
+- Migrationen: SQL-Dateien in `drizzle/`, automatisch ausgeführt beim Server-Start (`runDatabaseMigration` in `server/_core/index.prod.ts`)
+- **Backup-Pflicht:** Railway-Plan prüfen, ob automatische Snapshots aktiviert sind (MySQL-Service → Backups-Tab). Monatlich auch ein **JSON-Export** via Dashboard ziehen (Einstellungen → Export)
 
 ## 4. Backup-Strategie (3-2-1 Regel)
-- **Code:** GitHub (täglich `git push`).
-- **Daten:** JSON-Exporte aus dem Dashboard (nach jeder Änderung).
-- **Cloud-Backup:** Google Drive / OneDrive Ordner `Backup_Portfolio_Dashboard`.
-  - `01_Code_Snapshots`: Monatliche ZIP-Datei des Projektordners.
-  - `02_Daten_Backups`: Alle JSON-Exporte der Datenbank.
-  - `03_Konfiguration_Doku`: Dieser Notfallplan & API-Keys.
+- **Code:** GitHub Branch `main` (`git push` nach jeder Änderung)
+- **DB-Daten:** Railway automatische Snapshots + monatlicher JSON-Export aus dem Dashboard
+- **Cloud-Backup-Ordner:** `Google Drive / OneDrive` → `Backup_Portfolio_Dashboard/`
+  - `01_Code_Snapshots/` — monatliches ZIP des Projektordners
+  - `02_Daten_Backups/` — JSON-Exporte aus dem Dashboard
+  - `03_Konfiguration_Doku/` — diesen Notfallplan, ENV-Variablen-Liste (Namen, nicht Werte!), API-Key-Hinweise
 
-### Wichtiger Hinweis: SQLite & Railway (Persistenz)
-- **Kein Volume:** Mein Dashboard auf Railway hat aktuell KEINEN festen Speicher (Volume) für die SQLite-Datenbank.
-- **Folge:** Änderungen, die NUR online im Dashboard gemacht werden, gehen bei einem neuen Deployment verloren.
-- **Lösung:** Die "Master-Wahrheit" der Daten liegt immer lokal auf meinem Laptop. Nach Online-Änderungen muss zwingend ein JSON-Export gemacht und in der Cloud gesichert werden.
+## 5. Environment-Variablen (Railway → Variables)
+| Variable | Pflicht | Zweck |
+|---|---|---|
+| `DATABASE_URL` | ja | MySQL-Connection, stellt Railway automatisch |
+| `JWT_SECRET` | ja | Cookie-Signierung |
+| `OPENAI_API_KEY` | ja | KI-Features inkl. Tech-Frühwarnsystem |
+| `OAUTH_SERVER_URL` | ja | OAuth-Redirect (= Railway-App-URL) |
+| `VITE_APP_ID` | ja | App-Identifier für OAuth |
+| `OWNER_OPEN_ID` | ja | OpenID von Rafael = Admin |
+| `TWELVE_DATA_API_KEY` | empfohlen | Live-Kurse + Marktbreite |
+| `FRED_API_KEY` | empfohlen | Tech-Frühwarnsystem Zinsen/Inflation |
+| `NODE_ENV=production` | ja | wird von Railway gesetzt |
+| `PORT` | auto | Railway setzt das automatisch |
 
-## 5. Logins & Fixkosten
+## 6. Fixkosten
 | Dienst | Zweck | Kosten (ca.) |
-| :--- | :--- | :--- |
+|---|---|---|
 | **GitHub** | Code-Speicher | 0 € |
-| **Railway** | Hosting | < 1,00 $ / Monat |
-| **Abacus.ai** | KI-Strategie / Chat | 10–20 $ / Monat |
-| **OpenAI** | Dashboard-KI | Nutzungsbasiert (Cent) |
+| **Railway** | Hosting + MySQL | < 5 $ / Monat |
+| **OpenAI** | Dashboard-KI + Tech-Frühwarnsystem | Nutzungsbasiert (typisch Cent–niedrige €) |
+| **FRED** | US-Zinsen / Inflation | 0 € |
+| **Twelve Data** | Live-Kurse + Marktbreite | 0 € (Free Tier 800 Calls/Tag) |
 
-*Passwörter & API-Keys sind sicher im Passwort-Manager (z.B. Bitwarden) gespeichert.*
+Passwörter & API-Keys sind im Passwort-Manager (z.B. Bitwarden) gespeichert.
 
-## 6. Wiederherstellung (Neuer Laptop)
-1. **Umgebung:** VS Code & Node.js (LTS Version) installieren.
-2. **Code:** `git clone [GitHub-URL]` in den neuen Ordner.
-3. **Konfiguration:** `.env` Datei aus dem Cloud-Backup (03_Konfiguration) erstellen.
-4. **Daten:** Aktuellste SQLite-Datei oder JSON-Import nutzen.
-5. **Start:** `npm install` und dann `npm run dev` zum Testen.
+## 7. Wiederherstellung auf neuem Laptop
+1. **Umgebung:** Node.js 20+, pnpm, Git Bash (Windows) installieren
+2. **Repo klonen:** `git clone https://github.com/pacougia69/portfolio-dashboard.git` (Ziel: `C:\Users\rafae\Desktop\Projekte\portfolio-dashboard\`)
+3. **Dependencies:** `pnpm install` im Projektordner
+4. **`.env` lokal anlegen** (für lokale Entwicklung) — Werte aus `03_Konfiguration_Doku/` oder vom Bitwarden:
+   - `DATABASE_URL`, `JWT_SECRET`, `OPENAI_API_KEY`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `OWNER_OPEN_ID`, etc.
+5. **Lokal testen:** `pnpm dev` → http://localhost:3000
+6. **Build prüfen:** `pnpm build` (Vite + esbuild müssen sauber durchlaufen)
+7. **Railway:** Falls Railway-Projekt verloren, neues anlegen, MySQL-Service hinzufügen, alle ENV-Variablen setzen (siehe Punkt 5), GitHub-Repo verbinden → auto-deploy
 
-## 7. Strategie-Check (60/10/10/20 Regel)
-- **60% Basis:** World & Emerging Markets (EUNL, IS3N).
-- **10% Small Caps:** (ISUSN).
-- **10% Tech/Growth:** (Nasdaq 100).
-- **20% Themen/Satelliten:** (AI, Clean Energy, Uran, Defence).
+## 8. Strategie-Check — 5+1 Wellen-Strategie (seit Mai 2026)
+| Welle | Kategorie | Ziel-% | WKN |
+|---|---|---|---|
+| 1 | Kern (MSCI World) | 50 % | A0RPWH |
+| 2 | EM (Emerging Markets) | 15 % | A111X9 |
+| 3 | KI-Infrastruktur | 10 % | A40L9T |
+| 4 | Infrastruktur | 10 % | A3D6N1 |
+| 5 | Healthcare | 10 % | A113FD |
+| +1 | Puffer (iBonds 2030) | 5 % | A40KHS |
 
-*Bei Extra-Geld: Erst Rebalancing-Modul im Dashboard prüfen, dann Schnellfragen nutzen.*
+**Summe: 100 %**
 
-## 8. Checkpoints / Änderungsprotokoll
+Die Ziel-Prozente müssen an drei Stellen im Code konsistent sein (siehe CLAUDE.md im Projektordner):
+- `client/src/pages/StrategiePage.tsx` → `DEFAULT_ALLOCATIONS`
+- `client/src/pages/DashboardPage.tsx` → `STRATEGY_TARGETS`
+- `server/routers.ts` → `individualETFTargets` im `rebalancing.analyze` Endpoint
 
-### Checkpoint 2026-01-01 (Git-Tag: checkpoint-2026-01-01)
-**Stabiler Stand nach ETF-Strategie-Fix**
-- **Status:** Produktiv einsatzbereit
-- **Wichtige Änderungen:**
-  - Sparrate auf 1.350 € korrekt konfiguriert
-  - Datenbank bereinigt und validiert
-  - ETF-Strategie-Modul funktionsfähig
+Bei Extra-Geld: Erst Rebalancing-Modul im Dashboard prüfen, dann investieren.
+
+## 9. Hauptseiten (Routen)
+| Route | Datei | Funktion |
+|---|---|---|
+| `/` | DashboardPage.tsx | Gesamtübersicht, Rebalancing, Investment-Vorschläge |
+| `/strategie` | StrategiePage.tsx | Ziel-Allokation, Sparplan-Verteilung, KI-Empfehlung |
+| `/rebalancing` | RebalancingPage.tsx | Einmalsumme optimal verteilen |
+| `/portfolio` | PortfolioPage.tsx | Alle Positionen verwalten |
+| `/dividenden` | DividendenPage.tsx | Dividenden-Tracking |
+| `/watchlist` | WatchlistPage.tsx | Beobachtungsliste |
+| `/ki-assistent` | AIAssistantPage.tsx | KI-Chat mit Portfolio-Kontext |
+| `/tech-fruehwarnsystem` | TechFruehwarnsystemPage.tsx | Tech-Crash-Frühwarnsystem (5 Indikatoren + Verlauf) |
+| `/einstellungen` | EinstellungenPage.tsx | DKB-PDF-Import, Einstellungen |
+
+## 10. Tech-Frühwarnsystem — 5 Indikatoren (seit 29.05.2026)
+Per Knopfdruck wird ein Snapshot mit fünf Indikatoren geholt:
+1. **Capex/Umsatz-Schere** bei MSFT/GOOGL/AMZN/NVDA (OpenAI Web-Suche)
+2. **Circular Financing** News-Scan (OpenAI Web-Suche)
+3. **Effizienz-Sprünge** / DeepSeek-Effekt (OpenAI Web-Suche)
+4. **Zinsen & Inflation** Fed Funds + Core CPI (FRED)
+5. **Marktbreite** SPY + QQQ vs. GD200 (Twelve Data)
+
+Jeder Snapshot wird in der DB-Tabelle `tech_warning_signals` gespeichert. Die Seite zeigt automatisch die letzten 10 Snapshots als Verlaufs-Leiste.
+
+Bei Problemen: Railway-Logs nach `[tech-warning]` filtern.
+
+## 11. Checkpoints / Änderungsprotokoll
+
+### Checkpoint 2026-05-29 — Tech-Frühwarnsystem live
+- 5-Indikatoren-Frühwarnsystem als 4. Säule integriert
+- Verlaufs-Historie der letzten Snapshots in der Seite eingebaut
+- 5+1 Wellen-Strategie ist die aktive Anlage-Strategie
+- Stack umgestellt: MySQL statt SQLite, Express+tRPC statt Hono
+
+### Checkpoint 2026-01-01 — ETF-Strategie-Fix
+- Sparrate auf 1.350 € korrekt konfiguriert
+- Datenbank bereinigt und validiert
+- ETF-Strategie-Modul funktionsfähig
 - **Wiederherstellung auf diesen Stand:**
   ```bash
-  cd C:\Users\rafae\Desktop\portfolio-dashboard-source
+  cd C:/Users/rafae/Desktop/Projekte/portfolio-dashboard
   git fetch origin
   git checkout checkpoint-2026-01-01
+  ```

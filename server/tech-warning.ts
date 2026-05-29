@@ -504,6 +504,42 @@ export async function fetchTechWarningSnapshot(userId: number): Promise<TechWarn
 }
 
 /**
+ * Liest die letzten N Snapshots für diesen User, neueste zuerst.
+ * Wird für die Verlaufs-Leiste auf der Frontend-Seite genutzt.
+ */
+export async function getTechWarningHistory(
+  userId: number,
+  limit: number = 10,
+): Promise<TechWarningSnapshot[]> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[tech-warning] getHistory: Database not available");
+    return [];
+  }
+  try {
+    const rows = await db
+      .select()
+      .from(techWarningSignals)
+      .where(eq(techWarningSignals.userId, userId))
+      .orderBy(desc(techWarningSignals.createdAt))
+      .limit(limit);
+    console.log(`[tech-warning] getHistory: ${rows.length} Zeile(n) für userId=${userId} (Limit ${limit})`);
+    return rows.map((row) => ({
+      id: row.id,
+      createdAt: row.createdAt,
+      overallSignal: row.overallSignal as Signal,
+      indicators: row.indicators as unknown as TechWarningIndicators,
+      summary: row.summary,
+      errorMessage: row.errorMessage,
+    }));
+  } catch (err: any) {
+    console.error(`[tech-warning] getHistory FEHLER:`, err?.message || err);
+    console.error(`[tech-warning] Stacktrace:`, err?.stack);
+    return [];
+  }
+}
+
+/**
  * Liest den zuletzt gespeicherten Snapshot für diesen User. Null, wenn keiner existiert.
  */
 export async function getLatestTechWarningSnapshot(userId: number): Promise<TechWarningSnapshot | null> {
