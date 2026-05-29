@@ -468,16 +468,30 @@ export async function fetchTechWarningSnapshot(userId: number): Promise<TechWarn
   // In DB speichern
   const db = await getDb();
   if (!db) {
+    console.error("[tech-warning] FEHLER: Database not available beim Insert");
     throw new Error("Database not available");
   }
-  const result = await db.insert(techWarningSignals).values({
-    userId,
-    overallSignal,
-    indicators: indicators as any, // json-Feld
-    summary,
-    errorMessage,
-  });
-  const insertId = Number(result[0].insertId);
+
+  console.log(`[tech-warning] Speichere Snapshot für userId=${userId}, overallSignal=${overallSignal}, errorMessage=${errorMessage ? "ja" : "nein"}`);
+
+  let insertId = 0;
+  try {
+    const result = await db.insert(techWarningSignals).values({
+      userId,
+      overallSignal,
+      indicators: indicators as any, // json-Feld
+      summary,
+      errorMessage,
+    });
+    insertId = Number(result[0].insertId);
+    console.log(`[tech-warning] INSERT erfolgreich, neue Snapshot-ID: ${insertId}`);
+  } catch (dbErr: any) {
+    console.error(`[tech-warning] DB-INSERT FEHLGESCHLAGEN:`, dbErr?.message || dbErr);
+    console.error(`[tech-warning] Stacktrace:`, dbErr?.stack);
+    // Trotz DB-Fehler den Snapshot zurückgeben, damit das Frontend
+    // wenigstens das Ergebnis anzeigen kann.
+    insertId = -1;
+  }
 
   return {
     id: insertId,
@@ -494,21 +508,31 @@ export async function fetchTechWarningSnapshot(userId: number): Promise<TechWarn
  */
 export async function getLatestTechWarningSnapshot(userId: number): Promise<TechWarningSnapshot | null> {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db
-    .select()
-    .from(techWarningSignals)
-    .where(eq(techWarningSignals.userId, userId))
-    .orderBy(desc(techWarningSignals.createdAt))
-    .limit(1);
-  if (rows.length === 0) return null;
-  const row = rows[0];
-  return {
-    id: row.id,
-    createdAt: row.createdAt,
-    overallSignal: row.overallSignal as Signal,
-    indicators: row.indicators as unknown as TechWarningIndicators,
-    summary: row.summary,
-    errorMessage: row.errorMessage,
-  };
+  if (!db) {
+    console.warn("[tech-warning] getLatest: Database not available");
+    return null;
+  }
+  try {
+    const rows = await db
+      .select()
+      .from(techWarningSignals)
+      .where(eq(techWarningSignals.userId, userId))
+      .orderBy(desc(techWarningSignals.createdAt))
+      .limit(1);
+    console.log(`[tech-warning] getLatest: ${rows.length} Zeile(n) für userId=${userId}`);
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    return {
+      id: row.id,
+      createdAt: row.createdAt,
+      overallSignal: row.overallSignal as Signal,
+      indicators: row.indicators as unknown as TechWarningIndicators,
+      summary: row.summary,
+      errorMessage: row.errorMessage,
+    };
+  } catch (err: any) {
+    console.error(`[tech-warning] getLatest FEHLER:`, err?.message || err);
+    console.error(`[tech-warning] Stacktrace:`, err?.stack);
+    return null;
+  }
 }

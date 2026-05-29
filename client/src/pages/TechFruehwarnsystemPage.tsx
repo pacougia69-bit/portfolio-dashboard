@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,17 @@ type Indicators = {
   efficiency_jump: IndicatorResult;
   rates_inflation: IndicatorResult;
   market_breadth: IndicatorResult;
+};
+
+// Lokaler Snapshot-Typ — der State, den wir in der Seite halten,
+// unabhängig davon, ob er aus der DB oder direkt aus der Mutation kommt.
+type LocalSnapshot = {
+  id?: number;
+  createdAt: Date | string;
+  overallSignal: Signal;
+  indicators: Indicators;
+  summary: string | null;
+  errorMessage: string | null;
 };
 
 // Reihenfolge im Grid
@@ -196,11 +208,29 @@ function IndicatorCard({ indicator }: { indicator: IndicatorResult }) {
 
 export default function TechFruehwarnsystemPage() {
   const utils = trpc.useUtils();
-  const { data: snapshot, isLoading: isLoadingLatest } = trpc.techWarning.getLatest.useQuery();
+
+  // Aus DB geladener Snapshot (initial null wenn kein Eintrag, oder als Fallback)
+  const { data: dbSnapshot, isLoading: isLoadingLatest } =
+    trpc.techWarning.getLatest.useQuery();
+
+  // Lokaler State: das ist, was die Seite anzeigt. Wird mit DB-Daten initialisiert
+  // und durch Mutation-Antworten aktualisiert. Bleibt sichtbar, auch wenn getLatest
+  // zwischendurch null liefert (z.B. wegen Cache- oder DB-Sync-Problemen).
+  const [activeSnapshot, setActiveSnapshot] = useState<LocalSnapshot | null>(null);
+
+  // DB-Snapshot in State übernehmen, sobald da
+  useEffect(() => {
+    if (dbSnapshot && !activeSnapshot) {
+      setActiveSnapshot(dbSnapshot as unknown as LocalSnapshot);
+    }
+  }, [dbSnapshot, activeSnapshot]);
 
   const fetchSnapshot = trpc.techWarning.fetchSnapshot.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Snapshot aktualisiert");
+      // Direkt aus Mutation-Antwort übernehmen — kein Warten auf Refetch
+      setActiveSnapshot(data as unknown as LocalSnapshot);
+      // Cache trotzdem auffrischen, damit beim nächsten Seitenladen alles passt
       utils.techWarning.getLatest.invalidate();
     },
     onError: (err) => {
@@ -210,6 +240,7 @@ export default function TechFruehwarnsystemPage() {
 
   const isFetching = fetchSnapshot.isPending;
 
+  const snapshot = activeSnapshot;
   const overall = snapshot?.overallSignal as Signal | undefined;
   const overallStyles = overall ? getSignalStyles(overall) : null;
   const indicators = snapshot?.indicators as Indicators | undefined;
