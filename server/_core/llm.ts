@@ -45,11 +45,8 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
   }
 
   try {
-    console.log(`Attempting to use OpenAI model: ${model}`);
-    console.log(`Messages parameter type: ${Array.isArray(messages) ? 'array' : typeof messages}`);
-    console.log(`Messages being sent:`, JSON.stringify(messages, null, 2));
-    
-    // CRITICAL FIX: Ensure messages is always an array with explicit validation
+    console.log(`[AI] Using model: ${model}, messages: ${Array.isArray(messages) ? messages.length : 1}`);
+
     let messagesArray: Message[];
     if (!Array.isArray(messages)) {
       console.warn("Messages is not an array, converting:", typeof messages);
@@ -114,21 +111,6 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
       }
     }
     
-    console.log(`Formatted messages count: ${formattedMessages.length}`);
-    console.log(`Formatted messages for OpenAI:`, JSON.stringify(formattedMessages, null, 2));
-    
-    // COMPREHENSIVE DEBUG LOGGING - RIGHT BEFORE API CALL
-    console.log("=== DEBUG OpenAI API Call ===");
-    console.log("DEBUG messages value:", JSON.stringify(formattedMessages, null, 2));
-    console.log("DEBUG messages isArray:", Array.isArray(formattedMessages));
-    console.log("DEBUG messages type:", typeof formattedMessages);
-    console.log("DEBUG messages length:", formattedMessages?.length);
-    console.log("DEBUG messages constructor:", formattedMessages?.constructor?.name);
-    console.log("DEBUG first message:", JSON.stringify(formattedMessages[0]));
-    console.log("=== END DEBUG ===");
-    
-    // CRITICAL FIX: Pass parameters directly inline to avoid any object transformation
-    // Do NOT use intermediate variables that might get optimized/transformed by bundler
     const response = await openai.chat.completions.create({
       model: model,
       messages: Array.isArray(formattedMessages) ? formattedMessages : [formattedMessages],
@@ -142,20 +124,14 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
       throw new Error("OpenAI returned empty response");
     }
     
-    console.log(`Successfully generated response using model: ${model}`);
+    console.log(`[AI] Response OK (model: ${model})`);
     return content;
     
   } catch (error: any) {
     const errorMessage = error?.message || String(error);
     const errorCode = error?.code || error?.status;
     
-    console.error(`Error with model ${model}:`, {
-      message: errorMessage,
-      code: errorCode,
-      type: error?.type,
-      status: error?.status,
-      fullError: error,
-    });
+    console.error(`[AI] Error with model ${model}: ${errorMessage} (code: ${errorCode || 'unknown'})`);
     
     // Check if it's a model-specific error and we have more models to try
     if (

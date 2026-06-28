@@ -497,15 +497,18 @@ export async function importPortfolioData(userId: number, portfolio: any[], watc
 export async function exportPortfolioData(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
+
   const portfolioData = await getPortfolioPositions(userId);
   const watchlistData = await getWatchlistItems(userId);
   const dividendsData = await getDividends(userId);
   const notesData = await getNotes(userId);
   const savingsPlansData = await getSavingsPlans(userId);
-  
+  const transactionsData = await getTransactions(userId);
+  const settingsData = await getUserSettings(userId);
+
   return {
     timestamp: new Date().toISOString(),
+    version: "2.0",
     portfolio: portfolioData.map(p => ({
       wkn: p.wkn,
       ticker: p.ticker,
@@ -514,6 +517,7 @@ export async function exportPortfolioData(userId: number) {
       category: p.category,
       amount: p.amount,
       buyPrice: p.buyPrice,
+      currentPrice: p.currentPrice,
       value: p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice,
       status: p.status,
       autoUpdate: p.autoUpdate,
@@ -528,6 +532,8 @@ export async function exportPortfolioData(userId: number) {
     dividends: dividendsData,
     notes: notesData,
     savingsPlans: savingsPlansData,
+    transactions: transactionsData,
+    settings: settingsData,
   };
 }
 
