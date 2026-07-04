@@ -67,6 +67,116 @@ const emptyTransferForm: TransferFormData = {
   status: 'Halten',
 };
 
+function WatchlistForm({
+  formData,
+  setFormData,
+  onSubmit,
+  onCancel,
+  onWKNLookup,
+  isLookingUp,
+  isSubmitting,
+  submitLabel,
+}: {
+  formData: WatchlistFormData;
+  setFormData: (data: WatchlistFormData) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  onWKNLookup: () => void;
+  isLookingUp: boolean;
+  isSubmitting: boolean;
+  submitLabel: string;
+}) {
+  return (
+    <div className="grid gap-4 py-4">
+      <div className="space-y-2">
+        <Label>WKN (automatische Suche)</Label>
+        <div className="flex gap-2">
+          <Input
+            value={formData.wkn}
+            onChange={(e) => setFormData({ ...formData, wkn: e.target.value.toUpperCase() })}
+            placeholder="z.B. 865985 oder A0RPWH"
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onWKNLookup}
+            disabled={isLookingUp || !formData.wkn}
+          >
+            {isLookingUp ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Search className="w-4 h-4" />
+            )}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Geben Sie die WKN ein und klicken Sie auf Suchen, um Name, Ticker und Kurs automatisch zu laden
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Ticker/Symbol *</Label>
+          <Input
+            value={formData.ticker}
+            onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
+            placeholder="z.B. AAPL"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Name *</Label>
+          <Input
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            placeholder="z.B. Apple Inc."
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Aktueller Preis (€)</Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={formData.currentPrice}
+            onChange={(e) => setFormData({ ...formData, currentPrice: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Zielpreis (€)</Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={formData.targetPrice}
+            onChange={(e) => setFormData({ ...formData, targetPrice: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Notizen</Label>
+        <Textarea
+          value={formData.notes}
+          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+          placeholder="Warum beobachten Sie diese Aktie?"
+          rows={3}
+        />
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onCancel}>
+          Abbrechen
+        </Button>
+        <Button onClick={onSubmit} disabled={!formData.ticker || !formData.name || isSubmitting}>
+          {submitLabel}
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
 export default function WatchlistPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -291,97 +401,6 @@ export default function WatchlistPage() {
     setIsEditDialogOpen(false);
   };
 
-  const WatchlistForm = ({ onSubmit, submitLabel }: { onSubmit: () => void; submitLabel: string }) => (
-    <div className="grid gap-4 py-4">
-      {/* WKN Lookup Row */}
-      <div className="space-y-2">
-        <Label>WKN (automatische Suche)</Label>
-        <div className="flex gap-2">
-          <Input
-            value={formData.wkn}
-            onChange={(e) => setFormData({ ...formData, wkn: e.target.value.toUpperCase() })}
-            placeholder="z.B. 865985 oder A0RPWH"
-            className="flex-1"
-          />
-          <Button 
-            type="button" 
-            variant="secondary" 
-            onClick={handleWKNLookup}
-            disabled={isLookingUp || !formData.wkn}
-          >
-            {isLookingUp ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Search className="w-4 h-4" />
-            )}
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Geben Sie die WKN ein und klicken Sie auf Suchen, um Name, Ticker und Kurs automatisch zu laden
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Ticker/Symbol *</Label>
-          <Input
-            value={formData.ticker}
-            onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
-            placeholder="z.B. AAPL"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Name *</Label>
-          <Input
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder="z.B. Apple Inc."
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Aktueller Preis (€)</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={formData.currentPrice}
-            onChange={(e) => setFormData({ ...formData, currentPrice: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Zielpreis (€)</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={formData.targetPrice}
-            onChange={(e) => setFormData({ ...formData, targetPrice: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label>Notizen</Label>
-        <Textarea
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Warum beobachten Sie diese Aktie?"
-          rows={3}
-        />
-      </div>
-
-      <DialogFooter>
-        <Button variant="outline" onClick={resetForm}>
-          Abbrechen
-        </Button>
-        <Button onClick={onSubmit} disabled={!formData.ticker || !formData.name || createItem.isPending || updateItem.isPending}>
-          {submitLabel}
-        </Button>
-      </DialogFooter>
-    </div>
-  );
-
   if (isLoading) {
     return (
       <Layout>
@@ -441,7 +460,16 @@ export default function WatchlistPage() {
                   Geben Sie die WKN ein, um Daten automatisch zu laden, oder füllen Sie die Felder manuell aus.
                 </DialogDescription>
               </DialogHeader>
-              <WatchlistForm onSubmit={handleSubmit} submitLabel="Hinzufügen" />
+              <WatchlistForm
+                formData={formData}
+                setFormData={setFormData}
+                onSubmit={handleSubmit}
+                onCancel={resetForm}
+                onWKNLookup={handleWKNLookup}
+                isLookingUp={isLookingUp}
+                isSubmitting={createItem.isPending || updateItem.isPending}
+                submitLabel="Hinzufügen"
+              />
             </DialogContent>
             </Dialog>
           </div>
@@ -583,7 +611,16 @@ export default function WatchlistPage() {
                 Aktualisieren Sie die Details dieses Eintrags.
               </DialogDescription>
             </DialogHeader>
-            <WatchlistForm onSubmit={handleSubmit} submitLabel="Speichern" />
+            <WatchlistForm
+              formData={formData}
+              setFormData={setFormData}
+              onSubmit={handleSubmit}
+              onCancel={resetForm}
+              onWKNLookup={handleWKNLookup}
+              isLookingUp={isLookingUp}
+              isSubmitting={createItem.isPending || updateItem.isPending}
+              submitLabel="Speichern"
+            />
           </DialogContent>
         </Dialog>
 
