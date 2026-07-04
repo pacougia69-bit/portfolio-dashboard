@@ -109,16 +109,22 @@ export async function parseDKBPDF(pdfBuffer: Buffer, fileName?: string): Promise
   // Wrap all parsing logic in try-catch to prevent server crashes
   try {
     // Extract order number - match raw format like "339299/21.00" then normalize to pure digits "3392992100"
-    const orderNumberMatch = text.match(/Auftragsnummer\s*(\d+\/[\d.]+)/);
-    if (!orderNumberMatch) {
-      throw new Error('Auftragsnummer nicht gefunden');
+    // Also handle variations: extra spaces, line breaks, or slight format differences
+    const orderNumberMatch = text.match(/Auftragsnummer\s*[:\s]*(\d[\d\s]*\/[\d.\s]+)/)
+      || text.match(/Auftragsnummer\s*[:\s]*(\d+)/);
+    const orderNumber = orderNumberMatch
+      ? orderNumberMatch[1].replace(/[\s/.]/g, '')
+      : 'UNKNOWN';
+    if (orderNumber === 'UNKNOWN') {
+      console.warn('[DKB Parser] Auftragsnummer nicht gefunden, verwende Fallback');
     }
-    const orderNumber = orderNumberMatch[1].replace(/[/.]/g, '');
 
-    // Extract invoice number
-    const invoiceNumberMatch = text.match(/Rechnungsnummer\s*(W\d+-\d+\/\d+)/);
+    // Extract invoice number — this is the primary unique identifier per PDF
+    const invoiceNumberMatch = text.match(/Rechnungsnummer\s*[:\s]*(W[\w]+-[\d]+\/[\d]+)/)
+      || text.match(/Rechnungsnummer\s*[:\s]*([\w]+-[\d]+[\/\-][\d]+)/)
+      || text.match(/Rechnungsnummer\s*[:\s]*(\S+)/);
     if (!invoiceNumberMatch) {
-      throw new Error('Rechnungsnummer nicht gefunden');
+      throw new Error('Rechnungsnummer nicht gefunden — ist das eine gültige DKB-Wertpapierabrechnung?');
     }
     const invoiceNumber = invoiceNumberMatch[1];
 
@@ -157,15 +163,17 @@ export async function parseDKBPDF(pdfBuffer: Buffer, fileName?: string): Promise
       }
     }
 
-    // Determine transaction type
+    // Determine transaction type (flexible matching for whitespace/encoding variations)
     let type: 'Kauf' | 'Verkauf' | 'Sparplan' = 'Kauf';
-    if (text.includes('Wertpapier Abrechnung Kauf')) {
+    if (/Wertpapier\s+Abrechnung\s+Kauf/i.test(text)) {
       type = 'Kauf';
-      if (text.includes('Ihr ETF-Sparplan Nr.')) {
+      if (/ETF.?Sparplan/i.test(text)) {
         type = 'Sparplan';
       }
-    } else if (text.includes('Wertpapier Abrechnung Verkauf')) {
+    } else if (/Wertpapier\s+Abrechnung\s+Verkauf/i.test(text)) {
       type = 'Verkauf';
+    } else if (/Sparplan/i.test(text)) {
+      type = 'Sparplan';
     }
 
     // Extract ISIN and WKN - they appear together as IE00B1XNHC34(A0MW0M) or DE000A0F5UF5(A0F5UF)
@@ -190,28 +198,33 @@ export async function parseDKBPDF(pdfBuffer: Buffer, fileName?: string): Promise
     }
 
     // Extract quantity (Nominale/Stück) - supports decimals like "3,8462"
-    const quantityMatch = text.match(/St[üu]ck\s+([\d.,]+)/);
+    // pdf2json may encode ü as %C3%BC or leave it as ü, so match both
+    const quantityMatch = text.match(/St[üuü]ck\s+([\d.,]+)/)
+      || text.match(/Nominale\s+St[üuü]ck\s+([\d.,]+)/)
+      || text.match(/Nominale\s+([\d.,]+)/);
     if (!quantityMatch) {
-      throw new Error('Stückzahl nicht gefunden');
+      throw new Error(`Stückzahl nicht gefunden. PDF-Text (erste 800 Zeichen):\n${text.substring(0, 800)}`);
     }
     const quantity = parseGermanNumber(quantityMatch[1]);
 
     // Extract execution price (Ausführungskurs) - supports EUR and USD
-    const priceMatch = text.match(/Ausf[üu]hrungskurs\s*([\d.,]+)\s+(EUR|USD)/);
+    const priceMatch = text.match(/Ausf[üuü]hrungskurs\s*([\d.,]+)\s*(EUR|USD)/)
+      || text.match(/Kurs\s*([\d.,]+)\s*(EUR|USD)/);
     if (!priceMatch) {
-      throw new Error('Ausführungskurs nicht gefunden');
+      throw new Error(`Ausführungskurs nicht gefunden. PDF-Text (erste 800 Zeichen):\n${text.substring(0, 800)}`);
     }
     const price = parseGermanNumber(priceMatch[1]);
     const priceCurrency = priceMatch[2];
 
     // Extract fees (Provision) - supports German number format with thousands separator
-    const feesMatch = text.match(/Provision\s*([\d.,]+)-?\s*EUR/);
+    const feesMatch = text.match(/Provision\s*([\d.,]+)-?\s*EUR/)
+      || text.match(/Transaktionsentgelt\s*([\d.,]+)-?\s*EUR/);
     const fees = feesMatch ? parseGermanNumber(feesMatch[1]) : 0;
 
     // Extract total amount (Ausmachender Betrag) - supports EUR and USD
-    const totalMatch = text.match(/Ausmachender Betrag\s*([\d.,]+)-?\s*(EUR|USD)/);
+    const totalMatch = text.match(/Ausmachender\s+Betrag\s*([\d.,]+)-?\s*(EUR|USD)/);
     if (!totalMatch) {
-      throw new Error('Gesamtbetrag nicht gefunden');
+      throw new Error(`Gesamtbetrag nicht gefunden. PDF-Text (erste 800 Zeichen):\n${text.substring(0, 800)}`);
     }
     const totalAmount = parseGermanNumber(totalMatch[1]);
     const totalAmountCurrency = totalMatch[2];

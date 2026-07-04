@@ -80,6 +80,46 @@ async function runDatabaseMigration() {
     // Bewusst kein throw — Server soll trotzdem starten, andere Features funktionieren weiter.
   }
 
+  // === Fix UNIQUE constraint: orderNumber → invoiceNumber ===
+  // Sparplan-PDFs teilen sich dieselbe Auftragsnummer, nur die Rechnungsnummer ist einzigartig
+  try {
+    console.log('🔧 Checking transactions UNIQUE constraint (orderNumber → invoiceNumber)...');
+    const uqConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      // Check if the old orderNumber unique constraint still exists
+      const [indexes]: any = await uqConn.query(`
+        SELECT INDEX_NAME FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'transactions'
+          AND INDEX_NAME = 'transactions_orderNumber_unique'
+      `);
+      if (Array.isArray(indexes) && indexes.length > 0) {
+        console.log('   Dropping old orderNumber UNIQUE constraint...');
+        await uqConn.query('ALTER TABLE `transactions` DROP INDEX `transactions_orderNumber_unique`');
+        console.log('   ✅ Dropped orderNumber UNIQUE');
+      }
+
+      // Check if invoiceNumber unique constraint exists
+      const [ivIndexes]: any = await uqConn.query(`
+        SELECT INDEX_NAME FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'transactions'
+          AND INDEX_NAME = 'transactions_invoiceNumber_unique'
+      `);
+      if (Array.isArray(ivIndexes) && ivIndexes.length === 0) {
+        console.log('   Adding invoiceNumber UNIQUE constraint...');
+        await uqConn.query('ALTER TABLE `transactions` ADD CONSTRAINT `transactions_invoiceNumber_unique` UNIQUE(`invoiceNumber`)');
+        console.log('   ✅ Added invoiceNumber UNIQUE');
+      } else {
+        console.log('   ✅ invoiceNumber UNIQUE constraint already exists');
+      }
+    } finally {
+      await uqConn.end();
+    }
+  } catch (uqError: any) {
+    console.error('⚠️  Error fixing UNIQUE constraint:', uqError?.message || uqError);
+  }
+
   try {
     console.log('🔄 Starting database migration...');
 

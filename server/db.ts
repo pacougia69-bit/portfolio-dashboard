@@ -682,19 +682,21 @@ export async function createTransaction(
   if (!db) throw new Error("Database not available");
   
   try {
-    // Check for duplicate by orderNumber (globally, not just for this user)
-    // Ensure orderNumber is treated as a string
+    // Check for duplicate by invoiceNumber (unique per DKB PDF)
+    // orderNumber can repeat across Sparplan ETFs, invoiceNumber is always unique
     const orderNumberString = String(data.orderNumber);
-    const existing = await db.select().from(transactions)
-      .where(eq(transactions.orderNumber, orderNumberString))
-      .limit(1);
-    
-    if (existing.length > 0) {
-      return { 
-        duplicate: true, 
-        id: existing[0].id, 
-        orderNumber: data.orderNumber 
-      };
+    if (data.invoiceNumber) {
+      const existing = await db.select().from(transactions)
+        .where(eq(transactions.invoiceNumber, data.invoiceNumber))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return {
+          duplicate: true,
+          id: existing[0].id,
+          orderNumber: data.orderNumber
+        };
+      }
     }
     
     // Insert new transaction
@@ -722,12 +724,12 @@ export async function createTransaction(
     // Catch any database errors (including unique constraint violations)
     console.error('Database error in createTransaction:', error);
     
-    // Check if it's a unique constraint violation on orderNumber
-    if (error instanceof Error && error.message.includes('orderNumber')) {
-      return { 
-        duplicate: true, 
-        id: null, 
-        orderNumber: data.orderNumber 
+    // Check if it's a unique constraint violation on invoiceNumber
+    if (error instanceof Error && (error.message.includes('invoiceNumber') || error.message.includes('Duplicate'))) {
+      return {
+        duplicate: true,
+        id: null,
+        orderNumber: data.orderNumber
       };
     }
     

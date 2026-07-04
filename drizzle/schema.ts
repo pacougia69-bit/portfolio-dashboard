@@ -178,8 +178,8 @@ export const transactions = mysqlTable("transactions", {
   price: decimal("price", { precision: 18, scale: 4 }).notNull(),
   fees: decimal("fees", { precision: 18, scale: 4 }).default("0"),
   totalAmount: decimal("totalAmount", { precision: 18, scale: 4 }).notNull(),
-  orderNumber: varchar("orderNumber", { length: 100 }).notNull().unique(),
-  invoiceNumber: varchar("invoiceNumber", { length: 100 }),
+  orderNumber: varchar("orderNumber", { length: 100 }).notNull(),
+  invoiceNumber: varchar("invoiceNumber", { length: 100 }).unique(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

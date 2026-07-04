@@ -819,7 +819,7 @@ export const appRouter = router({
             return {
               success: false,
               duplicate: true,
-              message: `Diese DKB-Abrechnung wurde bereits importiert (Auftragsnummer ${result.orderNumber}).\nEs wurden keine neuen Transaktionen hinzugefügt.`,
+              message: `Diese DKB-Abrechnung wurde bereits importiert (Rechnungsnummer ${transactionData.invoiceNumber}).\nEs wurden keine neuen Transaktionen hinzugefügt.`,
             };
           }
           
