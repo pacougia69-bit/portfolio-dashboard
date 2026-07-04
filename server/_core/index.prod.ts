@@ -91,11 +91,11 @@ async function runDatabaseMigration() {
           userId INT NOT NULL,
           ticker VARCHAR(20) NOT NULL,
           wkn VARCHAR(20),
-          name VARCHAR(255) NOT NULL,
+          \`name\` VARCHAR(255) NOT NULL,
           currentPrice DECIMAL(18,4),
           sma50 DECIMAL(18,4),
           sma200 DECIMAL(18,4),
-          signal ENUM('GRUEN','GELB','ROT'),
+          \`signal\` ENUM('GRUEN','GELB','ROT'),
           signalDetail VARCHAR(255),
           lastUpdated TIMESTAMP NULL,
           createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
