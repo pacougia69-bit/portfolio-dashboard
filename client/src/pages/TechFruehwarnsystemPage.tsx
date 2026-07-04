@@ -54,6 +54,14 @@ const INDICATOR_KEYS: (keyof Indicators)[] = [
   "market_breadth",
 ];
 
+const INDICATOR_LABELS: Record<keyof Indicators, string> = {
+  capex_revenue: "Capex/Umsatz",
+  circular_financing: "Circular Financing",
+  efficiency_jump: "Effizienz-Spruenge",
+  rates_inflation: "Zinsen & Inflation",
+  market_breadth: "Marktbreite",
+};
+
 // ============================================================================
 // Farb-/Styling-Helfer pro Signal
 // ============================================================================
@@ -203,6 +211,134 @@ function IndicatorCard({ indicator }: { indicator: IndicatorResult }) {
 }
 
 // ============================================================================
+// Trend-Chart — zeigt den Ampel-Verlauf pro Indikator ueber Zeit
+// ============================================================================
+
+function TrendChart({
+  history,
+  activeId,
+  onSelect,
+}: {
+  history: any[];
+  activeId: number | undefined;
+  onSelect: (snap: LocalSnapshot) => void;
+}) {
+  if (!history || history.length < 2) return null;
+
+  const ordered = [...history].reverse();
+
+  const signalColor = (signal: Signal) => {
+    switch (signal) {
+      case "gruen": return "bg-green-500";
+      case "gelb": return "bg-yellow-500";
+      case "rot": return "bg-red-500";
+    }
+  };
+
+  const signalRing = (signal: Signal) => {
+    switch (signal) {
+      case "gruen": return "ring-green-500/40";
+      case "gelb": return "ring-yellow-500/40";
+      case "rot": return "ring-red-500/40";
+    }
+  };
+
+  return (
+    <Card className="border-border/40">
+      <CardHeader className="p-5 sm:p-6 pb-3">
+        <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+          <Activity className="h-5 w-5" />
+          Trend-Verlauf
+        </CardTitle>
+        <CardDescription className="text-sm">
+          Ampel-Entwicklung pro Indikator — aelteste links, neueste rechts
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-5 sm:p-6 pt-0">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                <th className="text-left text-xs text-muted-foreground font-medium pr-4 pb-3 whitespace-nowrap sticky left-0 bg-card z-10">
+                  Indikator
+                </th>
+                {ordered.map((snap: any) => {
+                  const d = new Date(snap.createdAt);
+                  return (
+                    <th key={snap.id} className="pb-3 px-1 min-w-[2.5rem]">
+                      <div className="text-[10px] text-muted-foreground font-mono text-center leading-tight">
+                        {d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {/* Gesamt-Ampel */}
+              <tr className="border-b border-border/30">
+                <td className="text-xs font-semibold text-foreground pr-4 py-2.5 whitespace-nowrap sticky left-0 bg-card z-10">
+                  Gesamt
+                </td>
+                {ordered.map((snap: any) => {
+                  const isActive = snap.id === activeId;
+                  return (
+                    <td key={snap.id} className="py-2.5 px-1 text-center">
+                      <button
+                        onClick={() => onSelect(snap as LocalSnapshot)}
+                        className="inline-block"
+                        title={new Date(snap.createdAt).toLocaleString("de-DE")}
+                      >
+                        <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full mx-auto ${signalColor(snap.overallSignal)} ${
+                          isActive ? `ring-3 ${signalRing(snap.overallSignal)} scale-125` : "opacity-80 hover:opacity-100 hover:scale-110"
+                        } transition-all`} />
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* Pro Indikator eine Zeile */}
+              {INDICATOR_KEYS.map((key) => (
+                <tr key={key} className="border-b border-border/20 last:border-0">
+                  <td className="text-xs text-muted-foreground pr-4 py-2.5 whitespace-nowrap sticky left-0 bg-card z-10">
+                    {INDICATOR_LABELS[key]}
+                  </td>
+                  {ordered.map((snap: any) => {
+                    const indicators = snap.indicators as Indicators | undefined;
+                    const signal = indicators?.[key]?.signal;
+                    const isActive = snap.id === activeId;
+                    if (!signal) {
+                      return (
+                        <td key={snap.id} className="py-2.5 px-1 text-center">
+                          <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full mx-auto bg-muted/40" />
+                        </td>
+                      );
+                    }
+                    return (
+                      <td key={snap.id} className="py-2.5 px-1 text-center">
+                        <button
+                          onClick={() => onSelect(snap as LocalSnapshot)}
+                          className="inline-block"
+                          title={`${INDICATOR_LABELS[key]}: ${signal.toUpperCase()}`}
+                        >
+                          <div className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full mx-auto ${signalColor(signal)} ${
+                            isActive ? `ring-2 ${signalRing(signal)} scale-125` : "opacity-70 hover:opacity-100 hover:scale-110"
+                          } transition-all`} />
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================================
 // Verlaufs-Leiste — kompakte Reihe der letzten Snapshots
 // ============================================================================
 
@@ -272,8 +408,8 @@ export default function TechFruehwarnsystemPage() {
   const { data: dbSnapshot, isLoading: isLoadingLatest } =
     trpc.techWarning.getLatest.useQuery();
 
-  // Verlaufs-Liste der letzten 10 Snapshots
-  const { data: history = [] } = trpc.techWarning.getHistory.useQuery();
+  // Verlaufs-Liste der letzten 30 Snapshots
+  const { data: history = [] } = trpc.techWarning.getHistory.useQuery({ limit: 30 });
 
   // Lokaler State: das ist, was die Seite anzeigt. Wird mit DB-Daten initialisiert
   // und durch Mutation-Antworten aktualisiert. Bleibt sichtbar, auch wenn getLatest
@@ -405,8 +541,8 @@ export default function TechFruehwarnsystemPage() {
           </CardContent>
         </Card>
 
-        {/* Verlaufs-Leiste */}
-        <HistoryStrip
+        {/* Trend-Chart */}
+        <TrendChart
           history={history}
           activeId={snapshot?.id}
           onSelect={(snap) => setActiveSnapshot(snap)}
