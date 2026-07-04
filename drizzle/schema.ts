@@ -253,6 +253,27 @@ export type TaxSettings = typeof taxSettings.$inferSelect;
 export type InsertTaxSettings = typeof taxSettings.$inferInsert;
 
 /**
+ * Stock traffic light (Aktien-Ampel) entries
+ */
+export const stockTrafficLight = mysqlTable("stock_traffic_light", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  wkn: varchar("wkn", { length: 20 }),
+  name: varchar("name", { length: 255 }).notNull(),
+  currentPrice: decimal("currentPrice", { precision: 18, scale: 4 }),
+  sma50: decimal("sma50", { precision: 18, scale: 4 }),
+  sma200: decimal("sma200", { precision: 18, scale: 4 }),
+  signal: mysqlEnum("signal", ["GRUEN", "GELB", "ROT"]),
+  signalDetail: varchar("signalDetail", { length: 255 }),
+  lastUpdated: timestamp("lastUpdated"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type StockTrafficLight = typeof stockTrafficLight.$inferSelect;
+export type InsertStockTrafficLight = typeof stockTrafficLight.$inferInsert;
+
+/**
  * Tax Allowances (Freibeträge) - Yearly tax exemptions per broker
  */
 export const taxAllowances = mysqlTable("tax_allowances", {

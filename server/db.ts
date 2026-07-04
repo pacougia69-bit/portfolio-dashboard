@@ -1187,3 +1187,94 @@ export async function deleteLossCarryforward(userId: number, id: number) {
 
   return { success: true };
 }
+
+// ============================================
+// Transactions: Clear all
+// ============================================
+
+export async function clearAllTransactions(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(transactions).where(eq(transactions.userId, userId));
+  return { success: true };
+}
+
+// ============================================
+// Stock Traffic Light (Aktien-Ampel)
+// ============================================
+
+export async function getTrafficLightEntries(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { stockTrafficLight } = await import('../drizzle/schema');
+  const result = await db.select().from(stockTrafficLight)
+    .where(eq(stockTrafficLight.userId, userId))
+    .orderBy(asc(stockTrafficLight.name));
+
+  return result.map(r => ({
+    ...r,
+    currentPrice: r.currentPrice ? Number(r.currentPrice) : null,
+    sma50: r.sma50 ? Number(r.sma50) : null,
+    sma200: r.sma200 ? Number(r.sma200) : null,
+  }));
+}
+
+export async function addTrafficLightEntry(userId: number, data: { ticker: string; wkn?: string; name: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { stockTrafficLight } = await import('../drizzle/schema');
+
+  const existing = await db.select().from(stockTrafficLight)
+    .where(and(eq(stockTrafficLight.userId, userId), eq(stockTrafficLight.ticker, data.ticker)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    return { duplicate: true, id: existing[0].id };
+  }
+
+  const result = await db.insert(stockTrafficLight).values({
+    userId,
+    ticker: data.ticker,
+    wkn: data.wkn || null,
+    name: data.name,
+  });
+
+  return { duplicate: false, id: Number(result[0].insertId) };
+}
+
+export async function updateTrafficLightData(
+  id: number,
+  userId: number,
+  data: { currentPrice?: number; sma50?: number; sma200?: number; signal?: 'GRUEN' | 'GELB' | 'ROT'; signalDetail?: string }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { stockTrafficLight } = await import('../drizzle/schema');
+
+  const updateData: Record<string, unknown> = { lastUpdated: new Date() };
+  if (data.currentPrice !== undefined) updateData.currentPrice = String(data.currentPrice);
+  if (data.sma50 !== undefined) updateData.sma50 = String(data.sma50);
+  if (data.sma200 !== undefined) updateData.sma200 = String(data.sma200);
+  if (data.signal !== undefined) updateData.signal = data.signal;
+  if (data.signalDetail !== undefined) updateData.signalDetail = data.signalDetail;
+
+  await db.update(stockTrafficLight)
+    .set(updateData)
+    .where(and(eq(stockTrafficLight.id, id), eq(stockTrafficLight.userId, userId)));
+}
+
+export async function deleteTrafficLightEntry(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { stockTrafficLight } = await import('../drizzle/schema');
+
+  await db.delete(stockTrafficLight)
+    .where(and(eq(stockTrafficLight.id, id), eq(stockTrafficLight.userId, userId)));
+
+  return { success: true };
+}

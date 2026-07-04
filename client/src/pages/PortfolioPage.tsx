@@ -18,7 +18,7 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import {
   Briefcase, Search, Plus, ArrowUpDown, ArrowUp, ArrowDown,
-  Edit, Trash2, RefreshCw, FileJson, Upload, Loader2
+  Edit, Trash2, RefreshCw, FileJson, Upload, Loader2, TrafficCone, X, CirclePlus
 } from 'lucide-react';
 
 const formatCurrency = (value: number) => {
@@ -115,6 +115,90 @@ export default function PortfolioPage() {
     },
     onError: (error) => toast.error(error.message),
   });
+
+  // Aktien-Ampel
+  const [ampelTicker, setAmpelTicker] = useState('');
+  const [ampelWkn, setAmpelWkn] = useState('');
+  const [ampelName, setAmpelName] = useState('');
+  const [isAmpelLookingUp, setIsAmpelLookingUp] = useState(false);
+  const { data: ampelEntries = [], refetch: refetchAmpel } = trpc.trafficLight.list.useQuery();
+
+  const addToAmpel = trpc.trafficLight.add.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success(data.message);
+        setAmpelTicker('');
+        setAmpelWkn('');
+        setAmpelName('');
+        refetchAmpel();
+      } else {
+        toast.warning(data.message);
+      }
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const removeFromAmpel = trpc.trafficLight.remove.useMutation({
+    onSuccess: () => {
+      toast.success('Aus Ampel-Liste entfernt');
+      refetchAmpel();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const refreshAmpel = trpc.trafficLight.refresh.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success(data.message);
+        refetchAmpel();
+      } else {
+        toast.error(data.message);
+      }
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const ampelWknLookup = trpc.lookup.byWKN.useMutation({
+    onSuccess: (result) => {
+      if (result.success && result.data) {
+        setAmpelTicker(result.data.ticker);
+        setAmpelName(result.data.name);
+        toast.success(`Daten für ${result.data.name} geladen`);
+      } else {
+        toast.error(result.error || 'Keine Daten gefunden');
+      }
+      setIsAmpelLookingUp(false);
+    },
+    onError: (error) => {
+      toast.error(error.message);
+      setIsAmpelLookingUp(false);
+    },
+  });
+
+  const handleAmpelWknLookup = () => {
+    if (!ampelWkn || ampelWkn.length < 5) {
+      toast.error('Bitte gültige WKN eingeben (min. 5 Zeichen)');
+      return;
+    }
+    setIsAmpelLookingUp(true);
+    ampelWknLookup.mutate({ wkn: ampelWkn });
+  };
+
+  const handleAddToAmpel = () => {
+    if (!ampelTicker || !ampelName) {
+      toast.error('Ticker und Name sind erforderlich');
+      return;
+    }
+    addToAmpel.mutate({ ticker: ampelTicker, wkn: ampelWkn || undefined, name: ampelName });
+  };
+
+  const handleAddPortfolioToAmpel = (asset: any) => {
+    addToAmpel.mutate({
+      ticker: asset.ticker,
+      wkn: asset.wkn || undefined,
+      name: asset.name,
+    });
+  };
   
   const resetForm = () => {
     setFormData({
@@ -793,6 +877,158 @@ export default function PortfolioPage() {
               </tbody>
             </table>
           </div>
+        </Card>
+
+        {/* Aktien-Ampel */}
+        <Card className="glass-card">
+          <CardHeader className="p-3 sm:p-6 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                <TrafficCone className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                Aktien-Ampel
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refreshAmpel.mutate()}
+                disabled={refreshAmpel.isPending || ampelEntries.length === 0}
+              >
+                {refreshAmpel.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-1" />
+                )}
+                Ampeln aktualisieren
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              SMA 50/200 Trend-Analyse — Grün = Aufwärtstrend, Gelb = Seitwärts, Rot = Abwärtstrend
+            </p>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-6 pt-0 space-y-4">
+            {/* Hinzufügen */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex gap-2 flex-1">
+                <Input
+                  placeholder="WKN"
+                  value={ampelWkn}
+                  onChange={(e) => setAmpelWkn(e.target.value.toUpperCase())}
+                  className="w-28"
+                />
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  onClick={handleAmpelWknLookup}
+                  disabled={isAmpelLookingUp || !ampelWkn}
+                >
+                  {isAmpelLookingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                </Button>
+                <Input
+                  placeholder="Ticker"
+                  value={ampelTicker}
+                  onChange={(e) => setAmpelTicker(e.target.value.toUpperCase())}
+                  className="w-28"
+                />
+                <Input
+                  placeholder="Name"
+                  value={ampelName}
+                  onChange={(e) => setAmpelName(e.target.value)}
+                  className="flex-1"
+                />
+              </div>
+              <Button onClick={handleAddToAmpel} disabled={!ampelTicker || !ampelName}>
+                <Plus className="w-4 h-4 mr-1" /> Hinzufügen
+              </Button>
+            </div>
+
+            {/* Aus Portfolio hinzufügen */}
+            {portfolio.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  Aus Portfolio hinzufügen...
+                </summary>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {portfolio
+                    .filter(a => !ampelEntries.some(e => e.ticker === a.ticker))
+                    .map(a => (
+                      <Button
+                        key={a.id}
+                        variant="outline"
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => handleAddPortfolioToAmpel(a)}
+                      >
+                        <CirclePlus className="w-3 h-3 mr-1" /> {a.name.substring(0, 20)}
+                      </Button>
+                    ))}
+                </div>
+              </details>
+            )}
+
+            {/* Ampel-Tabelle */}
+            {ampelEntries.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs sm:text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50">
+                      <th className="text-left p-2 font-medium">Aktie</th>
+                      <th className="text-center p-2 font-medium">Ampel</th>
+                      <th className="text-right p-2 font-medium hidden sm:table-cell">Kurs</th>
+                      <th className="text-right p-2 font-medium hidden sm:table-cell">SMA 50</th>
+                      <th className="text-right p-2 font-medium hidden sm:table-cell">SMA 200</th>
+                      <th className="text-left p-2 font-medium">Signal</th>
+                      <th className="p-2 w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ampelEntries.map((entry: any) => (
+                      <tr key={entry.id} className="border-b border-border/20 hover:bg-muted/20">
+                        <td className="p-2">
+                          <div className="font-medium">{entry.name.substring(0, 25)}</div>
+                          <div className="text-muted-foreground text-xs">{entry.ticker} {entry.wkn ? `(${entry.wkn})` : ''}</div>
+                        </td>
+                        <td className="p-2 text-center text-lg">
+                          {entry.signal === 'GRUEN' ? '🟢' : entry.signal === 'ROT' ? '🔴' : entry.signal === 'GELB' ? '🟡' : '⚪'}
+                        </td>
+                        <td className="p-2 text-right font-mono hidden sm:table-cell">
+                          {entry.currentPrice ? formatCurrency(entry.currentPrice) : '–'}
+                        </td>
+                        <td className="p-2 text-right font-mono hidden sm:table-cell">
+                          {entry.sma50 ? formatCurrency(entry.sma50) : '–'}
+                        </td>
+                        <td className="p-2 text-right font-mono hidden sm:table-cell">
+                          {entry.sma200 ? formatCurrency(entry.sma200) : '–'}
+                        </td>
+                        <td className="p-2 text-xs text-muted-foreground">
+                          {entry.signalDetail || 'Noch nicht aktualisiert'}
+                        </td>
+                        <td className="p-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-destructive hover:text-destructive"
+                            onClick={() => removeFromAmpel.mutate({ id: entry.id })}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground text-sm py-4">
+                Noch keine Aktien in der Ampel-Liste. Füge oben welche hinzu.
+              </p>
+            )}
+
+            {refreshAmpel.isPending && (
+              <p className="text-xs text-muted-foreground text-center">
+                Ampeln werden aktualisiert... Das kann bei vielen Einträgen etwas dauern (Twelve Data Rate-Limit).
+              </p>
+            )}
+          </CardContent>
         </Card>
       </div>
     </Layout>

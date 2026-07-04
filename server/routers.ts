@@ -32,8 +32,13 @@ import {
   saveUserSettings,
   createTransaction,
   getTransactions,
+  clearAllTransactions,
   updatePortfolioFromTransaction,
   removeFromWatchlistByISINOrWKN,
+  getTrafficLightEntries,
+  addTrafficLightEntry,
+  updateTrafficLightData,
+  deleteTrafficLightEntry,
   getTaxSources,
   createTaxSource,
   updateTaxSource,
@@ -871,6 +876,183 @@ export const appRouter = router({
             message: errorMessage,
           };
         }
+      }),
+
+    clearAll: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        await clearAllTransactions(ctx.user.id);
+        return { success: true, message: 'Alle Transaktionen wurden gelöscht.' };
+      }),
+
+    addManual: protectedProcedure
+      .input(z.object({
+        date: z.string(),
+        type: z.enum(['Kauf', 'Verkauf', 'Sparplan']),
+        wkn: z.string().optional(),
+        name: z.string(),
+        ticker: z.string(),
+        quantity: z.number().positive(),
+        price: z.number().positive(),
+        fees: z.number().min(0).default(0),
+        totalAmount: z.number().positive(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const orderNumber = `MANUAL-${Date.now()}`;
+        const invoiceNumber = `M-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        const result = await createTransaction(ctx.user.id, {
+          date: new Date(input.date),
+          type: input.type,
+          isin: input.ticker,
+          wkn: input.wkn || '',
+          name: input.name,
+          quantity: input.quantity,
+          price: input.price,
+          fees: input.fees,
+          totalAmount: input.totalAmount,
+          orderNumber,
+          invoiceNumber,
+        });
+
+        if (!result.duplicate) {
+          await updatePortfolioFromTransaction(
+            ctx.user.id,
+            input.ticker,
+            input.wkn,
+            input.name,
+            input.type,
+            input.quantity,
+            input.totalAmount,
+            null,
+            'EUR'
+          );
+        }
+
+        return {
+          success: true,
+          message: `Transaktion "${input.name}" erfolgreich hinzugefügt.`,
+        };
+      }),
+  }),
+
+  // Stock Traffic Light (Aktien-Ampel)
+  trafficLight: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return getTrafficLightEntries(ctx.user.id);
+    }),
+
+    add: protectedProcedure
+      .input(z.object({
+        ticker: z.string(),
+        wkn: z.string().optional(),
+        name: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await addTrafficLightEntry(ctx.user.id, input);
+        if (result.duplicate) {
+          return { success: false, message: `${input.name} ist bereits in der Ampel-Liste.` };
+        }
+        return { success: true, message: `${input.name} zur Ampel hinzugefügt.`, id: result.id };
+      }),
+
+    remove: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await deleteTrafficLightEntry(ctx.user.id, input.id);
+        return { success: true };
+      }),
+
+    refresh: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const entries = await getTrafficLightEntries(ctx.user.id);
+        if (entries.length === 0) {
+          return { success: false, message: 'Keine Einträge in der Ampel-Liste.' };
+        }
+
+        const apiKey = process.env.TWELVE_DATA_API_KEY;
+        if (!apiKey) {
+          return { success: false, message: 'Twelve Data API-Key nicht konfiguriert.' };
+        }
+
+        let updated = 0;
+        const batchSize = 3;
+        const batchDelayMs = 62000;
+
+        for (let i = 0; i < entries.length; i += batchSize) {
+          const batch = entries.slice(i, i + batchSize);
+
+          if (i > 0) {
+            console.log(`[Ampel] Warte ${batchDelayMs / 1000}s für nächsten Batch...`);
+            await new Promise(r => setTimeout(r, batchDelayMs));
+          }
+
+          for (const entry of batch) {
+            try {
+              const { convertTickerForTwelveData } = await import('./services');
+              const converted = convertTickerForTwelveData(entry.ticker);
+              const symbol = converted.exchange
+                ? `${converted.symbol}:${converted.exchange}`
+                : converted.symbol;
+
+              const [quoteRes, sma50Res, sma200Res] = await Promise.all([
+                fetch(`https://api.twelvedata.com/quote?symbol=${symbol}&apikey=${apiKey}`),
+                fetch(`https://api.twelvedata.com/sma?symbol=${symbol}&interval=1day&time_period=50&apikey=${apiKey}`),
+                fetch(`https://api.twelvedata.com/sma?symbol=${symbol}&interval=1day&time_period=200&apikey=${apiKey}`),
+              ]);
+
+              const quote = await quoteRes.json();
+              const sma50Data = await sma50Res.json();
+              const sma200Data = await sma200Res.json();
+
+              if (quote.code || !quote.close) {
+                console.warn(`[Ampel] Kein Kurs für ${entry.ticker}:`, quote.message || quote.code);
+                continue;
+              }
+
+              const currentPrice = parseFloat(quote.close);
+              const sma50 = sma50Data.values?.[0]?.sma ? parseFloat(sma50Data.values[0].sma) : null;
+              const sma200 = sma200Data.values?.[0]?.sma ? parseFloat(sma200Data.values[0].sma) : null;
+
+              let signal: 'GRUEN' | 'GELB' | 'ROT' = 'GELB';
+              let signalDetail = '';
+
+              if (sma50 && sma200) {
+                const aboveSma50 = currentPrice > sma50;
+                const aboveSma200 = currentPrice > sma200;
+                const goldenCross = sma50 > sma200;
+
+                if (aboveSma50 && aboveSma200) {
+                  signal = 'GRUEN';
+                  signalDetail = goldenCross ? 'Aufwärtstrend (Golden Cross)' : 'Über SMA 50 & 200';
+                } else if (!aboveSma50 && !aboveSma200) {
+                  signal = 'ROT';
+                  signalDetail = sma50 < sma200 ? 'Abwärtstrend (Death Cross)' : 'Unter SMA 50 & 200';
+                } else {
+                  signal = 'GELB';
+                  signalDetail = aboveSma200 ? 'Über SMA 200, unter SMA 50 (Korrektur)' : 'Über SMA 50, unter SMA 200 (Erholung)';
+                }
+              } else {
+                signalDetail = 'Nicht genug Daten für SMA-Berechnung';
+              }
+
+              await updateTrafficLightData(entry.id, ctx.user.id, {
+                currentPrice,
+                sma50: sma50 || undefined,
+                sma200: sma200 || undefined,
+                signal,
+                signalDetail,
+              });
+              updated++;
+            } catch (err) {
+              console.error(`[Ampel] Fehler bei ${entry.ticker}:`, err);
+            }
+          }
+        }
+
+        return {
+          success: true,
+          message: `${updated} von ${entries.length} Ampeln aktualisiert.`,
+        };
       }),
   }),
 

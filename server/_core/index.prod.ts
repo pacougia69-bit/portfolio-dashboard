@@ -80,6 +80,35 @@ async function runDatabaseMigration() {
     // Bewusst kein throw — Server soll trotzdem starten, andere Features funktionieren weiter.
   }
 
+  // === Stock Traffic Light table ===
+  try {
+    console.log('🔍 Checking stock_traffic_light table...');
+    const stlConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await stlConn.query(`
+        CREATE TABLE IF NOT EXISTS stock_traffic_light (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          ticker VARCHAR(20) NOT NULL,
+          wkn VARCHAR(20),
+          name VARCHAR(255) NOT NULL,
+          currentPrice DECIMAL(18,4),
+          sma50 DECIMAL(18,4),
+          sma200 DECIMAL(18,4),
+          signal ENUM('GRUEN','GELB','ROT'),
+          signalDetail VARCHAR(255),
+          lastUpdated TIMESTAMP NULL,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ stock_traffic_light table ready');
+    } finally {
+      await stlConn.end();
+    }
+  } catch (stlError: any) {
+    console.error('⚠️  Error creating stock_traffic_light table:', stlError?.message || stlError);
+  }
+
   // === Fix UNIQUE constraint: remove global unique, add per-user composite ===
   // Sparplan-PDFs teilen sich dieselbe Auftragsnummer, Duplikat-Prüfung läuft jetzt per User im Code
   try {

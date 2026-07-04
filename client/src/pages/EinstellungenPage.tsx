@@ -20,7 +20,7 @@ import TaxManagement from '@/components/TaxManagement';
 import {
   Settings, Upload, Download, Trash2, FileJson, Database,
   AlertTriangle, RefreshCw, User, Lock, Shield, Eye, EyeOff, FileText, History,
-  Sparkles, Plus, Edit, Trash, GripVertical
+  Sparkles, Plus, Edit, Trash, GripVertical, Loader2
 } from 'lucide-react';
 
 export default function EinstellungenPage() {
@@ -32,6 +32,18 @@ export default function EinstellungenPage() {
   
   // DKB PDF Import State
   const [isPdfUploading, setIsPdfUploading] = useState(false);
+
+  // Manual Transaction State
+  const [manualTx, setManualTx] = useState({
+    date: new Date().toISOString().split('T')[0],
+    type: 'Kauf' as 'Kauf' | 'Verkauf' | 'Sparplan',
+    wkn: '',
+    name: '',
+    ticker: '',
+    quantity: '',
+    price: '',
+    fees: '0',
+  });
   
   // PIN State
   const [newPin, setNewPin] = useState('');
@@ -87,6 +99,52 @@ export default function EinstellungenPage() {
     },
   });
   
+  const clearTransactions = trpc.transactions.clearAll.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const addManualTx = trpc.transactions.addManual.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message);
+      setManualTx({
+        date: new Date().toISOString().split('T')[0],
+        type: 'Kauf',
+        wkn: '',
+        name: '',
+        ticker: '',
+        quantity: '',
+        price: '',
+        fees: '0',
+      });
+      refetchPortfolio();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const handleManualTxSubmit = () => {
+    const qty = parseFloat(manualTx.quantity);
+    const price = parseFloat(manualTx.price);
+    const fees = parseFloat(manualTx.fees) || 0;
+    if (!manualTx.name || !manualTx.ticker || !qty || !price) {
+      toast.error('Bitte alle Pflichtfelder ausfüllen');
+      return;
+    }
+    addManualTx.mutate({
+      date: manualTx.date,
+      type: manualTx.type,
+      wkn: manualTx.wkn || undefined,
+      name: manualTx.name,
+      ticker: manualTx.ticker,
+      quantity: qty,
+      price: price,
+      fees: fees,
+      totalAmount: qty * price + fees,
+    });
+  };
+
   const setPin = trpc.settings.setPin.useMutation({
     onSuccess: () => {
       toast.success('PIN wurde gespeichert');
@@ -850,6 +908,104 @@ export default function EinstellungenPage() {
           </CardContent>
         </Card>
 
+        {/* Manual Transaction Entry */}
+        <Card className="glass-card">
+          <CardHeader className="p-3 sm:p-6 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+              Transaktion manuell eingeben
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              Kauf/Verkauf direkt eingeben — funktioniert immer, auch wenn der PDF-Import Probleme macht
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-6 pt-0 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Datum *</Label>
+                <Input
+                  type="date"
+                  value={manualTx.date}
+                  onChange={(e) => setManualTx({ ...manualTx, date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Typ *</Label>
+                <Select value={manualTx.type} onValueChange={(v) => setManualTx({ ...manualTx, type: v as any })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Kauf">Kauf</SelectItem>
+                    <SelectItem value="Verkauf">Verkauf</SelectItem>
+                    <SelectItem value="Sparplan">Sparplan</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">WKN</Label>
+                <Input
+                  placeholder="z.B. A0RPWH"
+                  value={manualTx.wkn}
+                  onChange={(e) => setManualTx({ ...manualTx, wkn: e.target.value.toUpperCase() })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Ticker *</Label>
+                <Input
+                  placeholder="z.B. AAPL"
+                  value={manualTx.ticker}
+                  onChange={(e) => setManualTx({ ...manualTx, ticker: e.target.value.toUpperCase() })}
+                />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Name *</Label>
+                <Input
+                  placeholder="z.B. iShares Core MSCI World"
+                  value={manualTx.name}
+                  onChange={(e) => setManualTx({ ...manualTx, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Stückzahl *</Label>
+                <Input
+                  type="number"
+                  step="0.0001"
+                  placeholder="z.B. 3.8462"
+                  value={manualTx.quantity}
+                  onChange={(e) => setManualTx({ ...manualTx, quantity: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Kurs (€) *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="z.B. 52.37"
+                  value={manualTx.price}
+                  onChange={(e) => setManualTx({ ...manualTx, price: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Gebühren (€)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={manualTx.fees}
+                  onChange={(e) => setManualTx({ ...manualTx, fees: e.target.value })}
+                />
+              </div>
+            </div>
+            {manualTx.quantity && manualTx.price && (
+              <p className="text-xs text-muted-foreground">
+                Gesamtbetrag: {(parseFloat(manualTx.quantity) * parseFloat(manualTx.price) + (parseFloat(manualTx.fees) || 0)).toFixed(2)} €
+              </p>
+            )}
+            <Button onClick={handleManualTxSubmit} disabled={addManualTx.isPending} className="w-full sm:w-auto">
+              {addManualTx.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+              Transaktion hinzufügen
+            </Button>
+          </CardContent>
+        </Card>
+
         {/* Transaction History */}
         {transactions.length > 0 && (
           <Card className="glass-card">
@@ -944,7 +1100,23 @@ export default function EinstellungenPage() {
               Diese Aktionen können nicht rückgängig gemacht werden
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-3 sm:p-6 pt-0">
+          <CardContent className="p-3 sm:p-6 pt-0 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  if (confirm('Alle Transaktionseinträge löschen? (Portfolio-Positionen bleiben erhalten)')) {
+                    clearTransactions.mutate();
+                  }
+                }}
+                disabled={clearTransactions.isPending}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Transaktionshistorie leeren
+              </Button>
+            </div>
             <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="destructive" size="sm">

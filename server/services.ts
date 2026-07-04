@@ -65,7 +65,7 @@ const TICKER_MAPPINGS: Record<string, string> = {
 };
 
 // Convert ticker to Twelve Data format
-function convertTickerForTwelveData(ticker: string): { symbol: string; exchange?: string; isCrypto?: boolean } {
+export function convertTickerForTwelveData(ticker: string): { symbol: string; exchange?: string; isCrypto?: boolean } {
   // Check known mappings first
   const mapped = TICKER_MAPPINGS[ticker];
   if (mapped) {
