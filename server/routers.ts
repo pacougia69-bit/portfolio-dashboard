@@ -975,8 +975,8 @@ export const appRouter = router({
         }
 
         let updated = 0;
-        const batchSize = 3;
-        const batchDelayMs = 62000;
+        const batchSize = 2;
+        const batchDelayMs = 63000;
 
         for (let i = 0; i < entries.length; i += batchSize) {
           const batch = entries.slice(i, i + batchSize);
@@ -994,20 +994,26 @@ export const appRouter = router({
                 ? `${converted.symbol}:${converted.exchange}`
                 : converted.symbol;
 
-              const [quoteRes, sma50Res, sma200Res] = await Promise.all([
-                fetch(`https://api.twelvedata.com/quote?symbol=${symbol}&apikey=${apiKey}`),
-                fetch(`https://api.twelvedata.com/sma?symbol=${symbol}&interval=1day&time_period=50&apikey=${apiKey}`),
-                fetch(`https://api.twelvedata.com/sma?symbol=${symbol}&interval=1day&time_period=200&apikey=${apiKey}`),
-              ]);
+              console.log(`[Ampel] Fetching data for ${entry.ticker} → ${symbol}`);
 
+              const quoteRes = await fetch(`https://api.twelvedata.com/quote?symbol=${symbol}&apikey=${apiKey}`);
               const quote = await quoteRes.json();
-              const sma50Data = await sma50Res.json();
-              const sma200Data = await sma200Res.json();
 
               if (quote.code || !quote.close) {
-                console.warn(`[Ampel] Kein Kurs für ${entry.ticker}:`, quote.message || quote.code);
+                console.warn(`[Ampel] Kein Kurs für ${entry.ticker} (${symbol}):`, quote.message || quote.code);
+                await updateTrafficLightData(entry.id, ctx.user.id, {
+                  signal: 'GELB',
+                  signalDetail: `Ticker "${symbol}" nicht bei Twelve Data gefunden`,
+                });
+                updated++;
                 continue;
               }
+
+              const sma50Res = await fetch(`https://api.twelvedata.com/sma?symbol=${symbol}&interval=1day&time_period=50&apikey=${apiKey}`);
+              const sma200Res = await fetch(`https://api.twelvedata.com/sma?symbol=${symbol}&interval=1day&time_period=200&apikey=${apiKey}`);
+
+              const sma50Data = await sma50Res.json();
+              const sma200Data = await sma200Res.json();
 
               const currentPrice = parseFloat(quote.close);
               const sma50 = sma50Data.values?.[0]?.sma ? parseFloat(sma50Data.values[0].sma) : null;
