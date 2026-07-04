@@ -80,38 +80,64 @@ async function runDatabaseMigration() {
     // Bewusst kein throw — Server soll trotzdem starten, andere Features funktionieren weiter.
   }
 
-  // === Fix UNIQUE constraint: orderNumber → invoiceNumber ===
-  // Sparplan-PDFs teilen sich dieselbe Auftragsnummer, nur die Rechnungsnummer ist einzigartig
+  // === Fix UNIQUE constraint: remove global unique, add per-user composite ===
+  // Sparplan-PDFs teilen sich dieselbe Auftragsnummer, Duplikat-Prüfung läuft jetzt per User im Code
   try {
-    console.log('🔧 Checking transactions UNIQUE constraint (orderNumber → invoiceNumber)...');
+    console.log('🔧 Fixing transactions UNIQUE constraints...');
     const uqConn = await mysql.createConnection(DATABASE_URL);
     try {
-      // Check if the old orderNumber unique constraint still exists
-      const [indexes]: any = await uqConn.query(`
+      // Drop old orderNumber unique constraint if it still exists
+      const [oIndexes]: any = await uqConn.query(`
         SELECT INDEX_NAME FROM information_schema.STATISTICS
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_NAME = 'transactions'
           AND INDEX_NAME = 'transactions_orderNumber_unique'
       `);
-      if (Array.isArray(indexes) && indexes.length > 0) {
-        console.log('   Dropping old orderNumber UNIQUE constraint...');
+      if (Array.isArray(oIndexes) && oIndexes.length > 0) {
         await uqConn.query('ALTER TABLE `transactions` DROP INDEX `transactions_orderNumber_unique`');
         console.log('   ✅ Dropped orderNumber UNIQUE');
       }
 
-      // Check if invoiceNumber unique constraint exists
+      // Drop global invoiceNumber unique constraint if it exists
       const [ivIndexes]: any = await uqConn.query(`
         SELECT INDEX_NAME FROM information_schema.STATISTICS
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_NAME = 'transactions'
           AND INDEX_NAME = 'transactions_invoiceNumber_unique'
       `);
-      if (Array.isArray(ivIndexes) && ivIndexes.length === 0) {
-        console.log('   Adding invoiceNumber UNIQUE constraint...');
-        await uqConn.query('ALTER TABLE `transactions` ADD CONSTRAINT `transactions_invoiceNumber_unique` UNIQUE(`invoiceNumber`)');
-        console.log('   ✅ Added invoiceNumber UNIQUE');
+      if (Array.isArray(ivIndexes) && ivIndexes.length > 0) {
+        await uqConn.query('ALTER TABLE `transactions` DROP INDEX `transactions_invoiceNumber_unique`');
+        console.log('   ✅ Dropped global invoiceNumber UNIQUE');
+      }
+
+      // Add composite unique constraint (userId + invoiceNumber) if not exists
+      const [compIndexes]: any = await uqConn.query(`
+        SELECT INDEX_NAME FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'transactions'
+          AND INDEX_NAME = 'transactions_user_invoice_unique'
+      `);
+      if (Array.isArray(compIndexes) && compIndexes.length === 0) {
+        // First: delete orphaned transactions that don't belong to any real user session
+        // These block re-imports but don't show in the Transaktionshistorie
+        const [orphaned]: any = await uqConn.query(`
+          SELECT COUNT(*) as cnt FROM transactions t
+          LEFT JOIN portfolio_positions p ON t.userId = p.userId
+          WHERE p.userId IS NULL
+        `);
+        if (orphaned[0]?.cnt > 0) {
+          console.log(`   Deleting ${orphaned[0].cnt} orphaned transaction records...`);
+          await uqConn.query(`
+            DELETE t FROM transactions t
+            LEFT JOIN portfolio_positions p ON t.userId = p.userId
+            WHERE p.userId IS NULL
+          `);
+        }
+
+        await uqConn.query('ALTER TABLE `transactions` ADD CONSTRAINT `transactions_user_invoice_unique` UNIQUE(`userId`, `invoiceNumber`)');
+        console.log('   ✅ Added composite UNIQUE(userId, invoiceNumber)');
       } else {
-        console.log('   ✅ invoiceNumber UNIQUE constraint already exists');
+        console.log('   ✅ Composite UNIQUE constraint already exists');
       }
     } finally {
       await uqConn.end();

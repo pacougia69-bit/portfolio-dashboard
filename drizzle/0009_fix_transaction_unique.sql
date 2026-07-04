@@ -1,5 +1,4 @@
--- Move UNIQUE constraint from orderNumber to invoiceNumber
+-- Fix UNIQUE constraint: global orderNumber/invoiceNumber → per-user (userId + invoiceNumber)
 -- Reason: DKB Sparplan executions share the same Auftragsnummer across multiple ETFs,
--- but each PDF has a unique Rechnungsnummer (invoiceNumber)
-ALTER TABLE `transactions` DROP INDEX `transactions_orderNumber_unique`;
-ALTER TABLE `transactions` ADD CONSTRAINT `transactions_invoiceNumber_unique` UNIQUE(`invoiceNumber`);
+-- and a global unique on invoiceNumber blocks re-imports when orphaned records exist.
+-- The startup migration in index.prod.ts handles the actual ALTER TABLE statements.

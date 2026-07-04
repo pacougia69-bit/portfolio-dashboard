@@ -682,12 +682,14 @@ export async function createTransaction(
   if (!db) throw new Error("Database not available");
   
   try {
-    // Check for duplicate by invoiceNumber (unique per DKB PDF)
-    // orderNumber can repeat across Sparplan ETFs, invoiceNumber is always unique
+    // Check for duplicate by invoiceNumber per user (unique per DKB PDF)
     const orderNumberString = String(data.orderNumber);
     if (data.invoiceNumber) {
       const existing = await db.select().from(transactions)
-        .where(eq(transactions.invoiceNumber, data.invoiceNumber))
+        .where(and(
+          eq(transactions.userId, userId),
+          eq(transactions.invoiceNumber, data.invoiceNumber)
+        ))
         .limit(1);
 
       if (existing.length > 0) {
