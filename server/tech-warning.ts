@@ -23,6 +23,7 @@ import OpenAI from "openai";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "./db";
 import { techWarningSignals } from "../drizzle/schema";
+import { checkOpenAIRateLimit } from "./_core/rate-limiter";
 
 // ============================================================================
 // TYPES & CONSTANTS
@@ -95,6 +96,8 @@ async function searchWithOpenAI(systemPrompt: string, userPrompt: string): Promi
   if (!openai) {
     throw new Error("OpenAI-Client nicht initialisiert — OPENAI_API_KEY fehlt.");
   }
+
+  checkOpenAIRateLimit();
 
   const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nWICHTIG: Antworte am Ende mit einem JSON-Block in genau diesem Format (zwischen \`\`\`json und \`\`\`):
 \`\`\`json

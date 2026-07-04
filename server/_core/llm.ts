@@ -2,6 +2,7 @@
 import { ENV } from "./env";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { checkOpenAIRateLimit } from "./rate-limiter";
 
 const apiKey = process.env.OPENAI_API_KEY;
 const openai = apiKey ? new OpenAI({ apiKey }) : null;
@@ -34,6 +35,10 @@ export async function invokeLLM(messages: Message[], modelIndex: number = 0): Pr
     const error = "OpenAI API key is missing. AI features are disabled.";
     console.error(error);
     throw new Error(error);
+  }
+
+  if (modelIndex === 0) {
+    checkOpenAIRateLimit();
   }
 
   const model = MODELS_TO_TRY[modelIndex];
