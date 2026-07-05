@@ -184,17 +184,18 @@ export async function parseDKBPDF(pdfBuffer: Buffer, fileName?: string): Promise
     const isin = isinWknMatch[1];
     const wkn = isinWknMatch[2];
 
-    // Extract security name (between quantity and ISIN which starts with 2 letters)
-    const nameMatch = text.match(/St[üu]ck\s+[\d.,]+\s*([^\n]+(?:\n[^\n]+)?)\s*[A-Z]{2}[A-Z0-9]{10}/);
+    // Extract security name: text between "Stück [number]" and the known ISIN
     let name = '';
-    if (nameMatch) {
-      name = nameMatch[1].replace(/\s+/g, ' ').trim();
-    } else {
-      // Fallback: extract text between quantity and ISIN
-      const nameMatch2 = text.match(/St[üu]ck\s+[\d.,]+\s*([A-Z][^\n]+(?:\n[A-Z][^\n]+)?)\s*[A-Z]{2}[A-Z0-9]{10}/);
-      if (nameMatch2) {
-        name = nameMatch2[1].replace(/\s+/g, ' ').trim();
+    const nameStartMatch = text.match(/St[üu]ck\s+[\d.,]+\s*/);
+    if (nameStartMatch && nameStartMatch.index !== undefined) {
+      const afterQuantity = text.substring(nameStartMatch.index + nameStartMatch[0].length);
+      const isinPos = afterQuantity.indexOf(isin);
+      if (isinPos > 0) {
+        name = afterQuantity.substring(0, isinPos).replace(/\s+/g, ' ').trim();
       }
+    }
+    if (name.length > 200) {
+      name = name.substring(0, 200).trim();
     }
 
     // Extract quantity (Nominale/Stück) - supports decimals like "3,8462"
