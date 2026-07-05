@@ -106,6 +106,11 @@ const faqData: FAQItem[] = [
     question: "Was bedeuten die SMA-Werte in der Ampel?",
     answer: "SMA 50 ist der Durchschnittskurs der letzten 50 Handelstage, SMA 200 der letzten 200 Tage. Wenn SMA 50 den SMA 200 von unten nach oben kreuzt, ist das ein positives Signal ('Golden Cross'). Umgekehrt ist ein 'Death Cross' (SMA 50 fällt unter SMA 200) ein Warnsignal."
   },
+  {
+    category: "ampel",
+    question: "Wie nutze ich die KI-Fragen bei der Ampel?",
+    answer: "Bei jeder Aktie in der Ampel gibt es ein Chat-Symbol (💬). Klicken Sie darauf, um 5 vorgefertigte KI-Fragen zu sehen: Trend-Analyse, Kaufen/Halten/Verkaufen, Risiko-Check, News & Sentiment und Konkurrenz-Vergleich. Jede Frage enthält automatisch die aktuellen Daten der Aktie (Kurs, SMA, Signal). Klicken Sie auf 'Kopieren' und fügen Sie die Frage in Gemini, ChatGPT oder eine andere KI ein — kostenlos und ohne API-Kosten."
+  },
 
   // Frühwarnsystem
   {

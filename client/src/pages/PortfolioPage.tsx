@@ -3,7 +3,7 @@
  * Vollständige Tabelle mit Filter, Sortierung, Suche
  */
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,8 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import {
   Briefcase, Search, Plus, ArrowUpDown, ArrowUp, ArrowDown,
-  Edit, Trash2, RefreshCw, FileJson, Upload, Loader2, TrafficCone, X, CirclePlus
+  Edit, Trash2, RefreshCw, FileJson, Upload, Loader2, TrafficCone, X, CirclePlus,
+  MessageSquare, Copy, Check
 } from 'lucide-react';
 
 const formatCurrency = (value: number) => {
@@ -121,6 +122,52 @@ export default function PortfolioPage() {
   const [ampelWkn, setAmpelWkn] = useState('');
   const [ampelName, setAmpelName] = useState('');
   const [isAmpelLookingUp, setIsAmpelLookingUp] = useState(false);
+  const [ampelFragenOpen, setAmpelFragenOpen] = useState<number | null>(null);
+  const [copiedQuestion, setCopiedQuestion] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedQuestion(id);
+    toast.success('Frage kopiert — jetzt in Gemini, ChatGPT oder andere KI einfügen');
+    setTimeout(() => setCopiedQuestion(null), 2000);
+  };
+
+  const getAmpelQuestions = (entry: any) => {
+    const kurs = entry.currentPrice ? `${Number(entry.currentPrice).toFixed(2)}€` : 'nicht verfügbar';
+    const sma50 = entry.sma50 ? `${Number(entry.sma50).toFixed(2)}€` : 'nicht verfügbar';
+    const sma200 = entry.sma200 ? `${Number(entry.sma200).toFixed(2)}€` : 'nicht verfügbar';
+    const signal = entry.signalDetail || 'nicht aktualisiert';
+    const wknText = entry.wkn ? `, WKN: ${entry.wkn}` : '';
+    const header = `${entry.name} (Ticker: ${entry.ticker}${wknText}), aktueller Kurs: ${kurs}, SMA 50: ${sma50}, SMA 200: ${sma200}, Ampel-Signal: ${signal}.`;
+
+    return [
+      {
+        id: 'trend',
+        label: 'Trend & SMA-Analyse',
+        text: `${header}\n\nAnalysiere den Trend dieser Aktie: Liegt der Kurs über oder unter dem SMA 50 und SMA 200? Liegt ein Golden Cross (SMA 50 kreuzt SMA 200 von unten) oder ein Death Cross vor? Wie ist die Dynamik — ist das ein frisches Signal oder besteht es schon länger? Was bedeutet das für die nächsten Wochen?`,
+      },
+      {
+        id: 'action',
+        label: 'Kaufen / Halten / Verkaufen?',
+        text: `${header}\n\nBasierend auf diesen SMA-Daten und dem aktuellen Kurs: Soll ich diese Aktie nachkaufen, halten oder verkaufen? Begründe deine Einschätzung anhand der technischen Signale (SMA-Kreuzungen, Trendstärke, Abstand zum Durchschnitt).`,
+      },
+      {
+        id: 'risk',
+        label: 'Risiko-Check',
+        text: `${header}\n\nWelche konkreten Risiken hat diese Aktie aktuell? Berücksichtige: Branchenrisiken, Bewertungsniveau, Konkurrenzdruck, Marktumfeld und mögliche Katalysatoren nach unten. Wie hoch ist das Rückschlagpotenzial?`,
+      },
+      {
+        id: 'news',
+        label: 'News & Sentiment',
+        text: `${header}\n\nWas sind die wichtigsten aktuellen Nachrichten zu dieser Aktie und wie wirken sie sich auf den Kurs aus? Ist das allgemeine Sentiment eher positiv, neutral oder negativ? Gibt es bevorstehende Ereignisse (Earnings, Produktlaunches, Regulierung) die den Kurs beeinflussen könnten?`,
+      },
+      {
+        id: 'compare',
+        label: 'Konkurrenz-Vergleich',
+        text: `${header}\n\nWie steht diese Aktie im Vergleich zu ihren direkten Konkurrenten da? Wer hat aktuell die bessere Marktposition, das stärkere Wachstum und die bessere Bewertung? Nenne die 2-3 wichtigsten Konkurrenten und vergleiche sie.`,
+      },
+    ];
+  };
   const { data: ampelEntries = [], refetch: refetchAmpel } = trpc.trafficLight.list.useQuery();
 
   const addToAmpel = trpc.trafficLight.add.useMutation({
@@ -981,39 +1028,87 @@ export default function PortfolioPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ampelEntries.map((entry: any) => (
-                      <tr key={entry.id} className="border-b border-border/20 hover:bg-muted/20">
-                        <td className="p-2">
-                          <div className="font-medium">{entry.name.substring(0, 25)}</div>
-                          <div className="text-muted-foreground text-xs">{entry.ticker} {entry.wkn ? `(${entry.wkn})` : ''}</div>
-                        </td>
-                        <td className="p-2 text-center text-lg">
-                          {entry.signal === 'GRUEN' ? '🟢' : entry.signal === 'ROT' ? '🔴' : entry.signal === 'GELB' ? '🟡' : '⚪'}
-                        </td>
-                        <td className="p-2 text-right font-mono hidden sm:table-cell">
-                          {entry.currentPrice ? formatCurrency(entry.currentPrice) : '–'}
-                        </td>
-                        <td className="p-2 text-right font-mono hidden sm:table-cell">
-                          {entry.sma50 ? formatCurrency(entry.sma50) : '–'}
-                        </td>
-                        <td className="p-2 text-right font-mono hidden sm:table-cell">
-                          {entry.sma200 ? formatCurrency(entry.sma200) : '–'}
-                        </td>
-                        <td className="p-2 text-xs text-muted-foreground">
-                          {entry.signalDetail || 'Noch nicht aktualisiert'}
-                        </td>
-                        <td className="p-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-destructive hover:text-destructive"
-                            onClick={() => removeFromAmpel.mutate({ id: entry.id })}
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
+                    {ampelEntries.map((entry: any) => {
+                      const isOpen = ampelFragenOpen === entry.id;
+                      const questions = isOpen ? getAmpelQuestions(entry) : [];
+                      return (
+                        <React.Fragment key={entry.id}>
+                          <tr className="border-b border-border/20 hover:bg-muted/20">
+                            <td className="p-2">
+                              <div className="font-medium">{entry.name.substring(0, 25)}</div>
+                              <div className="text-muted-foreground text-xs">{entry.ticker} {entry.wkn ? `(${entry.wkn})` : ''}</div>
+                            </td>
+                            <td className="p-2 text-center text-lg">
+                              {entry.signal === 'GRUEN' ? '🟢' : entry.signal === 'ROT' ? '🔴' : entry.signal === 'GELB' ? '🟡' : '⚪'}
+                            </td>
+                            <td className="p-2 text-right font-mono hidden sm:table-cell">
+                              {entry.currentPrice ? formatCurrency(entry.currentPrice) : '–'}
+                            </td>
+                            <td className="p-2 text-right font-mono hidden sm:table-cell">
+                              {entry.sma50 ? formatCurrency(entry.sma50) : '–'}
+                            </td>
+                            <td className="p-2 text-right font-mono hidden sm:table-cell">
+                              {entry.sma200 ? formatCurrency(entry.sma200) : '–'}
+                            </td>
+                            <td className="p-2 text-xs text-muted-foreground">
+                              {entry.signalDetail || 'Noch nicht aktualisiert'}
+                            </td>
+                            <td className="p-2">
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className={`h-6 w-6 ${isOpen ? 'text-cyan-400' : 'text-muted-foreground hover:text-cyan-400'}`}
+                                  onClick={() => setAmpelFragenOpen(isOpen ? null : entry.id)}
+                                  title="KI-Fragen"
+                                >
+                                  <MessageSquare className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-destructive hover:text-destructive"
+                                  onClick={() => removeFromAmpel.mutate({ id: entry.id })}
+                                >
+                                  <X className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr>
+                              <td colSpan={7} className="p-0">
+                                <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg m-2 p-3">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <MessageSquare className="w-4 h-4 text-cyan-400" />
+                                    <span className="text-sm font-medium">KI-Fragen für {entry.name}</span>
+                                    <span className="text-xs text-muted-foreground ml-auto">Frage kopieren → in Gemini / ChatGPT einfügen</span>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    {questions.map((q) => (
+                                      <button
+                                        key={q.id}
+                                        onClick={() => copyToClipboard(q.text, `${entry.id}-${q.id}`)}
+                                        className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left text-sm hover:bg-cyan-500/10 transition-colors group"
+                                      >
+                                        {copiedQuestion === `${entry.id}-${q.id}` ? (
+                                          <Check className="w-4 h-4 text-green-400 shrink-0" />
+                                        ) : (
+                                          <Copy className="w-4 h-4 text-muted-foreground group-hover:text-cyan-400 shrink-0" />
+                                        )}
+                                        <span className={copiedQuestion === `${entry.id}-${q.id}` ? 'text-green-400' : ''}>
+                                          {q.label}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
