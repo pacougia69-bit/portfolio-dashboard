@@ -2,26 +2,29 @@ import { useState } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { 
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { 
-  HelpCircle, 
-  Search, 
-  LayoutDashboard, 
-  Briefcase, 
-  Eye, 
-  Target, 
+import {
+  HelpCircle,
+  Search,
+  LayoutDashboard,
+  Briefcase,
+  Eye,
+  Target,
   PiggyBank,
   Sparkles,
   Settings,
   TrendingUp,
   AlertTriangle,
   Lightbulb,
-  Wrench
+  Wrench,
+  Activity,
+  FileUp,
+  CircleDot
 } from "lucide-react";
 
 interface FAQItem {
@@ -47,7 +50,7 @@ const faqData: FAQItem[] = [
     question: "Wie aktualisiere ich die Kurse?",
     answer: "Klicken Sie auf 'Kurse aktualisieren' im Dashboard oder auf der Portfolio-Seite. Die Kurse werden über Yahoo Finance abgerufen und automatisch aktualisiert."
   },
-  
+
   // Dashboard
   {
     category: "dashboard",
@@ -64,7 +67,7 @@ const faqData: FAQItem[] = [
     question: "Wie starte ich eine KI-Analyse?",
     answer: "Klicken Sie auf 'KI-Analyse' im Dashboard. Die KI analysiert Ihr gesamtes Portfolio und gibt Ihnen Empfehlungen zu Diversifikation, Risiken und möglichen Handlungen."
   },
-  
+
   // Portfolio
   {
     category: "portfolio",
@@ -81,7 +84,56 @@ const faqData: FAQItem[] = [
     question: "Wie funktioniert die WKN-Suche?",
     answer: "Geben Sie die WKN (Wertpapierkennnummer) ein und klicken Sie auf die Lupe. Das System sucht in einer Datenbank mit über 50 bekannten WKNs und ruft dann den aktuellen Kurs ab. Falls die WKN nicht gefunden wird, können Sie die Daten manuell eingeben."
   },
-  
+
+  // Aktien-Ampel
+  {
+    category: "ampel",
+    question: "Was ist die Aktien-Ampel?",
+    answer: "Die Aktien-Ampel zeigt den Trend Ihrer Wertpapiere anhand der gleitenden Durchschnitte SMA 50 und SMA 200. GRÜN = Aufwärtstrend (SMA 50 über SMA 200), GELB = Seitwärtstrend (SMA 50 und SMA 200 nah beieinander), ROT = Abwärtstrend (SMA 50 unter SMA 200)."
+  },
+  {
+    category: "ampel",
+    question: "Wie füge ich eine Aktie zur Ampel hinzu?",
+    answer: "Auf der Portfolio-Seite finden Sie die Ampel-Tabelle. Klicken Sie auf 'Aktie hinzufügen', geben Sie die WKN ein und klicken Sie auf die Lupe. Der Name und Ticker werden automatisch gefüllt. Alternativ können Sie auch direkt aus Ihren Portfolio-Positionen hinzufügen."
+  },
+  {
+    category: "ampel",
+    question: "Wie aktualisiere ich die Ampel-Signale?",
+    answer: "Klicken Sie auf den Button 'Ampeln aktualisieren'. Die aktuellen SMA 50/200-Werte werden über Twelve Data abgerufen und die Signale neu berechnet. Beachten Sie: Es gibt ein Limit von 2 Abfragen gleichzeitig mit einer kurzen Wartezeit dazwischen."
+  },
+  {
+    category: "ampel",
+    question: "Was bedeuten die SMA-Werte in der Ampel?",
+    answer: "SMA 50 ist der Durchschnittskurs der letzten 50 Handelstage, SMA 200 der letzten 200 Tage. Wenn SMA 50 den SMA 200 von unten nach oben kreuzt, ist das ein positives Signal ('Golden Cross'). Umgekehrt ist ein 'Death Cross' (SMA 50 fällt unter SMA 200) ein Warnsignal."
+  },
+
+  // Frühwarnsystem
+  {
+    category: "fruehwarnsystem",
+    question: "Was ist das Tech-Frühwarnsystem?",
+    answer: "Das Frühwarnsystem prüft 5 Markt-Indikatoren per Knopfdruck und zeigt eine Gesamt-Ampel (grün/gelb/rot). Es warnt Sie frühzeitig vor Risiken wie Überhitzung im Tech-Sektor, steigenden Zinsen oder schlechter Marktbreite."
+  },
+  {
+    category: "fruehwarnsystem",
+    question: "Welche 5 Indikatoren werden geprüft?",
+    answer: "1) Capex/Umsatz-Schere bei den großen Tech-Firmen (MSFT, GOOGL, AMZN, NVDA). 2) Circular Financing News-Scan (Warnsignale für künstliche Umsätze). 3) Effizienz-Sprünge / DeepSeek-Effekt (neue KI-Modelle die Marktführer gefährden). 4) Zinsen & Inflation (Fed Funds Rate + Core CPI). 5) Marktbreite (SPY + QQQ im Vergleich zum 200-Tage-Durchschnitt)."
+  },
+  {
+    category: "fruehwarnsystem",
+    question: "Wie benutze ich das Frühwarnsystem?",
+    answer: "Gehen Sie über das Menü zu 'Tech-Frühwarnsystem'. Klicken Sie auf 'Snapshot erstellen'. Nach einigen Sekunden erscheinen die 5 Einzelampeln und die Gesamt-Ampel. Die Gesamt-Ampel zeigt immer den schlimmsten Einzelwert (ein Rot = Gesamt Rot)."
+  },
+  {
+    category: "fruehwarnsystem",
+    question: "Was ist der Trend-Chart?",
+    answer: "Der Trend-Chart zeigt den Verlauf der Ampel-Signale über die letzten 30 Snapshots als Punkte-Matrix. So sehen Sie, ob sich die Lage verbessert oder verschlechtert. Klicken Sie auf einen Punkt, um den zugehörigen Snapshot zu laden."
+  },
+  {
+    category: "fruehwarnsystem",
+    question: "Wie oft sollte ich einen Snapshot machen?",
+    answer: "Es gibt keine Automatik — Sie entscheiden selbst. Empfohlen ist einmal pro Woche oder bei besonderen Marktbewegungen. Die Snapshots werden gespeichert, sodass Sie Trends über Zeit verfolgen können."
+  },
+
   // Watchlist
   {
     category: "watchlist",
@@ -98,7 +150,7 @@ const faqData: FAQItem[] = [
     question: "Wie aktualisiere ich die Kurse in der Watchlist?",
     answer: "Klicken Sie auf 'Kurse aktualisieren' oben auf der Watchlist-Seite. Alle Positionen mit bekannter WKN werden automatisch aktualisiert."
   },
-  
+
   // Strategie
   {
     category: "strategie",
@@ -115,7 +167,7 @@ const faqData: FAQItem[] = [
     question: "Wie funktioniert die KI-Empfehlung für den Sparplan?",
     answer: "Die KI analysiert Ihr Portfolio UND Ihre Watchlist-ETFs. Sie bewertet jeden ETF (Risiko, Diversifikation, Passung zur Strategie) und schlägt eine optimale Verteilung Ihrer monatlichen Sparrate vor. ETFs können auch abgelehnt werden, wenn sie nicht zur Strategie passen."
   },
-  
+
   // Dividenden
   {
     category: "dividenden",
@@ -127,7 +179,7 @@ const faqData: FAQItem[] = [
     question: "Was zeigt die Dividenden-Übersicht?",
     answer: "Sie sehen die Gesamtdividenden des Jahres, eine monatliche Aufschlüsselung und die Dividenden pro Position. So behalten Sie den Überblick über Ihre passiven Einkünfte."
   },
-  
+
   // KI-Assistent
   {
     category: "ki",
@@ -141,15 +193,52 @@ const faqData: FAQItem[] = [
   },
   {
     category: "ki",
+    question: "Gibt es ein Limit für KI-Anfragen?",
+    answer: "Ja, es gibt ein Limit von maximal 20 KI-Anfragen pro Stunde. Das schützt vor unerwarteten API-Kosten. Wenn das Limit erreicht ist, zeigt das System an, wie lange Sie warten müssen. Betrifft: Portfolio-Analyse, Chat, Empfehlungen und Sparplan-KI."
+  },
+  {
+    category: "ki",
     question: "Warum bezieht die KI meine Watchlist ein?",
     answer: "Die KI analysiert Watchlist-ETFs, um zu prüfen, ob sie zu Ihrer bestehenden Strategie passen. So erhalten Sie eine Empfehlung, ob Sie diese ETFs in Ihren Sparplan aufnehmen sollten - inklusive konkreter Beträge."
   },
-  
+
+  // Einstellungen & Import
+  {
+    category: "einstellungen",
+    question: "Wie importiere ich DKB-Abrechnungen?",
+    answer: "Gehen Sie zu 'Einstellungen' und scrollen Sie zum Bereich 'DKB PDF Import'. Klicken Sie auf 'PDF auswählen' und wählen Sie eine oder mehrere DKB-Wertpapierabrechnungen (PDF). Die Daten (Datum, WKN, Stückzahl, Kurs, Gebühren) werden automatisch ausgelesen und als Transaktion gespeichert."
+  },
+  {
+    category: "einstellungen",
+    question: "Was mache ich wenn der DKB-Import nicht funktioniert?",
+    answer: "Falls der PDF-Import Probleme macht, nutzen Sie das manuelle Transaktions-Formular auf der Einstellungen-Seite. Dort können Sie Datum, WKN, Name, Stückzahl, Kurs und Gebühren von Hand eingeben. Das funktioniert immer zuverlässig."
+  },
+  {
+    category: "einstellungen",
+    question: "Was ist die Transaktionshistorie?",
+    answer: "Unter 'Einstellungen' sehen Sie alle importierten Käufe und Verkäufe. Jede Transaktion zeigt Datum, Typ (Kauf/Sparplan/Verkauf), Name, Stückzahl und Gesamtbetrag. Die Historie dient als Nachweis und Übersicht."
+  },
+  {
+    category: "einstellungen",
+    question: "Was macht 'Transaktionshistorie leeren'?",
+    answer: "Dieser Button löscht alle gespeicherten Transaktionen. Ihre Portfolio-Positionen bleiben davon unberührt! Nutzen Sie das z.B. wenn Sie PDFs neu importieren möchten. Der Button befindet sich in der Gefahrenzone auf der Einstellungen-Seite — direkt über 'Alle Daten löschen'."
+  },
+  {
+    category: "einstellungen",
+    question: "Was macht 'Alle Daten löschen'?",
+    answer: "ACHTUNG: Dieser Button löscht ALLES — Portfolio, Watchlist, Dividenden, Transaktionen, Einstellungen. Nur verwenden, wenn Sie komplett von vorne anfangen möchten. Vorher unbedingt einen Export machen!"
+  },
+  {
+    category: "einstellungen",
+    question: "Wie exportiere ich meine Daten als Backup?",
+    answer: "Auf der Einstellungen-Seite finden Sie den 'Daten exportieren' Button. Der Export enthält Ihr gesamtes Portfolio, Transaktionen und Einstellungen als JSON-Datei. Machen Sie regelmäßig Backups!"
+  },
+
   // Technisches
   {
     category: "technisch",
     question: "Woher kommen die Kursdaten?",
-    answer: "Die Kursdaten werden über Yahoo Finance abgerufen. Dies ist kostenlos und deckt die meisten internationalen Wertpapiere ab. Bei einigen exotischen Titeln kann es zu Verzögerungen oder fehlenden Daten kommen."
+    answer: "Die Kursdaten werden über Yahoo Finance (Echtzeit-Kurse) und Twelve Data (SMA-Berechnung für die Ampel) abgerufen. Die Frühwarnsystem-Daten kommen zusätzlich von FRED (US-Notenbank) für Zinsen und Inflation."
   },
   {
     category: "technisch",
@@ -159,9 +248,9 @@ const faqData: FAQItem[] = [
   {
     category: "technisch",
     question: "Sind meine Daten sicher?",
-    answer: "Ja, Ihre Daten werden verschlüsselt in einer PostgreSQL-Datenbank gespeichert. Der Zugriff erfolgt nur über Ihren persönlichen Login. Es werden keine Daten an Dritte weitergegeben."
+    answer: "Ja, Ihre Daten werden in einer MySQL-Datenbank auf Railway gespeichert. Der Zugriff erfolgt nur über Ihren persönlichen Login. Es werden keine Daten an Dritte weitergegeben. API-Schlüssel sind als Umgebungsvariablen gespeichert und nie im Code sichtbar."
   },
-  
+
   // Tipps
   {
     category: "tipps",
@@ -178,16 +267,24 @@ const faqData: FAQItem[] = [
     question: "Wie nutze ich den Sparplan optimal?",
     answer: "Verteilen Sie Ihre monatliche Sparrate auf verschiedene ETFs gemäß Ihrer Ziel-Allokation. Die KI-Empfehlung kann Ihnen helfen, die optimale Verteilung zu finden. Konzentrieren Sie sich auf untergewichtete Kategorien."
   },
+  {
+    category: "tipps",
+    question: "Wie nutze ich Ampel und Frühwarnsystem zusammen?",
+    answer: "Das Frühwarnsystem zeigt die allgemeine Marktlage (Makro-Ebene), die Ampel zeigt den Trend einzelner Aktien/ETFs (Mikro-Ebene). Wenn das Frühwarnsystem rot zeigt UND eine Ihrer Ampeln rot ist, sollten Sie besonders aufmerksam sein."
+  },
 ];
 
 const categories = [
   { id: "schnellstart", label: "Schnellstart", icon: Lightbulb },
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "portfolio", label: "Portfolio", icon: Briefcase },
+  { id: "ampel", label: "Aktien-Ampel", icon: CircleDot },
+  { id: "fruehwarnsystem", label: "Frühwarnsystem", icon: Activity },
   { id: "watchlist", label: "Watchlist", icon: Eye },
   { id: "strategie", label: "Strategie", icon: Target },
   { id: "dividenden", label: "Dividenden", icon: PiggyBank },
   { id: "ki", label: "KI-Assistent", icon: Sparkles },
+  { id: "einstellungen", label: "Einstellungen & Import", icon: Settings },
   { id: "technisch", label: "Technisches", icon: Wrench },
   { id: "tipps", label: "Tipps & Tricks", icon: TrendingUp },
 ];
@@ -197,12 +294,12 @@ export default function HilfePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const filteredFAQ = faqData.filter(item => {
-    const matchesSearch = searchQuery === "" || 
+    const matchesSearch = searchQuery === "" ||
       item.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.answer.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesCategory = selectedCategory === null || item.category === selectedCategory;
-    
+
     return matchesSearch && matchesCategory;
   });
 
@@ -222,7 +319,7 @@ export default function HilfePage() {
               Hilfe & FAQ
             </h1>
             <p className="text-muted-foreground text-xs sm:text-base mt-1">
-              Anleitungen und FAQ
+              Anleitungen und häufige Fragen zu allen Funktionen
             </p>
           </div>
 
@@ -329,8 +426,8 @@ export default function HilfePage() {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground">
-              Nutzen Sie den <strong className="text-foreground">KI-Assistenten</strong> für personalisierte Fragen zu Ihrem Portfolio. 
-              Er kennt Ihre Positionen und kann individuelle Empfehlungen geben.
+              Nutzen Sie den <strong className="text-foreground">KI-Assistenten</strong> für personalisierte Fragen zu Ihrem Portfolio.
+              Er kennt Ihre Positionen und kann individuelle Empfehlungen geben. Maximal 20 Anfragen pro Stunde.
             </p>
           </CardContent>
         </Card>
