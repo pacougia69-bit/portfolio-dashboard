@@ -2,104 +2,134 @@ import { invokeLLM } from "./_core/llm";
 import { updatePriceCache, saveAiAnalysis } from "./db";
 import { getEurUsdRate } from "./currency";
 
-// Known ticker mappings from German/European to US/Twelve Data symbols
+// Known ticker mappings from German/European to Twelve Data symbols
+// Format: 'source ticker' → 'SYMBOL' (US) or 'SYMBOL:EXCHANGE' (non-US)
 const TICKER_MAPPINGS: Record<string, string> = {
-  // Tech stocks (Frankfurt .F to US)
-  'AMZ.F': 'AMZN',        // Amazon
-  'ABEA.F': 'GOOGL',      // Alphabet
-  'AMD.F': 'AMD',         // AMD
-  'NVDA.F': 'NVDA',       // NVIDIA
-  'MSFT.F': 'MSFT',       // Microsoft
-  'AAPL.F': 'AAPL',       // Apple
-  'META.F': 'META',       // Meta
-  'TSLA.F': 'TSLA',       // Tesla
-  
-  // Biotech stocks (Frankfurt .F to US)
-  '0OT.F': 'OCUL',        // Ocular Therapeutix
-  'A83.F': 'APGE',        // Apogee Therapeutics
-  '7CY.F': 'CTMX',        // CytomX Therapeutics
-  'IFX.F': 'IFRX',        // InflaRx N.V.
-  '1SP1.F': 'SPRO',       // Spero Therapeutics
-  'O8V.F': 'OVID',        // Ovid Therapeutics
-  'N9C.F': 'NXTC',        // NextCure
-  '49B.F': 'MYNZ',        // Mainz Biomed
-  '78A.F': 'ATHA',        // Athira Pharma
-  'C1M.F': 'CRDF',        // Cardiff Oncology
-  
-  // Other US stocks (Frankfurt .F to US)
-  'P2S.F': 'PSN',         // Parsons Corporation
-  'MIG.F': 'MSTR',        // MicroStrategy
-  
-  // German stocks (Xetra .DE)
-  'GBF.DE': 'GBF.DE',     // Bilfinger SE - keep as is, not on US exchange
-  
-  // Hong Kong
-  '1211.HK': '1211.HK',   // BYD - keep original format
-  
-  // Canadian (TSX Venture)
-  'TAU.V': 'TAU.V',       // Thesis Gold - keep original
-  
-  // Amsterdam
-  'GLPG.AS': 'GLPG',      // Galapagos NV (also on NASDAQ)
-  
-  // US stocks (already US symbols)
-  'ASMB': 'ASMB',         // Assembly Biosciences
-  'ORKA': 'ORKA',         // Oruka Therapeutics
-  
-  // Crypto ETPs (Swiss Exchange .SW to crypto pairs)
-  'CBTC.SW': 'BTC/USD',   // 21Shares Bitcoin
-  'ETHC.SW': 'ETH/USD',   // 21Shares Ethereum
-  'AXRP.SW': 'XRP/USD',   // 21Shares XRP
-  'SOLW.SW': 'SOL/USD',   // WisdomTree Solana
-  'HBAR-USD': 'HBAR/USD', // Valour Hedera
-  
-  // ETFs (German to US equivalents or keep)
-  'XAIX.DE': 'BOTZ',      // AI & Big Data -> Global X Robotics
-  'EXXT.DE': 'QQQ',       // Nasdaq 100 ETF
-  'NATO.DE': 'ITA',       // Defence ETF -> iShares US Aerospace
-  'IS3N.DE': 'EEM',       // EM ETF -> iShares MSCI EM
-  'IUSN.DE': 'SCHA',      // World Small Cap -> Schwab US Small Cap
-  'EUNL.DE': 'VT',        // MSCI World -> Vanguard Total World
-  'IQQH.DE': 'ICLN',      // Clean Energy -> iShares Global Clean Energy
-  'NUCL.DE': 'URA',       // Uranium ETF -> Global X Uranium
+  // === US-Aktien (Frankfurt .F → US) ===
+  'AMZ.F': 'AMZN',
+  'ABEA.F': 'GOOGL',
+  'AMD.F': 'AMD',
+  'NVDA.F': 'NVDA',
+  'MSFT.F': 'MSFT',
+  'AAPL.F': 'AAPL',
+  'META.F': 'META',
+  'TSLA.F': 'TSLA',
+  'NFLX.F': 'NFLX',
+
+  // === Biotech (Frankfurt .F → US) ===
+  '0OT.F': 'OCUL',
+  'A83.F': 'APGE',
+  '7CY.F': 'CTMX',
+  'IFX.F': 'IFRX',
+  '1SP1.F': 'SPRO',
+  'O8V.F': 'OVID',
+  'N9C.F': 'NXTC',
+  '49B.F': 'MYNZ',
+  '78A.F': 'ATHA',
+  'C1M.F': 'CRDF',
+
+  // === Sonstige US (Frankfurt .F → US) ===
+  'P2S.F': 'PSN',
+  'MIG.F': 'MSTR',
+
+  // === US-Aktien (bereits US-Ticker) ===
+  'ASMB': 'ASMB',
+  'ORKA': 'ORKA',
+  'CTMX': 'CTMX',
+  'SPRO': 'SPRO',
+  'OCUL': 'OCUL',
+  'IFRX': 'IFRX',
+  'MSTR': 'MSTR',
+  'PSN': 'PSN',
+  'GOOGL': 'GOOGL',
+  'AMZN': 'AMZN',
+  'AMD': 'AMD',
+  'AAPL': 'AAPL',
+  'MSFT': 'MSFT',
+  'NVDA': 'NVDA',
+  'META': 'META',
+  'TSLA': 'TSLA',
+  'NFLX': 'NFLX',
+
+  // === Deutsche Aktien (Xetra → XETR oder US-ADR) ===
+  'GBF.DE': 'GBF:XETR',
+  'SAP.DE': 'SAP',
+  'DTE.DE': 'DTE:XETR',
+  'DPW.DE': 'DPW:XETR',
+  'ALV.DE': 'ALV:XETR',
+  'DBK.DE': 'DB',
+  'BMW.DE': 'BMW:XETR',
+  'DAI.DE': 'MBG:XETR',
+  'VOW3.DE': 'VOW3:XETR',
+
+  // === Hongkong ===
+  '1211.HK': '1211:HKEX',
+
+  // === Kanada ===
+  'TAU.V': 'TAU:TSXV',
+
+  // === Amsterdam ===
+  'GLPG.AS': 'GLPG',
+  'IWDA.AS': 'URTH',
+
+  // === Crypto ETPs (Swiss → Crypto-Paare) ===
+  'CBTC.SW': 'BTC/USD',
+  'ETHC.SW': 'ETH/USD',
+  'AXRP.SW': 'XRP/USD',
+  'SOLW.SW': 'SOL/USD',
+  'HBAR-USD': 'HBAR/USD',
+
+  // === ETFs (Deutsche Xetra → US-Äquivalente) ===
+  'EUNL.DE': 'URTH',
+  'VWCE.DE': 'VT',
+  'IUSN.DE': 'SCHA',
+  'IS3N.DE': 'EEM',
+  'VFEM.DE': 'VWO',
+  'EXXT.DE': 'QQQ',
+  'XAIX.DE': 'BOTZ',
+  'XDWH.DE': 'IXJ',
+  'CBUX.DE': 'IGF',
+  'AIFS.DE': 'BOTZ',
+  'IQQH.DE': 'ICLN',
+  'NUCL.DE': 'URA',
+  'NATO.DE': 'ITA',
+  '30IA.DE': 'LQD',
+  '4GLD.DE': 'GLD',
+  'EUWAX.DE': 'GLD',
+  'IQQ6.DE': 'REET',
+  'IUSM.DE': 'IEF',
+  'IBCI.DE': 'TIP',
+  'IUSU.DE': 'SHY',
+  'IUST.DE': 'IEI',
 };
 
 // Convert ticker to Twelve Data format
 export function convertTickerForTwelveData(ticker: string): { symbol: string; exchange?: string; isCrypto?: boolean } {
-  // Check known mappings first
   const mapped = TICKER_MAPPINGS[ticker];
   if (mapped) {
-    // Check if it's a crypto pair
     if (mapped.includes('/USD')) {
       return { symbol: mapped, isCrypto: true };
     }
+    if (mapped.includes(':')) {
+      const [symbol, exchange] = mapped.split(':');
+      return { symbol, exchange };
+    }
     return { symbol: mapped };
   }
-  
-  // German tickers ending with .F (Frankfurt)
+
   if (ticker.endsWith('.F')) {
-    const base = ticker.replace('.F', '');
-    // Try US symbol directly (many German tickers are just US symbols + .F)
-    return { symbol: base };
+    return { symbol: ticker.replace('.F', '') };
   }
-  
-  // German tickers ending with .DE (Xetra)
   if (ticker.endsWith('.DE')) {
-    const base = ticker.replace('.DE', '');
-    return { symbol: base };
+    return { symbol: ticker.replace('.DE', ''), exchange: 'XETR' };
   }
-  
-  // Hong Kong
   if (ticker.endsWith('.HK')) {
     return { symbol: ticker.replace('.HK', ''), exchange: 'HKEX' };
   }
-  
-  // Canadian
   if (ticker.endsWith('.V')) {
     return { symbol: ticker.replace('.V', ''), exchange: 'TSXV' };
   }
-  
-  // US stocks (no suffix)
+
   return { symbol: ticker };
 }
 

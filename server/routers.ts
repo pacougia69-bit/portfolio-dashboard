@@ -963,15 +963,17 @@ export const appRouter = router({
         }
 
         let updated = 0;
-        const batchSize = 2;
-        const batchDelayMs = 63000;
+        const errors: string[] = [];
+        // 1 API call per stock (time_series with 200 data points)
+        // Free tier: 8 calls/minute → process up to 8 per batch
+        const batchSize = 8;
 
         for (let i = 0; i < entries.length; i += batchSize) {
           const batch = entries.slice(i, i + batchSize);
 
           if (i > 0) {
-            console.log(`[Ampel] Warte ${batchDelayMs / 1000}s für nächsten Batch...`);
-            await new Promise(r => setTimeout(r, batchDelayMs));
+            console.log('[Ampel] Warte 62s für nächsten Batch...');
+            await new Promise(r => setTimeout(r, 62000));
           }
 
           for (const entry of batch) {
@@ -982,30 +984,33 @@ export const appRouter = router({
                 ? `${converted.symbol}:${converted.exchange}`
                 : converted.symbol;
 
-              console.log(`[Ampel] Fetching data for ${entry.ticker} → ${symbol}`);
+              console.log(`[Ampel] Fetching time_series for ${entry.ticker} → ${symbol}`);
 
-              const quoteRes = await fetch(`https://api.twelvedata.com/quote?symbol=${symbol}&apikey=${apiKey}`);
-              const quote = await quoteRes.json();
+              const tsRes = await fetch(
+                `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=1day&outputsize=200&apikey=${apiKey}`
+              );
+              const tsData = await tsRes.json();
 
-              if (quote.code || !quote.close) {
-                console.warn(`[Ampel] Kein Kurs für ${entry.ticker} (${symbol}):`, quote.message || quote.code);
+              if (tsData.code || tsData.status === 'error' || !tsData.values?.length) {
+                const msg = tsData.message || tsData.code || 'Keine Daten';
+                console.warn(`[Ampel] Kein Kurs für ${entry.ticker} (${symbol}): ${msg}`);
                 await updateTrafficLightData(entry.id, ctx.user.id, {
                   signal: 'GELB',
                   signalDetail: `Ticker "${symbol}" nicht bei Twelve Data gefunden`,
                 });
+                errors.push(entry.name || entry.ticker);
                 updated++;
                 continue;
               }
 
-              const sma50Res = await fetch(`https://api.twelvedata.com/sma?symbol=${symbol}&interval=1day&time_period=50&apikey=${apiKey}`);
-              const sma200Res = await fetch(`https://api.twelvedata.com/sma?symbol=${symbol}&interval=1day&time_period=200&apikey=${apiKey}`);
-
-              const sma50Data = await sma50Res.json();
-              const sma200Data = await sma200Res.json();
-
-              const currentPrice = parseFloat(quote.close);
-              const sma50 = sma50Data.values?.[0]?.sma ? parseFloat(sma50Data.values[0].sma) : null;
-              const sma200 = sma200Data.values?.[0]?.sma ? parseFloat(sma200Data.values[0].sma) : null;
+              const closes = tsData.values.map((v: any) => parseFloat(v.close));
+              const currentPrice = closes[0];
+              const sma50 = closes.length >= 50
+                ? closes.slice(0, 50).reduce((a: number, b: number) => a + b, 0) / 50
+                : null;
+              const sma200 = closes.length >= 200
+                ? closes.slice(0, 200).reduce((a: number, b: number) => a + b, 0) / 200
+                : null;
 
               let signal: 'GRUEN' | 'GELB' | 'ROT' = 'GELB';
               let signalDetail = '';
@@ -1025,6 +1030,8 @@ export const appRouter = router({
                   signal = 'GELB';
                   signalDetail = aboveSma200 ? 'Über SMA 200, unter SMA 50 (Korrektur)' : 'Über SMA 50, unter SMA 200 (Erholung)';
                 }
+              } else if (sma50) {
+                signalDetail = `Nicht genug Daten für SMA 200 (nur ${closes.length} Tage)`;
               } else {
                 signalDetail = 'Nicht genug Daten für SMA-Berechnung';
               }
@@ -1039,13 +1046,15 @@ export const appRouter = router({
               updated++;
             } catch (err) {
               console.error(`[Ampel] Fehler bei ${entry.ticker}:`, err);
+              errors.push(entry.name || entry.ticker);
             }
           }
         }
 
+        const errMsg = errors.length > 0 ? ` (${errors.join(', ')} nicht gefunden)` : '';
         return {
           success: true,
-          message: `${updated} von ${entries.length} Ampeln aktualisiert.`,
+          message: `${updated} von ${entries.length} Ampeln aktualisiert.${errMsg}`,
         };
       }),
   }),
