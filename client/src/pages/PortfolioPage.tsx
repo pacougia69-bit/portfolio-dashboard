@@ -133,12 +133,13 @@ export default function PortfolioPage() {
   };
 
   const getAmpelQuestions = (entry: any) => {
-    const kurs = entry.currentPrice ? `${Number(entry.currentPrice).toFixed(2)}€` : 'nicht verfügbar';
-    const sma50 = entry.sma50 ? `${Number(entry.sma50).toFixed(2)}€` : 'nicht verfügbar';
-    const sma200 = entry.sma200 ? `${Number(entry.sma200).toFixed(2)}€` : 'nicht verfügbar';
-    const signal = entry.signalDetail || 'nicht aktualisiert';
     const wknText = entry.wkn ? `, WKN: ${entry.wkn}` : '';
-    const header = `${entry.name} (Ticker: ${entry.ticker}${wknText}), aktueller Kurs: ${kurs}, SMA 50: ${sma50}, SMA 200: ${sma200}, Ampel-Signal: ${signal}.`;
+    const parts = [`${entry.name} (Ticker: ${entry.ticker}${wknText})`];
+    if (entry.currentPrice) parts.push(`aktueller Kurs: ${Number(entry.currentPrice).toFixed(2)}€`);
+    if (entry.sma50) parts.push(`SMA 50: ${Number(entry.sma50).toFixed(2)}€`);
+    if (entry.sma200) parts.push(`SMA 200: ${Number(entry.sma200).toFixed(2)}€`);
+    if (entry.signalDetail && entry.signal) parts.push(`Ampel-Signal: ${entry.signalDetail}`);
+    const header = parts.join(', ') + '.';
 
     return [
       {
@@ -1029,10 +1030,11 @@ export default function PortfolioPage() {
                   </thead>
                   <tbody>
                     {ampelEntries.map((entry: any) => {
-                      const isOpen = ampelFragenOpen === entry.id;
+                      const entryId = Number(entry.id);
+                      const isOpen = ampelFragenOpen === entryId;
                       const questions = isOpen ? getAmpelQuestions(entry) : [];
                       return (
-                        <React.Fragment key={entry.id}>
+                        <React.Fragment key={entryId}>
                           <tr className="border-b border-border/20 hover:bg-muted/20">
                             <td className="p-2">
                               <div className="font-medium">{entry.name.substring(0, 25)}</div>
@@ -1059,7 +1061,7 @@ export default function PortfolioPage() {
                                   variant="ghost"
                                   size="icon"
                                   className={`h-6 w-6 ${isOpen ? 'text-cyan-400' : 'text-muted-foreground hover:text-cyan-400'}`}
-                                  onClick={() => setAmpelFragenOpen(isOpen ? null : entry.id)}
+                                  onClick={() => setAmpelFragenOpen(isOpen ? null : entryId)}
                                   title="KI-Fragen"
                                 >
                                   <MessageSquare className="w-3 h-3" />
@@ -1082,21 +1084,29 @@ export default function PortfolioPage() {
                                   <div className="flex items-center gap-2 mb-2">
                                     <MessageSquare className="w-4 h-4 text-cyan-400" />
                                     <span className="text-sm font-medium">KI-Fragen für {entry.name}</span>
-                                    <span className="text-xs text-muted-foreground ml-auto">Frage kopieren → in Gemini / ChatGPT einfügen</span>
+                                    <span className="text-xs text-muted-foreground ml-auto hidden sm:inline">Frage kopieren → in Gemini / ChatGPT einfügen</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5 text-muted-foreground hover:text-foreground sm:ml-2 ml-auto"
+                                      onClick={() => setAmpelFragenOpen(null)}
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </Button>
                                   </div>
                                   <div className="space-y-1.5">
                                     {questions.map((q) => (
                                       <button
                                         key={q.id}
-                                        onClick={() => copyToClipboard(q.text, `${entry.id}-${q.id}`)}
+                                        onClick={() => copyToClipboard(q.text, `${entryId}-${q.id}`)}
                                         className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left text-sm hover:bg-cyan-500/10 transition-colors group"
                                       >
-                                        {copiedQuestion === `${entry.id}-${q.id}` ? (
+                                        {copiedQuestion === `${entryId}-${q.id}` ? (
                                           <Check className="w-4 h-4 text-green-400 shrink-0" />
                                         ) : (
                                           <Copy className="w-4 h-4 text-muted-foreground group-hover:text-cyan-400 shrink-0" />
                                         )}
-                                        <span className={copiedQuestion === `${entry.id}-${q.id}` ? 'text-green-400' : ''}>
+                                        <span className={copiedQuestion === `${entryId}-${q.id}` ? 'text-green-400' : ''}>
                                           {q.label}
                                         </span>
                                       </button>
