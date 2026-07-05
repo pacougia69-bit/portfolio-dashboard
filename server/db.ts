@@ -682,25 +682,14 @@ export async function createTransaction(
   if (!db) throw new Error("Database not available");
   
   try {
-    // Check for duplicate by invoiceNumber per user (unique per DKB PDF)
     const orderNumberString = String(data.orderNumber);
-    if (data.invoiceNumber) {
-      const existing = await db.select().from(transactions)
-        .where(and(
-          eq(transactions.userId, userId),
-          eq(transactions.invoiceNumber, data.invoiceNumber)
-        ))
-        .limit(1);
 
-      if (existing.length > 0) {
-        return {
-          duplicate: true,
-          id: existing[0].id,
-          orderNumber: data.orderNumber
-        };
-      }
+    // Delete any existing record with this invoiceNumber (any userId) to allow re-import
+    if (data.invoiceNumber) {
+      await db.delete(transactions)
+        .where(eq(transactions.invoiceNumber, data.invoiceNumber));
     }
-    
+
     // Insert new transaction
     const result = await db.insert(transactions).values({
       userId,
@@ -716,26 +705,14 @@ export async function createTransaction(
       orderNumber: orderNumberString,
       invoiceNumber: data.invoiceNumber,
     });
-    
-    return { 
-      duplicate: false, 
+
+    return {
+      duplicate: false,
       id: Number(result[0].insertId),
       orderNumber: data.orderNumber
     };
   } catch (error) {
-    // Catch any database errors (including unique constraint violations)
     console.error('Database error in createTransaction:', error);
-    
-    // Check if it's a unique constraint violation on invoiceNumber
-    if (error instanceof Error && (error.message.includes('invoiceNumber') || error.message.includes('Duplicate'))) {
-      return {
-        duplicate: true,
-        id: null,
-        orderNumber: data.orderNumber
-      };
-    }
-    
-    // Re-throw other errors
     throw error;
   }
 }

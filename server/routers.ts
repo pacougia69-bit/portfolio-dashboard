@@ -804,9 +804,8 @@ export const appRouter = router({
           const { parseDKBPDF } = await import("./dkb-parser");
           const transactionData = await parseDKBPDF(pdfBuffer, input.fileName);
           
-          // Create transaction record (with duplicate check)
-          // Ensure orderNumber is ALWAYS a string to prevent type coercion issues
-          const result = await createTransaction(ctx.user.id, {
+          // Create transaction (overwrites existing record with same invoiceNumber)
+          await createTransaction(ctx.user.id, {
             date: transactionData.date,
             type: transactionData.type,
             isin: transactionData.isin,
@@ -819,17 +818,8 @@ export const appRouter = router({
             orderNumber: String(transactionData.orderNumber),
             invoiceNumber: transactionData.invoiceNumber,
           });
-          
-          if (result.duplicate) {
-            return {
-              success: false,
-              duplicate: true,
-              message: `Diese DKB-Abrechnung wurde bereits importiert (Rechnungsnummer ${transactionData.invoiceNumber}).\nEs wurden keine neuen Transaktionen hinzugefügt.`,
-            };
-          }
-          
+
           // Update portfolio position (with strategy category from WKN mapping)
-          // Pass totalAmountCurrency so USD amounts get converted to EUR
           await updatePortfolioFromTransaction(
             ctx.user.id,
             transactionData.isin,
@@ -900,7 +890,7 @@ export const appRouter = router({
         const orderNumber = `MANUAL-${Date.now()}`;
         const invoiceNumber = `M-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-        const result = await createTransaction(ctx.user.id, {
+        await createTransaction(ctx.user.id, {
           date: new Date(input.date),
           type: input.type,
           isin: input.ticker,
@@ -914,19 +904,17 @@ export const appRouter = router({
           invoiceNumber,
         });
 
-        if (!result.duplicate) {
-          await updatePortfolioFromTransaction(
-            ctx.user.id,
-            input.ticker,
-            input.wkn,
-            input.name,
-            input.type,
-            input.quantity,
-            input.totalAmount,
-            null,
-            'EUR'
-          );
-        }
+        await updatePortfolioFromTransaction(
+          ctx.user.id,
+          input.ticker,
+          input.wkn,
+          input.name,
+          input.type,
+          input.quantity,
+          input.totalAmount,
+          null,
+          'EUR'
+        );
 
         return {
           success: true,
