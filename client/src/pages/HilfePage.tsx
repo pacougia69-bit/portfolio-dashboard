@@ -99,7 +99,7 @@ const faqData: FAQItem[] = [
   {
     category: "ampel",
     question: "Wie aktualisiere ich die Ampel-Signale?",
-    answer: "Klicken Sie auf den Button 'Ampeln aktualisieren'. Die aktuellen SMA 50/200-Werte werden über Twelve Data abgerufen und die Signale neu berechnet. Beachten Sie: Es gibt ein Limit von 2 Abfragen gleichzeitig mit einer kurzen Wartezeit dazwischen."
+    answer: "Klicken Sie auf den Button 'Ampeln aktualisieren'. Die aktuellen Kursdaten werden über Twelve Data abgerufen und SMA 50/200 automatisch berechnet. Bis zu 8 Aktien werden gleichzeitig verarbeitet — das dauert nur wenige Sekunden."
   },
   {
     category: "ampel",
