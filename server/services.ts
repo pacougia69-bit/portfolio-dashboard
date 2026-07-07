@@ -31,6 +31,20 @@ const TICKER_MAPPINGS: Record<string, string> = {
   // === Sonstige US (Frankfurt .F → US) ===
   'P2S.F': 'PSN',
   'MIG.F': 'MSTR',
+  'V7B.F': 'ASMB',
+
+  // === Berlin .BE → US/HK (Rafaels Bestand laeuft teils ueber Berlin) ===
+  'V7B.BE': 'ASMB',
+  '0OT.BE': 'OCUL',
+  '59P.BE': 'PSN',
+  'IF0.BE': 'IFRX',
+  'O8V.BE': 'OVID',
+  'BY6.BE': '1211:HKEX',
+
+  // === US-Aktien (Xetra .DE → US, direkter als XETR-Umweg) ===
+  'AMZ.DE': 'AMZN',
+  'ABEA.DE': 'GOOGL',
+  'AMD.DE': 'AMD',
 
   // === US-Aktien (bereits US-Ticker) ===
   'ASMB': 'ASMB',
