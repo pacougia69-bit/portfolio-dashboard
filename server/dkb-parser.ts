@@ -16,22 +16,25 @@ export interface DKBTransaction {
 }
 
 /**
- * WKN → Strategy category mapping (50/15/10/10/10/5 strategy)
+ * WKN → Strategy category mapping (Depot-Struktur 2026: 39/17/11/11/11/11)
  */
 const WKN_STRATEGY_MAP: Record<string, string> = {
-  // Aktive Kernpositionen
-  'A0RPWH': 'Basis 50%',
-  'A111X9': 'EM 15%',
-  'A40L9T': 'Thema AI 10%',
-  'A3D6N1': 'Infra 10%',
-  'A113FD': 'Healthcare 10%',
-  'A40KHS': 'Anleihen 5%',
+  // Depot-Struktur 2026
+  'A3D7QX': 'Kern 39%',
+  'A2H6ZT': 'Anleihen 17%',
+  'A2DWBY': 'Small Caps 11%',
+  'A40KHS': 'iBonds 11%',
   // Eingefroren (Halten, kein aktiver Kauf)
   'A2N6LC': 'Eingefroren',
   'A3EB9T': 'Eingefroren',
+  // Verkauft Juli 2026 (Mapping bleibt für alte Abrechnungen)
+  'A0RPWH': 'Verkauft 2026',
+  'A111X9': 'Verkauft 2026',
+  'A40L9T': 'Verkauft 2026',
+  'A3D6N1': 'Verkauft 2026',
+  'A113FD': 'Verkauft 2026',
   // Sonstige Positionen
   'A0LGP4': 'Rest/Einzel',
-  'A2DWBY': 'Rest/Einzel',
 };
 
 function getStrategyCategory(wkn: string): string | null {

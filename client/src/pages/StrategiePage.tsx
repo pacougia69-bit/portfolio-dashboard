@@ -52,14 +52,14 @@ const formatPercent = (value: number) => {
   return `${value.toFixed(1)}%`;
 };
 
-// 5+1 Wellen-Strategie: Ziel-Allokationen
+// Depot-Struktur 2026: Ziel-Allokationen (Finalplan 06.07.2026)
 const DEFAULT_ALLOCATIONS = [
-  { category: 'Kern (MSCI World)', targetPercent: 50, description: 'Breite Diversifikation (MSCI World, WKN: A0RPWH)' },
-  { category: 'EM', targetPercent: 15, description: 'Emerging Markets (WKN: A111X9)' },
-  { category: 'KI-Infrastruktur', targetPercent: 10, description: 'AI & Daten-Infrastruktur (WKN: A40L9T)' },
-  { category: 'Infrastruktur', targetPercent: 10, description: 'Globale Infrastruktur (WKN: A3D6N1)' },
-  { category: 'Healthcare', targetPercent: 10, description: 'Gesundheitswesen (WKN: A113FD)' },
-  { category: 'Puffer (iBonds)', targetPercent: 5, description: 'Anleihen-Puffer (WKN: A40KHS)' },
+  { category: 'Kern (All-World)', targetPercent: 39, description: 'Invesco FTSE All-World — ganze Welt inkl. EM, Sparplan (WKN: A3D7QX)' },
+  { category: 'Anleihen (Global Aggregate)', targetPercent: 17, description: 'Weltweite Anleihen EUR-hedged — Krisenpuffer, Sparplan (WKN: A2H6ZT)' },
+  { category: 'Small Caps', targetPercent: 11, description: 'MSCI World Small Cap — echte Ergänzung, halten (WKN: A2DWBY)' },
+  { category: 'KI-Wette (eingefroren)', targetPercent: 11, description: 'Xtrackers AI & Big Data — kein neues Geld, Ampel-Backstop (WKN: A2N6LC)' },
+  { category: 'Defence-Wette (eingefroren)', targetPercent: 11, description: 'Future of Defence — kein neues Geld, Ampel-Backstop (WKN: A3EB9T)' },
+  { category: 'iBonds 2030', targetPercent: 11, description: 'Läuft Ende 2030 aus — Startkapital der Entnahmephase (WKN: A40KHS)' },
 ];
 
 export default function StrategiePage() {

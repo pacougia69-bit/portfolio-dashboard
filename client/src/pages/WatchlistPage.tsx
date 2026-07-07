@@ -94,7 +94,7 @@ function WatchlistForm({
           <Input
             value={formData.wkn}
             onChange={(e) => setFormData({ ...formData, wkn: e.target.value.toUpperCase() })}
-            placeholder="z.B. 865985 oder A0RPWH"
+            placeholder="z.B. 865985 oder A3D7QX"
             className="flex-1"
           />
           <Button

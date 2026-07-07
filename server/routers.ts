@@ -1199,14 +1199,14 @@ export const appRouter = router({
           return sum + (pos.amount * price);
         }, 0);
 
-        // 3. Define individual ETF targets (50/15/10/10/10/5 strategy)
+        // 3. Define individual ETF targets (Depot-Struktur 2026: 39/17/11/11/11/11)
         const individualETFTargets = [
-          { wkn: 'A0RPWH', name: 'MSCI World',           targetPercent: 50 },
-          { wkn: 'A111X9', name: 'Emerging Markets',      targetPercent: 15 },
-          { wkn: 'A40L9T', name: 'AI Infrastructure',     targetPercent: 10 },
-          { wkn: 'A3D6N1', name: 'Global Infrastructure', targetPercent: 10 },
-          { wkn: 'A113FD', name: 'Healthcare',            targetPercent: 10 },
-          { wkn: 'A40KHS', name: 'iBonds 2030',           targetPercent:  5 },
+          { wkn: 'A3D7QX', name: 'FTSE All-World',            targetPercent: 39 },
+          { wkn: 'A2H6ZT', name: 'Global Aggregate Bond',     targetPercent: 17 },
+          { wkn: 'A2DWBY', name: 'World Small Cap',           targetPercent: 11 },
+          { wkn: 'A2N6LC', name: 'KI-Wette (eingefroren)',    targetPercent: 11 },
+          { wkn: 'A3EB9T', name: 'Defence-Wette (eingefroren)', targetPercent: 11 },
+          { wkn: 'A40KHS', name: 'iBonds 2030',               targetPercent: 11 },
         ];
 
         // 4. Find matching positions by WKN and calculate deficits

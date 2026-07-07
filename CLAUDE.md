@@ -8,34 +8,38 @@
 - **Build:** Vite (Client) + esbuild (Server) → `dist/`
 - **Deployment:** Railway (Nixpacks), Config in `railway.json`
 
-## Aktuelle Strategie: 5+1 Wellen-Strategie (seit Mai 2026)
+## Aktuelle Strategie: Depot-Struktur 2026 (Finalplan 06.07.2026, löst 5+1 Wellen ab)
 
-| Welle | Kategorie | Ziel-% | WKN |
-|-------|-----------|--------|-----|
-| 1 | Kern (MSCI World) | 50% | A0RPWH |
-| 2 | EM (Emerging Markets) | 15% | A111X9 |
-| 3 | KI-Infrastruktur | 10% | A40L9T |
-| 4 | Infrastruktur | 10% | A3D6N1 |
-| 5 | Healthcare | 10% | A113FD |
-| +1 | Puffer (iBonds 2030) | 5% | A40KHS |
+| Baustein | Kategorie | Ziel-% | WKN | Status |
+|----------|-----------|--------|-----|--------|
+| 1 | Kern (All-World) | 39% | A3D7QX | Sparplan 850 €/Monat |
+| 2 | Anleihen (Global Aggregate) | 17% | A2H6ZT | Sparplan 550 €/Monat |
+| 3 | Small Caps | 11% | A2DWBY | Halten |
+| 4 | KI-Wette | 11% | A2N6LC | EINGEFROREN — kein neues Geld, nie Kaufempfehlung |
+| 5 | Defence-Wette | 11% | A3EB9T | EINGEFROREN — kein neues Geld, nie Kaufempfehlung |
+| 6 | iBonds 2030 | 11% | A40KHS | Hält bis Auslauf Ende 2030 |
 
-**Summe: 100%**
+**Summe: 100%** · Verkauft Juli 2026 (Doppelungen): A0RPWH, A111X9, A40L9T, A3D6N1, A113FD
+Hintergrund: `C:\Users\rafae\Claude.Dateien\PROJEKTE\Portfolio-Dashboard\ETF-STRATEGIE.md`
 
 ## Wo sind die Zielwerte definiert?
 
-Die Strategie-Prozente müssen an 3 Stellen konsistent sein:
+Die Strategie-Prozente müssen an 4 Stellen konsistent sein:
 
 1. **`client/src/pages/StrategiePage.tsx`** — `DEFAULT_ALLOCATIONS` (Zeile ~56)
    - Wird als Fallback verwendet, wenn der User noch keine eigenen Settings gespeichert hat
-   - Kategorienamen: "Kern (MSCI World)", "EM", "KI-Infrastruktur", "Infrastruktur", "Healthcare", "Puffer (iBonds)"
+   - Kategorienamen: "Kern (All-World)", "Anleihen (Global Aggregate)", "Small Caps", "KI-Wette (eingefroren)", "Defence-Wette (eingefroren)", "iBonds 2030"
 
-2. **`client/src/pages/DashboardPage.tsx`** — `STRATEGY_TARGETS` (Zeile ~162)
+2. **`client/src/pages/DashboardPage.tsx`** — `STRATEGY_TARGETS` (Zeile ~160)
    - Steuert die Rebalancing-Anzeige und Investment-Vorschläge im Dashboard
-   - Nutzt WKN-basierte Zuordnung zu Portfolio-Positionen
+   - Nutzt WKN-basierte Zuordnung; `frozen: true` schließt eine Position von allen Kaufempfehlungen aus
 
-3. **`server/routers.ts`** — `individualETFTargets` (im `rebalancing.analyze` Endpoint, Zeile ~1017)
+3. **`server/routers.ts`** — `individualETFTargets` (im Sparplan-/Rebalancing-Endpoint, Zeile ~1203)
    - Server-seitige Rebalancing-Berechnung für die RebalancingPage
    - Nutzt ebenfalls WKN-basierte Zuordnung
+
+4. **`server/dkb-parser.ts`** — `WKN_STRATEGY_MAP` (Zeile ~21)
+   - Kategorisiert importierte DKB-Abrechnungen; verkaufte WKNs bleiben als "Verkauft 2026" gemappt
 
 ## Deployment (Railway)
 

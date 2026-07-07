@@ -943,7 +943,7 @@ export default function EinstellungenPage() {
               <div className="space-y-1">
                 <Label className="text-xs">WKN</Label>
                 <Input
-                  placeholder="z.B. A0RPWH"
+                  placeholder="z.B. A3D7QX"
                   value={manualTx.wkn}
                   onChange={(e) => setManualTx({ ...manualTx, wkn: e.target.value.toUpperCase() })}
                 />

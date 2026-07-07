@@ -486,6 +486,7 @@ const WKN_DATABASE: Record<string, { ticker: string; name: string; type: string 
   'A2N4PB': { ticker: 'NFLX', name: 'Netflix Inc.', type: 'Aktie' },
   
   // ETFs - World
+  'A3D7QX': { ticker: 'FWRG.DE', name: 'Invesco FTSE All-World UCITS ETF', type: 'ETF' },
   'A0RPWH': { ticker: 'EUNL.DE', name: 'iShares Core MSCI World UCITS ETF', type: 'ETF' },
   'A2PKXG': { ticker: 'VWCE.DE', name: 'Vanguard FTSE All-World UCITS ETF', type: 'ETF' },
   'A1JMDF': { ticker: 'IWDA.AS', name: 'iShares Core MSCI World UCITS ETF', type: 'ETF' },
@@ -509,7 +510,8 @@ const WKN_DATABASE: Record<string, { ticker: string; name: string; type: string 
   'A3D47K': { ticker: 'NUCL.DE', name: 'VanEck Uranium and Nuclear Technologies UCITS ETF', type: 'ETF' },
   'A3EB9T': { ticker: 'NATO.DE', name: 'HANetf Future of Defence UCITS ETF', type: 'ETF' },
 
-  // Anleihen-ETF (iBonds)
+  // Anleihen-ETFs
+  'A2H6ZT': { ticker: 'AGGH.DE', name: 'iShares Core Global Aggregate Bond UCITS ETF EUR Hedged', type: 'ETF' },
   'A40KHS': { ticker: '30IA.DE', name: 'iShares iBonds Dec 2030 Term EUR Corp UCITS ETF', type: 'ETF' },
   
   // Gold/Commodities

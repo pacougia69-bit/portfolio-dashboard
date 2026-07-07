@@ -155,17 +155,18 @@ export default function DashboardPage() {
     },
   });
   
-  // 5+1 Wellen-Strategie: Zielwerte pro Welle
+  // Depot-Struktur 2026: Zielwerte pro Baustein (Finalplan 06.07.2026)
+  // frozen = bewusste Wette, kein neues Geld — nie in Kaufempfehlungen aufnehmen
   const STRATEGY_TARGETS = [
-    { name: 'Kern (MSCI World)', wkn: 'A0RPWH', targetPercent: 50 },
-    { name: 'EM', wkn: 'A111X9', targetPercent: 15 },
-    { name: 'KI-Infrastruktur', wkn: 'A40L9T', targetPercent: 10 },
-    { name: 'Infrastruktur', wkn: 'A3D6N1', targetPercent: 10 },
-    { name: 'Healthcare', wkn: 'A113FD', targetPercent: 10 },
-    { name: 'Puffer (iBonds)', wkn: 'A40KHS', targetPercent: 5 },
+    { name: 'Kern (All-World)', wkn: 'A3D7QX', targetPercent: 39, frozen: false },
+    { name: 'Anleihen (Global Agg.)', wkn: 'A2H6ZT', targetPercent: 17, frozen: false },
+    { name: 'Small Caps', wkn: 'A2DWBY', targetPercent: 11, frozen: false },
+    { name: 'KI-Wette (eingefroren)', wkn: 'A2N6LC', targetPercent: 11, frozen: true },
+    { name: 'Defence-Wette (eingefroren)', wkn: 'A3EB9T', targetPercent: 11, frozen: true },
+    { name: 'iBonds 2030', wkn: 'A40KHS', targetPercent: 11, frozen: false },
   ];
 
-  // Calculate stats with 5+1 Wellen-Strategie
+  // Calculate stats with Depot-Struktur 2026
   const stats = useMemo(() => {
     const totalValue = portfolio.reduce((sum, p) => {
       const value = p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice;
@@ -204,7 +205,7 @@ export default function DashboardPage() {
       assetsByCategory[category] = (assetsByCategory[category] || 0) + value;
     });
 
-    // 5+1 Wellen-Strategie Rebalancing
+    // Depot-Struktur 2026 Rebalancing
     const waveValues = STRATEGY_TARGETS.map(target => {
       const position = portfolio.find(p => p.wkn === target.wkn);
       const currentValue = position
@@ -216,6 +217,7 @@ export default function DashboardPage() {
       return {
         name: target.name,
         wkn: target.wkn,
+        frozen: target.frozen,
         current: currentValue,
         target: targetValue,
         diff: currentValue - targetValue,
@@ -245,15 +247,16 @@ export default function DashboardPage() {
     };
   }, [portfolio, taxSettings, totalExemptionOrder]);
 
-  // Investment suggestions based on 5+1 Wellen-Strategie
+  // Investment suggestions based on Depot-Struktur 2026
   const investmentSuggestions = useMemo(() => {
     if (availableCapital <= 0 || stats.totalValue === 0) {
       return [];
     }
 
     // Find underweight waves and distribute capital proportionally
+    // (frozen = eingefrorene Wetten bekommen nie Kaufempfehlungen)
     const underweightWaves = stats.waveValues
-      .filter(w => w.diff < 0)
+      .filter(w => w.diff < 0 && !w.frozen)
       .sort((a, b) => a.diff - b.diff);
 
     if (underweightWaves.length === 0) {
@@ -545,7 +548,7 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
-        {/* Rebalancing-Empfehlung - 5+1 Wellen-Strategie */}
+        {/* Rebalancing-Empfehlung - Depot-Struktur 2026 */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -559,13 +562,14 @@ export default function DashboardPage() {
                     <BarChart3 className="w-5 h-5 text-cyan-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-base sm:text-lg text-cyan-400">Rebalancing - 5+1 Wellen-Strategie</h3>
-                    <p className="text-xs text-muted-foreground">Kern 50% | EM 15% | KI-Infra 10% | Infra 10% | Health 10% | Puffer 5%</p>
+                    <h3 className="font-semibold text-base sm:text-lg text-cyan-400">Rebalancing - Depot-Struktur 2026</h3>
+                    <p className="text-xs text-muted-foreground">All-World 39% | Anleihen 17% | Small Caps 11% | KI 11% | Defence 11% | iBonds 11%</p>
                   </div>
                 </div>
 
                 {(() => {
-                  const underrepresented = stats.waveValues.filter(w => w.diff < 0);
+                  // Eingefrorene Wetten nie zum Nachkauf empfehlen
+                  const underrepresented = stats.waveValues.filter(w => w.diff < 0 && !w.frozen);
 
                   if (underrepresented.length === 0) {
                     return (
@@ -638,7 +642,7 @@ export default function DashboardPage() {
                     step="100"
                     value={availableCapital || ''}
                     onChange={(e) => setAvailableCapital(Number(e.target.value) || 0)}
-                    placeholder="1350"
+                    placeholder="1400"
                     className="text-lg font-mono"
                   />
                   <p className="text-xs text-muted-foreground">
@@ -710,7 +714,7 @@ export default function DashboardPage() {
                       Geben Sie Ihr verfügbares Kapital ein, um konkrete Kaufempfehlungen zu erhalten
                     </p>
                     <p className="text-xs text-muted-foreground text-center mt-1">
-                      Empfehlung: {formatCurrency(1350)} (monatliche Sparrate)
+                      Empfehlung: {formatCurrency(1400)} (monatliche Sparrate)
                     </p>
                   </div>
                 )}
@@ -719,7 +723,7 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
-        {/* 5+1 Wellen-Übersicht */}
+        {/* Depot-Struktur Übersicht (6 Bausteine) */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
           {stats.waveValues.map((wave, index) => {
             const colors = [
