@@ -107,10 +107,13 @@ const TICKER_MAPPINGS: Record<string, string> = {
   'IS3N.DE': 'EEM',
   'VFEM.DE': 'VWO',
   'EXXT.DE': 'QQQ',
-  'XAIX.DE': 'BOTZ',
+  // XAIX = AI & Big Data Mega-Caps (Nvidia/Meta/Alphabet) → AIQ ist der passende Zwilling.
+  // BOTZ (Robotik) war ein schlechter Proxy und hat am 08.07.2026 ein falsches ROT ausgeloest.
+  'XAIX.DE': 'AIQ',
   'XDWH.DE': 'IXJ',
   'CBUX.DE': 'IGF',
-  'AIFS.DE': 'BOTZ',
+  // AIFS = AI Infrastructure, Semi-lastig (AMD/TSMC/KLA/Micron/ASML) → SMH statt BOTZ
+  'AIFS.DE': 'SMH',
   'IQQH.DE': 'ICLN',
   'NUCL.DE': 'URA',
   'NATO.DE': 'ITA',
