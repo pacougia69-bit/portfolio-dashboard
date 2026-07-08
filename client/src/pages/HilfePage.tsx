@@ -225,6 +225,11 @@ const faqData: FAQItem[] = [
   },
   {
     category: "einstellungen",
+    question: "Was macht die PIN-Sperre und wie sicher ist sie?",
+    answer: "Unter 'Einstellungen' können Sie eine 4-6-stellige PIN festlegen. Seit dem 08.07.2026 ist das ein echter Zugangsschutz: Ohne korrekte PIN gibt der Server keinerlei Depotdaten mehr heraus — vorher war die PIN-Abfrage nur eine Oberfläche ohne echte Absicherung im Hintergrund. Nach 5 Minuten Inaktivität (einstellbar) sperrt sich die App automatisch wieder. Nach zu vielen falschen PIN-Versuchen hintereinander sperrt der Server für einige Minuten, um automatisiertes Durchprobieren zu verhindern."
+  },
+  {
+    category: "einstellungen",
     question: "Was ist die Transaktionshistorie?",
     answer: "Unter 'Einstellungen' sehen Sie alle importierten Käufe und Verkäufe. Jede Transaktion zeigt Datum, Typ (Kauf/Sparplan/Verkauf), Name, Stückzahl und Gesamtbetrag. Die Historie dient als Nachweis und Übersicht."
   },

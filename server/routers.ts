@@ -1140,32 +1140,42 @@ export const appRouter = router({
         return { success: true };
       }),
     
-    verifyPin: protectedProcedure
+    // publicProcedure: Vor dem Einloggen gibt es noch keinen Session-Cookie,
+    // also auch kein ctx.user - diese Pruefung muss deshalb ohne Login laufen.
+    // Die eigentliche Sicherheit kommt vom PIN-Abgleich + Cookie, nicht von protectedProcedure.
+    verifyPin: publicProcedure
       .input(z.object({
         pin: z.string()
           .min(1, { message: "Bitte PIN eingeben" }),
       }))
       .mutation(async ({ ctx, input }) => {
         const { verifyUserPin } = await import('./db');
-        const result = await verifyUserPin(ctx.user.id, input.pin);
+        const { DEMO_USER_ID, setSessionCookie, checkPinRateLimit, recordFailedPinAttempt, resetPinRateLimit } = await import('./_core/session');
+
+        checkPinRateLimit();
+        const result = await verifyUserPin(DEMO_USER_ID, input.pin);
 
         if (!result.valid) {
+          recordFailedPinAttempt();
           throw new Error("Der PIN ist falsch");
         }
 
+        resetPinRateLimit();
+        setSessionCookie(ctx.res, DEMO_USER_ID);
         return result;
       }),
-    
+
     removePin: protectedProcedure
       .mutation(async ({ ctx }) => {
         const { removeUserPin } = await import('./db');
         return removeUserPin(ctx.user.id);
       }),
-    
-    getPinStatus: protectedProcedure
-      .query(async ({ ctx }) => {
+
+    getPinStatus: publicProcedure
+      .query(async () => {
         const { getUserPinStatus } = await import('./db');
-        return getUserPinStatus(ctx.user.id);
+        const { DEMO_USER_ID } = await import('./_core/session');
+        return getUserPinStatus(DEMO_USER_ID);
       }),
   }),
 

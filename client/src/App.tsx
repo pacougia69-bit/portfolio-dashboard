@@ -44,8 +44,10 @@ function Router() {
   );
 }
 
-const UNLOCK_SESSION_KEY = 'portfolio_unlocked_session';
-const LAST_ACTIVITY_KEY = 'portfolio_last_activity';
+// v2: Name bewusst geaendert, damit ein alter (falscher) "entsperrt"-Zustand
+// aus Browsern von vor der echten Server-Session automatisch verfaellt.
+export const UNLOCK_SESSION_KEY = 'portfolio_unlocked_session_v2';
+export const LAST_ACTIVITY_KEY = 'portfolio_last_activity';
 
 function AppWithPinLock() {
   const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
