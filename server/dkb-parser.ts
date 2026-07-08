@@ -16,21 +16,21 @@ export interface DKBTransaction {
 }
 
 /**
- * WKN → Strategy category mapping (Depot-Struktur 2026: 39/17/11/11/11/11)
+ * WKN → Strategy category mapping (Depot-Struktur final 08.07.2026: 34/22/13/17/9/5)
  */
 const WKN_STRATEGY_MAP: Record<string, string> = {
   // Depot-Struktur 2026
-  'A3D7QX': 'Kern 39%',
-  'A2H6ZT': 'Anleihen 17%',
-  'A2DWBY': 'Small Caps 11%',
-  'A40KHS': 'iBonds 11%',
+  'A3D7QX': 'Kern 34%',
+  'A2H6ZT': 'Anleihen 22%',
+  'A2DWBY': 'Small Caps 13%',
   // Eingefroren (Halten, kein aktiver Kauf)
   'A2N6LC': 'Eingefroren',
   'A3EB9T': 'Eingefroren',
+  'A40L9T': 'Eingefroren',
   // Verkauft Juli 2026 (Mapping bleibt für alte Abrechnungen)
   'A0RPWH': 'Verkauft 2026',
   'A111X9': 'Verkauft 2026',
-  'A40L9T': 'Verkauft 2026',
+  'A40KHS': 'Verkauft 2026',
   'A3D6N1': 'Verkauft 2026',
   'A113FD': 'Verkauft 2026',
   // Sonstige Positionen

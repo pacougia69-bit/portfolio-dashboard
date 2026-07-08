@@ -52,14 +52,14 @@ const formatPercent = (value: number) => {
   return `${value.toFixed(1)}%`;
 };
 
-// Depot-Struktur 2026: Ziel-Allokationen (Finalplan 06.07.2026)
+// Depot-Struktur 2026: Ziel-Allokationen (Finalplan 08.07.2026, Ist nach Umbau)
 const DEFAULT_ALLOCATIONS = [
-  { category: 'Kern (All-World)', targetPercent: 39, description: 'Invesco FTSE All-World — ganze Welt inkl. EM, Sparplan (WKN: A3D7QX)' },
-  { category: 'Anleihen (Global Aggregate)', targetPercent: 17, description: 'Weltweite Anleihen EUR-hedged — Krisenpuffer, Sparplan (WKN: A2H6ZT)' },
-  { category: 'Small Caps', targetPercent: 11, description: 'MSCI World Small Cap — echte Ergänzung, halten (WKN: A2DWBY)' },
-  { category: 'KI-Wette (eingefroren)', targetPercent: 11, description: 'Xtrackers AI & Big Data — kein neues Geld, Ampel-Backstop (WKN: A2N6LC)' },
-  { category: 'Defence-Wette (eingefroren)', targetPercent: 11, description: 'Future of Defence — kein neues Geld, Ampel-Backstop (WKN: A3EB9T)' },
-  { category: 'iBonds 2030', targetPercent: 11, description: 'Läuft Ende 2030 aus — Startkapital der Entnahmephase (WKN: A40KHS)' },
+  { category: 'Kern (All-World)', targetPercent: 34, description: 'Invesco FTSE All-World — ganze Welt inkl. EM, Sparplan 750 € (WKN: A3D7QX)' },
+  { category: 'Anleihen (Global Aggregate)', targetPercent: 22, description: 'Weltweite Anleihen EUR-hedged — Krisenpuffer, Sparplan 550 € (WKN: A2H6ZT)' },
+  { category: 'Small Caps', targetPercent: 13, description: 'MSCI World Small Cap — echte Ergänzung, Sparplan 100 € (WKN: A2DWBY)' },
+  { category: 'KI-Wette (eingefroren)', targetPercent: 17, description: 'Xtrackers AI & Big Data — kein neues Geld, Ampel-Backstop + Kill-Kriterien (WKN: A2N6LC)' },
+  { category: 'Defence-Wette (eingefroren)', targetPercent: 9, description: 'Future of Defence — kein neues Geld, Ampel-Backstop (WKN: A3EB9T)' },
+  { category: 'KI-Infra-Wette (eingefroren)', targetPercent: 5, description: 'iShares AI Infrastructure — kein neues Geld, Ampel-Backstop, Wiedervorlage Jan 2027 (WKN: A40L9T)' },
 ];
 
 export default function StrategiePage() {

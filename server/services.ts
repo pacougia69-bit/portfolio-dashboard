@@ -33,13 +33,21 @@ const TICKER_MAPPINGS: Record<string, string> = {
   'MIG.F': 'MSTR',
   'V7B.F': 'ASMB',
 
-  // === Berlin .BE → US/HK (Rafaels Bestand laeuft teils ueber Berlin) ===
+  // === Berlin .BE → US (Rafaels Bestand laeuft teils ueber Berlin) ===
   'V7B.BE': 'ASMB',
   '0OT.BE': 'OCUL',
   '59P.BE': 'PSN',
   'IF0.BE': 'IFRX',
   'O8V.BE': 'OVID',
-  'BY6.BE': '1211:HKEX',
+  'BY6.BE': 'BYDDY',
+
+  // === Ampel-Eintraege 08.07.2026 (Xetra-Schreibweisen → US-Zwilling, Free-Plan kann nur US-Boersen) ===
+  'GBF:XETR': 'BFLBY',
+  'GBF.DE': 'BFLBY',
+  '59P:XETR': 'PSN',
+  '59P.DE': 'PSN',
+  'BY6:DE': 'BYDDY',
+  'BY6.DE': 'BYDDY',
 
   // === US-Aktien (Xetra .DE → US, direkter als XETR-Umweg) ===
   'AMZ.DE': 'AMZN',
@@ -66,7 +74,6 @@ const TICKER_MAPPINGS: Record<string, string> = {
   'NFLX': 'NFLX',
 
   // === Deutsche Aktien (Xetra → XETR oder US-ADR) ===
-  'GBF.DE': 'GBF:XETR',
   'SAP.DE': 'SAP',
   'DTE.DE': 'DTE:XETR',
   'DPW.DE': 'DPW:XETR',
@@ -76,8 +83,8 @@ const TICKER_MAPPINGS: Record<string, string> = {
   'DAI.DE': 'MBG:XETR',
   'VOW3.DE': 'VOW3:XETR',
 
-  // === Hongkong ===
-  '1211.HK': '1211:HKEX',
+  // === Hongkong (Free-Plan hat kein HKEX → US-ADR) ===
+  '1211.HK': 'BYDDY',
 
   // === Kanada ===
   'TAU.V': 'TAU:TSXV',

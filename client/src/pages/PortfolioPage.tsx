@@ -389,6 +389,15 @@ export default function PortfolioPage() {
     }
   };
   
+  // Versteht deutsches ("1.265,2632") und englisches ("1265.2632") Zahlenformat
+  const parseGermanNumber = (value: string): number => {
+    const v = String(value).trim();
+    if (v.includes(',')) {
+      return parseFloat(v.replace(/\./g, '').replace(',', '.'));
+    }
+    return parseFloat(v);
+  };
+
   const handleSubmit = () => {
     const data = {
       wkn: formData.wkn || undefined,
@@ -396,9 +405,9 @@ export default function PortfolioPage() {
       name: formData.name,
       type: formData.type,
       category: formData.category || undefined,
-      amount: parseFloat(formData.amount),
-      buyPrice: parseFloat(formData.buyPrice),
-      currentPrice: formData.currentPrice ? parseFloat(formData.currentPrice) : undefined,
+      amount: parseGermanNumber(formData.amount),
+      buyPrice: parseGermanNumber(formData.buyPrice),
+      currentPrice: formData.currentPrice ? parseGermanNumber(formData.currentPrice) : undefined,
       status: formData.status,
       notes: formData.notes || undefined,
       autoUpdate: formData.autoUpdate,
@@ -671,21 +680,21 @@ export default function PortfolioPage() {
                     <div>
                       <Label>Anzahl *</Label>
                       <Input
-                        type="number"
-                        step="0.0001"
+                        type="text"
+                        inputMode="decimal"
                         value={formData.amount}
                         onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                        placeholder="10"
+                        placeholder="z.B. 1265,2632"
                       />
                     </div>
                     <div>
                       <Label>Kaufpreis (€) *</Label>
                       <Input
-                        type="number"
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
                         value={formData.buyPrice}
                         onChange={(e) => setFormData({ ...formData, buyPrice: e.target.value })}
-                        placeholder="150.00"
+                        placeholder="z.B. 7,70"
                       />
                     </div>
                   </div>
@@ -693,11 +702,11 @@ export default function PortfolioPage() {
                     <div>
                       <Label>Aktueller Kurs (€)</Label>
                       <Input
-                        type="number"
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
                         value={formData.currentPrice}
                         onChange={(e) => setFormData({ ...formData, currentPrice: e.target.value })}
-                        placeholder="175.00"
+                        placeholder="z.B. 9,06"
                       />
                     </div>
                     <div>

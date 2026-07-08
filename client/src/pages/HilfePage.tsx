@@ -160,12 +160,12 @@ const faqData: FAQItem[] = [
   {
     category: "strategie",
     question: "Was ist die Ziel-Allokation?",
-    answer: "Die Ziel-Allokation definiert, wie Ihr ETF-Portfolio idealerweise aufgeteilt sein sollte. Aktuell gilt die Depot-Struktur 2026: 39% All-World (A3D7QX), 17% Anleihen (A2H6ZT), je 11% Small Caps, KI-Wette, Defence-Wette und iBonds 2030. Das Rebalancing zeigt, wie Ihre aktuelle Verteilung davon abweicht."
+    answer: "Die Ziel-Allokation definiert, wie Ihr ETF-Portfolio idealerweise aufgeteilt sein sollte. Aktuell gilt die Depot-Struktur 2026 (Stand 08.07.2026): 34% All-World (A3D7QX), 22% Anleihen (A2H6ZT), 13% Small Caps (A2DWBY), 17% KI-Wette (A2N6LC), 9% Defence-Wette (A3EB9T), 5% KI-Infra-Wette (A40L9T). Die drei Wetten sind eingefroren — kein neues Geld. Das Rebalancing zeigt, wie Ihre aktuelle Verteilung davon abweicht."
   },
   {
     category: "strategie",
-    question: "Warum bekommen der KI- und der Defence-ETF nie Kaufempfehlungen?",
-    answer: "Das ist Absicht (Finalplan Juli 2026): Beide sind bewusste Themen-Wetten und EINGEFROREN — es fließt kein neues Geld hinein, egal wie untergewichtet sie sind. Das Dashboard schließt sie deshalb fest aus allen Kaufempfehlungen aus. Stattdessen bewacht die Aktien-Ampel die beiden: Springt die Ampel bei A2N6LC oder A3EB9T auf ROT, gilt die Regel 'Position halbieren, ohne Diskussion'. Dazu kommt das Halbjahres-Ritual (Januar + Juli): Tech-Frühwarnsystem-Snapshot ziehen und die 4 Kill-Kriterien prüfen — bei 2 von 4 wird die KI-Wette halbiert. Details: Desktop/ETF_Depot_Finalplan_2026.html"
+    question: "Warum bekommen die KI-, KI-Infra- und Defence-ETFs nie Kaufempfehlungen?",
+    answer: "Das ist Absicht (Finalplan Juli 2026): Alle drei sind bewusste Themen-Wetten und EINGEFROREN — es fließt kein neues Geld hinein, egal wie untergewichtet sie sind. Das Dashboard schließt sie deshalb fest aus allen Kaufempfehlungen aus. Stattdessen bewacht die Aktien-Ampel sie: Springt die Ampel bei A2N6LC, A40L9T oder A3EB9T auf ROT, gilt die Regel 'Position halbieren, ohne Diskussion'. Dazu kommt das Halbjahres-Ritual (Januar + Juli): Tech-Frühwarnsystem-Snapshot ziehen und die 4 Kill-Kriterien prüfen — bei 2 von 4 werden BEIDE KI-ETFs (A2N6LC + A40L9T) halbiert. Im Januar 2027 steht zusätzlich die Wiedervorlage an: Behält der AI Infrastructure (A40L9T) seinen Platz? Details: Desktop/ETF_Depot_Finalplan_2026.html"
   },
   {
     category: "strategie",

@@ -155,15 +155,15 @@ export default function DashboardPage() {
     },
   });
   
-  // Depot-Struktur 2026: Zielwerte pro Baustein (Finalplan 06.07.2026)
+  // Depot-Struktur 2026: Zielwerte pro Baustein (Finalplan 08.07.2026, Ist nach Umbau)
   // frozen = bewusste Wette, kein neues Geld — nie in Kaufempfehlungen aufnehmen
   const STRATEGY_TARGETS = [
-    { name: 'Kern (All-World)', wkn: 'A3D7QX', targetPercent: 39, frozen: false },
-    { name: 'Anleihen (Global Agg.)', wkn: 'A2H6ZT', targetPercent: 17, frozen: false },
-    { name: 'Small Caps', wkn: 'A2DWBY', targetPercent: 11, frozen: false },
-    { name: 'KI-Wette (eingefroren)', wkn: 'A2N6LC', targetPercent: 11, frozen: true },
-    { name: 'Defence-Wette (eingefroren)', wkn: 'A3EB9T', targetPercent: 11, frozen: true },
-    { name: 'iBonds 2030', wkn: 'A40KHS', targetPercent: 11, frozen: false },
+    { name: 'Kern (All-World)', wkn: 'A3D7QX', targetPercent: 34, frozen: false },
+    { name: 'Anleihen (Global Agg.)', wkn: 'A2H6ZT', targetPercent: 22, frozen: false },
+    { name: 'Small Caps', wkn: 'A2DWBY', targetPercent: 13, frozen: false },
+    { name: 'KI-Wette (eingefroren)', wkn: 'A2N6LC', targetPercent: 17, frozen: true },
+    { name: 'Defence-Wette (eingefroren)', wkn: 'A3EB9T', targetPercent: 9, frozen: true },
+    { name: 'KI-Infra-Wette (eingefroren)', wkn: 'A40L9T', targetPercent: 5, frozen: true },
   ];
 
   // Calculate stats with Depot-Struktur 2026
@@ -563,7 +563,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-base sm:text-lg text-cyan-400">Rebalancing - Depot-Struktur 2026</h3>
-                    <p className="text-xs text-muted-foreground">All-World 39% | Anleihen 17% | Small Caps 11% | KI 11% | Defence 11% | iBonds 11%</p>
+                    <p className="text-xs text-muted-foreground">All-World 34% | Anleihen 22% | Small Caps 13% | KI 17% | Defence 9% | KI-Infra 5%</p>
                   </div>
                 </div>
 
