@@ -951,8 +951,14 @@ export const appRouter = router({
       }),
 
     refresh: protectedProcedure
-      .mutation(async ({ ctx }) => {
-        const entries = await getTrafficLightEntries(ctx.user.id);
+      // Ohne ids: alle Einträge. Mit ids: nur diese (spart Twelve-Data-Credits + Wartezeit).
+      .input(z.object({ ids: z.array(z.number()).optional() }).optional())
+      .mutation(async ({ ctx, input }) => {
+        let entries = await getTrafficLightEntries(ctx.user.id);
+        if (input?.ids && input.ids.length > 0) {
+          const idSet = new Set(input.ids);
+          entries = entries.filter((e) => idSet.has(e.id));
+        }
         if (entries.length === 0) {
           return { success: false, message: 'Keine Einträge in der Ampel-Liste.' };
         }

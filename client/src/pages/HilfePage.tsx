@@ -99,7 +99,7 @@ const faqData: FAQItem[] = [
   {
     category: "ampel",
     question: "Wie aktualisiere ich die Ampel-Signale?",
-    answer: "Klicken Sie auf den Button 'Ampeln aktualisieren'. Die aktuellen Kursdaten werden über Twelve Data abgerufen und SMA 50/200 automatisch berechnet. Bis zu 8 Aktien werden gleichzeitig verarbeitet — das dauert nur wenige Sekunden."
+    answer: "Es gibt zwei Wege: (1) Das kleine Pfeil-Symbol (🔄) in einer Zeile aktualisiert NUR diese eine Aktie — geht in Sekunden und kostet nur 1 API-Abruf. Neue Einträge werden beim Hinzufügen automatisch so geholt. (2) Der Button 'Ampeln aktualisieren' oben holt ALLE Einträge — wegen des Twelve-Data-Limits (8 Abrufe/Minute) dauert das bei vielen Einträgen mehrere Minuten. Tipp: Den Alle-Button nur z.B. einmal pro Woche nutzen, sonst das Zeilen-Symbol."
   },
   {
     category: "ampel",

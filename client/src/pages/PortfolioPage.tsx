@@ -179,6 +179,10 @@ export default function PortfolioPage() {
         setAmpelWkn('');
         setAmpelName('');
         refetchAmpel();
+        // Nur den neuen Eintrag holen (1 API-Credit) statt die ganze Liste
+        if (data.id) {
+          refreshAmpel.mutate({ ids: [data.id] });
+        }
       } else {
         toast.warning(data.message);
       }
@@ -947,7 +951,7 @@ export default function PortfolioPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => refreshAmpel.mutate()}
+                onClick={() => refreshAmpel.mutate({})}
                 disabled={refreshAmpel.isPending || ampelEntries.length === 0}
               >
                 {refreshAmpel.isPending ? (
@@ -1078,6 +1082,16 @@ export default function PortfolioPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                  onClick={() => refreshAmpel.mutate({ ids: [entry.id] })}
+                                  disabled={refreshAmpel.isPending}
+                                  title="Nur diese Ampel aktualisieren (1 API-Credit)"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
                                   className="h-6 w-6 text-destructive hover:text-destructive"
                                   onClick={() => removeFromAmpel.mutate({ id: entry.id })}
                                 >
@@ -1139,7 +1153,7 @@ export default function PortfolioPage() {
 
             {refreshAmpel.isPending && (
               <p className="text-xs text-muted-foreground text-center">
-                Ampeln werden aktualisiert... Das kann bei vielen Einträgen etwas dauern (Twelve Data Rate-Limit).
+                Ampeln werden aktualisiert... Einzelne Einträge gehen schnell; „Aktualisieren" für alle braucht bei vielen Einträgen mehrere Minuten (Twelve Data Rate-Limit: 8 Abrufe/Minute).
               </p>
             )}
           </CardContent>
