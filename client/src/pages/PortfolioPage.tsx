@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { trpc } from '@/lib/trpc';
+import { parseGermanNumber } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   Briefcase, Search, Plus, ArrowUpDown, ArrowUp, ArrowDown,
@@ -393,15 +394,6 @@ export default function PortfolioPage() {
     }
   };
   
-  // Versteht deutsches ("1.265,2632") und englisches ("1265.2632") Zahlenformat
-  const parseGermanNumber = (value: string): number => {
-    const v = String(value).trim();
-    if (v.includes(',')) {
-      return parseFloat(v.replace(/\./g, '').replace(',', '.'));
-    }
-    return parseFloat(v);
-  };
-
   const handleSubmit = () => {
     const data = {
       wkn: formData.wkn || undefined,

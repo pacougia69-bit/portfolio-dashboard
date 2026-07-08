@@ -324,11 +324,17 @@ export const appRouter = router({
               skippedCount++;
               continue;
             }
-            // Convert to EUR if needed
+            // Umrechnung nach EUR - nur USD unterstuetzt. Andere Fremdwaehrungen
+            // (CAD, GBP, ...) werden NICHT 1:1 als EUR uebernommen, sondern
+            // uebersprungen, um keinen falschen Kurs zu speichern.
             let priceInEur = priceData.price;
             if (priceData.currency === 'USD') {
               priceInEur = priceData.price / eurUsdRate;
               console.log(`[Prices] USD→EUR: ${priceData.ticker} ${priceData.price.toFixed(2)} USD / ${eurUsdRate.toFixed(4)} = ${priceInEur.toFixed(2)} EUR`);
+            } else if (priceData.currency !== 'EUR') {
+              console.warn(`[Prices] ${priceData.ticker}: Waehrung ${priceData.currency} wird nicht unterstuetzt - Kurs wird NICHT uebernommen`);
+              skippedCount++;
+              continue;
             }
             await updatePortfolioPosition(ctx.user.id, position.id, {
               currentPrice: String(priceInEur),
@@ -336,10 +342,10 @@ export const appRouter = router({
             updatedCount++;
           }
         }
-        
+
         return { prices, updatedCount, skippedCount };
       }),
-    
+
     fetchTwelveData: protectedProcedure
       .input(z.object({ tickers: z.array(z.string()) }))
       .mutation(async ({ ctx, input }) => {
@@ -347,14 +353,14 @@ export const appRouter = router({
         if (!apiKey) {
           throw new Error("Twelve Data API Key nicht konfiguriert. Bitte in den Einstellungen hinterlegen.");
         }
-        const prices = await fetchLivePricesTwelveData(input.tickers, apiKey);
-        
+        const { results: twelveDataPrices, skippedAsProxy } = await fetchLivePricesTwelveData(input.tickers, apiKey);
+
         // Update portfolio positions with new prices (nur wenn autoUpdate = true)
         const positions = await getPortfolioPositions(ctx.user.id);
         let updatedCount = 0;
         let skippedCount = 0;
-        
-        for (const priceData of prices) {
+
+        for (const priceData of twelveDataPrices) {
           const position = positions.find(p => p.ticker === priceData.ticker);
           if (position && priceData.priceEur) {
             // Skip positions with manual price (autoUpdate = false)
@@ -368,8 +374,44 @@ export const appRouter = router({
             updatedCount++;
           }
         }
-        
-        return { prices, updatedCount, skippedCount };
+
+        // Fuer ETFs/ADRs, die Twelve Data (Free-Plan) nur ueber einen ANDEREN
+        // Fonds/Titel annaehern kann (z.B. Rafaels 6 Kern-ETFs), holen wir den
+        // echten Depot-Kurs stattdessen ueber Yahoo Finance mit dem echten Ticker.
+        let proxyFallbackCount = 0;
+        if (skippedAsProxy.length > 0) {
+          const yahooPrices = await fetchLivePrices(skippedAsProxy);
+          const eurUsdRate = await getEurUsdRate();
+
+          for (const priceData of yahooPrices) {
+            const position = positions.find(p => p.ticker === priceData.ticker);
+            if (!position) continue;
+            if (position.autoUpdate === false) {
+              skippedCount++;
+              continue;
+            }
+            let priceInEur = priceData.price;
+            if (priceData.currency === 'USD') {
+              priceInEur = priceData.price / eurUsdRate;
+            } else if (priceData.currency !== 'EUR') {
+              console.warn(`[Prices] ${priceData.ticker}: Waehrung ${priceData.currency} wird nicht unterstuetzt - Kurs wird NICHT uebernommen`);
+              skippedCount++;
+              continue;
+            }
+            await updatePortfolioPosition(ctx.user.id, position.id, {
+              currentPrice: String(priceInEur),
+            });
+            updatedCount++;
+            proxyFallbackCount++;
+          }
+        }
+
+        return {
+          prices: twelveDataPrices,
+          updatedCount,
+          skippedCount,
+          proxyFallbackCount,
+        };
       }),
     
     getCached: protectedProcedure
@@ -805,7 +847,7 @@ export const appRouter = router({
           const transactionData = await parseDKBPDF(pdfBuffer, input.fileName);
           
           // Create transaction (overwrites existing record with same invoiceNumber)
-          await createTransaction(ctx.user.id, {
+          const txResult = await createTransaction(ctx.user.id, {
             date: transactionData.date,
             type: transactionData.type,
             isin: transactionData.isin,
@@ -819,22 +861,28 @@ export const appRouter = router({
             invoiceNumber: transactionData.invoiceNumber,
           });
 
-          // Update portfolio position (with strategy category from WKN mapping)
-          await updatePortfolioFromTransaction(
-            ctx.user.id,
-            transactionData.isin,
-            transactionData.wkn,
-            transactionData.name,
-            transactionData.type,
-            transactionData.quantity,
-            transactionData.totalAmount,
-            transactionData.category,
-            transactionData.totalAmountCurrency
-          );
-          
+          // Depot-Bestand nur beim ERSTEN Import dieser Abrechnung anpassen -
+          // sonst wuerde ein erneuter Upload derselben PDF die Stueckzahl
+          // ein zweites Mal aufaddieren (Transaktionszeile wird aber immer aktualisiert).
+          if (!txResult.wasReimport) {
+            await updatePortfolioFromTransaction(
+              ctx.user.id,
+              transactionData.isin,
+              transactionData.wkn,
+              transactionData.name,
+              transactionData.type,
+              transactionData.quantity,
+              transactionData.totalAmount,
+              transactionData.category,
+              transactionData.totalAmountCurrency
+            );
+          } else {
+            console.log(`[DKB Import] Abrechnung ${transactionData.invoiceNumber} war bereits importiert - Depot-Bestand NICHT erneut angepasst`);
+          }
+
           // Auto-remove from watchlist if this security was on it
           let watchlistMessage = '';
-          if (transactionData.type === 'Kauf' || transactionData.type === 'Sparplan') {
+          if (!txResult.wasReimport && (transactionData.type === 'Kauf' || transactionData.type === 'Sparplan')) {
             const watchlistResult = await removeFromWatchlistByISINOrWKN(
               ctx.user.id,
               transactionData.isin,
@@ -848,7 +896,9 @@ export const appRouter = router({
           return {
             success: true,
             duplicate: false,
-            message: `1 Transaktion erfolgreich importiert.${watchlistMessage}`,
+            message: txResult.wasReimport
+              ? `Diese Abrechnung war bereits importiert - Transaktionsdatensatz aktualisiert, Depot-Bestand wurde NICHT doppelt gezählt.`
+              : `1 Transaktion erfolgreich importiert.${watchlistMessage}`,
             transaction: transactionData,
           };
         } catch (error) {

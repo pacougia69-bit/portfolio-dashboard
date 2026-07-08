@@ -130,10 +130,14 @@ export default function DashboardPage() {
   // Fetch live prices mutation (Twelve Data)
   const fetchPricesTwelveData = trpc.prices.fetchTwelveData.useMutation({
     onSuccess: (data) => {
-      const msg = data.skippedCount > 0 
-        ? `${data.updatedCount} Kurse aktualisiert, ${data.skippedCount} manuelle übersprungen (Twelve Data)`
-        : `${data.updatedCount} Kurse aktualisiert (Twelve Data)`;
-      toast.success(msg);
+      const parts = [`${data.updatedCount} Kurse aktualisiert`];
+      if (data.proxyFallbackCount > 0) {
+        parts.push(`${data.proxyFallbackCount} davon über Yahoo (echter Kurs statt Näherungswert)`);
+      }
+      if (data.skippedCount > 0) {
+        parts.push(`${data.skippedCount} übersprungen (manuell oder Fremdwährung ohne Umrechnung)`);
+      }
+      toast.success(parts.join(', '));
       refetchPortfolio();
     },
     onError: (error) => {

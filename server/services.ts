@@ -133,6 +133,24 @@ const TICKER_MAPPINGS: Record<string, string> = {
   'IUST.DE': 'IEI',
 };
 
+// Diese Tickers sind bei Twelve Data nur ueber einen ANDEREN Fonds/Titel als
+// Naeherung abgebildet (siehe TICKER_MAPPINGS oben) - fuer den Ampel-Trend
+// (steigt/faellt) reicht das, aber der absolute Kurs gehoert NICHT als
+// Depot-Kurs gespeichert (anderer Anbieter/andere ADR-Quote = anderer NAV).
+// fetchLivePricesTwelveData ueberspringt diese Ticker bewusst; die Depot-Kurse
+// dafuer kommen stattdessen ueber Yahoo Finance mit dem echten Ticker (siehe
+// prices.fetchTwelveData in routers.ts).
+const PROXY_ONLY_TICKERS = new Set<string>([
+  // ADRs mit unklarem/vermutlich abweichendem Umtauschverhaeltnis zur Stammaktie
+  'GBF.DE', 'GBF:XETR', 'BY6.BE', 'BY6:DE', 'BY6.DE', '1211.HK', 'SAP.DE', 'DBK.DE', 'GLPG.AS',
+  // ETFs/Fonds - anderer Anbieter, andere Kursbasis, nur als Ampel-Trend-Naeherung gedacht
+  'EUNL.DE', 'VWCE.DE', 'IUSN.DE', 'IS3N.DE', 'VFEM.DE', 'EXXT.DE', 'XAIX.DE', 'XDWH.DE', 'CBUX.DE',
+  'AIFS.DE', 'IQQH.DE', 'NUCL.DE', 'NATO.DE', 'ASWC.DE', 'FWRG.DE', 'AGGH.DE', '30IA.DE', '4GLD.DE',
+  'EUWAX.DE', 'IQQ6.DE', 'IUSM.DE', 'IBCI.DE', 'IUSU.DE', 'IUST.DE', 'IWDA.AS',
+  // Krypto-ETPs - Kurs des Wertpapiers ist NICHT der rohe Kryptowaehrungspreis
+  'CBTC.SW', 'ETHC.SW', 'AXRP.SW', 'SOLW.SW', 'HBAR-USD',
+]);
+
 // Convert ticker to Twelve Data format
 export function convertTickerForTwelveData(ticker: string): { symbol: string; exchange?: string; isCrypto?: boolean } {
   const mapped = TICKER_MAPPINGS[ticker];
@@ -165,31 +183,43 @@ export function convertTickerForTwelveData(ticker: string): { symbol: string; ex
 
 // Fetch live prices from Twelve Data API
 export async function fetchLivePricesTwelveData(
-  tickers: string[], 
+  tickers: string[],
   apiKey: string
-): Promise<{ ticker: string; price: number; changePercent: number; currency: string; priceEur: number }[]> {
+): Promise<{
+  results: { ticker: string; price: number; changePercent: number; currency: string; priceEur: number }[];
+  skippedAsProxy: string[];
+}> {
   const results: { ticker: string; price: number; changePercent: number; currency: string; priceEur: number }[] = [];
-  
+
+  // Ticker, bei denen Twelve Data nur einen ANDEREN Fonds/Titel als Naeherung
+  // liefern kann, werden hier gar nicht erst angefragt - der echte Kurs kommt
+  // stattdessen ueber Yahoo Finance (Aufrufer kuemmert sich darum).
+  const skippedAsProxy = tickers.filter((t) => PROXY_ONLY_TICKERS.has(t));
+  const safeTickers = tickers.filter((t) => !PROXY_ONLY_TICKERS.has(t));
+
   if (!apiKey) {
     console.error("Twelve Data API key not provided");
-    return results;
+    return { results, skippedAsProxy };
   }
-  
+  if (safeTickers.length === 0) {
+    return { results, skippedAsProxy };
+  }
+
   // Get EUR/USD rate for conversion
   const eurUsdRate = await getEurUsdRate(apiKey);
-  
+
   // Process tickers in smaller batches to respect rate limits
   // Free tier: 8 API credits per minute, each symbol in a batch counts as 1 credit
   // Using batch size of 7 to leave room for EUR/USD rate fetch
   const batchSize = 7;
   const batchDelayMs = 62000; // Wait 62 seconds between batches to reset rate limit
-  
-  console.log(`Starting price update for ${tickers.length} tickers in ${Math.ceil(tickers.length / batchSize)} batches`);
-  
-  for (let i = 0; i < tickers.length; i += batchSize) {
-    const batch = tickers.slice(i, i + batchSize);
+
+  console.log(`Starting price update for ${safeTickers.length} tickers in ${Math.ceil(safeTickers.length / batchSize)} batches`);
+
+  for (let i = 0; i < safeTickers.length; i += batchSize) {
+    const batch = safeTickers.slice(i, i + batchSize);
     const batchNumber = Math.floor(i / batchSize) + 1;
-    const totalBatches = Math.ceil(tickers.length / batchSize);
+    const totalBatches = Math.ceil(safeTickers.length / batchSize);
     
     console.log(`Processing batch ${batchNumber}/${totalBatches}...`);
     
@@ -229,16 +259,22 @@ export async function fetchLivePricesTwelveData(
           const previousClose = parseFloat(quote.previous_close) || price;
           const changePercent = previousClose ? ((price - previousClose) / previousClose) * 100 : 0;
           const currency = quote.currency || 'USD';
-          
-          // Convert to EUR if needed
-          let priceEur = price;
+
+          // Umrechnung nach EUR - nur USD ist unterstuetzt. Bei jeder anderen
+          // Fremdwaehrung (z.B. CAD, GBP, CHF) den Kurs NICHT uebernehmen,
+          // statt den Fremdwaehrungsbetrag faelschlich 1:1 als Euro zu speichern.
+          let priceEur: number | null = price;
           if (currency === 'USD') {
             priceEur = price / eurUsdRate;
           } else if (currency !== 'EUR') {
-            // For other currencies, try to fetch rate or use price as-is
-            priceEur = price; // Simplified - could add more currency conversions
+            console.warn(`[Prices] ${originalTicker}: Waehrung ${currency} wird nicht unterstuetzt - Kurs wird NICHT uebernommen (bisheriger Wert bleibt stehen)`);
+            priceEur = null;
           }
-          
+
+          if (priceEur === null) {
+            continue;
+          }
+
           results.push({
             ticker: originalTicker,
             price,
@@ -246,7 +282,7 @@ export async function fetchLivePricesTwelveData(
             currency,
             priceEur,
           });
-          
+
           // Update cache with EUR price
           await updatePriceCache(originalTicker, priceEur, changePercent);
         } else if (quote?.code) {
@@ -255,7 +291,7 @@ export async function fetchLivePricesTwelveData(
       }
       
       // Rate limiting - wait between batches (62 seconds to reset API credits)
-      if (i + batchSize < tickers.length) {
+      if (i + batchSize < safeTickers.length) {
         console.log(`Waiting 62 seconds for API rate limit reset before next batch...`);
         await new Promise(resolve => setTimeout(resolve, batchDelayMs));
       }
@@ -263,8 +299,8 @@ export async function fetchLivePricesTwelveData(
       console.error(`Error fetching prices from Twelve Data:`, error);
     }
   }
-  
-  return results;
+
+  return { results, skippedAsProxy };
 }
 
 // Fallback: Fetch live prices from Yahoo Finance (free, no API key needed)

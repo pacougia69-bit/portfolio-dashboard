@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { trpc } from '@/lib/trpc';
+import { parseGermanNumber } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   Calculator, PiggyBank, TrendingDown, Plus, Edit, Trash, RefreshCw,
@@ -194,8 +195,8 @@ export default function TaxManagement() {
   };
 
   const handleSaveAllowance = () => {
-    const amount = parseFloat(allowanceAmount);
-    const used = parseFloat(allowanceUsed);
+    const amount = parseGermanNumber(allowanceAmount);
+    const used = parseGermanNumber(allowanceUsed);
     const year = parseInt(allowanceYear);
 
     if (isNaN(amount) || amount < 0) {
@@ -235,7 +236,7 @@ export default function TaxManagement() {
   };
 
   const handleSaveLimit = () => {
-    const newLimit = parseFloat(editLimitValue);
+    const newLimit = parseGermanNumber(editLimitValue);
 
     if (isNaN(newLimit) || newLimit < 0) {
       toast.error('Bitte geben Sie einen gültigen Betrag ein');
@@ -253,7 +254,7 @@ export default function TaxManagement() {
   };
 
   const handleSaveLoss = () => {
-    const amount = parseFloat(lossAmount);
+    const amount = parseGermanNumber(lossAmount);
     const year = parseInt(lossYear);
 
     if (isNaN(amount) || amount < 0) {
@@ -395,12 +396,11 @@ export default function TaxManagement() {
               <div className="space-y-2">
                 <Label>Neues Limit (€)</Label>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={editLimitValue}
                   onChange={(e) => setEditLimitValue(e.target.value)}
                   placeholder="1000 oder 2000"
-                  min="0"
-                  step="100"
                 />
                 <p className="text-xs text-muted-foreground">
                   💡 Single: 1.000 € | Verheiratet: 2.000 €
@@ -808,23 +808,21 @@ export default function TaxManagement() {
               <div className="space-y-2">
                 <Label>Freibetrag (€) *</Label>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={allowanceAmount}
                   onChange={(e) => setAllowanceAmount(e.target.value)}
                   placeholder="1000"
-                  min="0"
-                  step="0.01"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Bereits genutzt (€)</Label>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={allowanceUsed}
                   onChange={(e) => setAllowanceUsed(e.target.value)}
                   placeholder="0"
-                  min="0"
-                  step="0.01"
                 />
               </div>
             </div>
@@ -908,12 +906,11 @@ export default function TaxManagement() {
             <div className="space-y-2">
               <Label>Verlustvortrag (€) *</Label>
               <Input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={lossAmount}
                 onChange={(e) => setLossAmount(e.target.value)}
                 placeholder="0"
-                min="0"
-                step="0.01"
               />
               <p className="text-xs text-muted-foreground">
                 Positiver Betrag eingeben (wird automatisch als Verlust gespeichert)

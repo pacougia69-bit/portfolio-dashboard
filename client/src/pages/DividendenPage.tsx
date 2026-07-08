@@ -3,7 +3,7 @@
  * Dividenden-Tracking und Jahresübersicht
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type Dispatch, type SetStateAction } from 'react';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { trpc } from '@/lib/trpc';
+import { parseGermanNumber } from '@/lib/utils';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import {
@@ -52,6 +53,103 @@ const emptyForm: DividendFormData = {
   date: new Date().toISOString().split('T')[0],
   notes: '',
 };
+
+// Als eigene, stabile Komponente AUSSERHALB von DividendenPage definiert - sonst
+// entsteht bei jedem Tastendruck eine neue Funktionsinstanz, React haelt das fuer
+// eine komplett neue Komponente und baut das Formular jedes Mal neu auf, wodurch
+// das Eingabefeld sofort wieder den Fokus verliert.
+function DividendForm({
+  formData,
+  setFormData,
+  portfolioTickers,
+  onSubmit,
+  submitLabel,
+  onCancel,
+  disabled,
+}: {
+  formData: DividendFormData;
+  setFormData: Dispatch<SetStateAction<DividendFormData>>;
+  portfolioTickers: { ticker: string; name: string }[];
+  onSubmit: () => void;
+  submitLabel: string;
+  onCancel: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="grid gap-4 py-4">
+      <div className="space-y-2">
+        <Label>Aktie/ETF</Label>
+        <Input
+          value={formData.ticker}
+          onChange={(e) => {
+            const ticker = e.target.value.toUpperCase();
+            setFormData({ ...formData, ticker });
+            // Auto-fill name from portfolio
+            const match = portfolioTickers.find(p => p.ticker === ticker);
+            if (match) {
+              setFormData(prev => ({ ...prev, ticker, name: match.name }));
+            }
+          }}
+          placeholder="AAPL"
+          list="ticker-list"
+        />
+        <datalist id="ticker-list">
+          {portfolioTickers.map(p => (
+            <option key={p.ticker} value={p.ticker}>{p.name}</option>
+          ))}
+        </datalist>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Name *</Label>
+        <Input
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          placeholder="z.B. Apple Inc."
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Brutto-Betrag (€) *</Label>
+          <Input
+            type="text"
+            inputMode="decimal"
+            value={formData.amount}
+            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Steuer (€)</Label>
+          <Input
+            type="text"
+            inputMode="decimal"
+            value={formData.taxAmount}
+            onChange={(e) => setFormData({ ...formData, taxAmount: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Datum</Label>
+        <Input
+          type="date"
+          value={formData.date}
+          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+        />
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onCancel}>
+          Abbrechen
+        </Button>
+        <Button onClick={onSubmit} disabled={!formData.name || !formData.amount || disabled}>
+          {submitLabel}
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
 
 export default function DividendenPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -146,8 +244,8 @@ export default function DividendenPage() {
     const data = {
       ticker: formData.ticker.toUpperCase() || 'MANUAL',
       name: formData.name,
-      amount: parseFloat(formData.amount),
-      taxAmount: parseFloat(formData.taxAmount) || 0,
+      amount: parseGermanNumber(formData.amount),
+      taxAmount: parseGermanNumber(formData.taxAmount) || 0,
       paymentDate: formData.date,
     };
 
@@ -188,81 +286,6 @@ export default function DividendenPage() {
     setIsAddDialogOpen(false);
     setIsEditDialogOpen(false);
   };
-
-  const DividendForm = ({ onSubmit, submitLabel }: { onSubmit: () => void; submitLabel: string }) => (
-    <div className="grid gap-4 py-4">
-      <div className="space-y-2">
-        <Label>Aktie/ETF</Label>
-        <Input
-          value={formData.ticker}
-          onChange={(e) => {
-            const ticker = e.target.value.toUpperCase();
-            setFormData({ ...formData, ticker });
-            // Auto-fill name from portfolio
-            const match = portfolioTickers.find(p => p.ticker === ticker);
-            if (match) {
-              setFormData(prev => ({ ...prev, ticker, name: match.name }));
-            }
-          }}
-          placeholder="AAPL"
-          list="ticker-list"
-        />
-        <datalist id="ticker-list">
-          {portfolioTickers.map(p => (
-            <option key={p.ticker} value={p.ticker}>{p.name}</option>
-          ))}
-        </datalist>
-      </div>
-
-      <div className="space-y-2">
-        <Label>Name *</Label>
-        <Input
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder="z.B. Apple Inc."
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Brutto-Betrag (€) *</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={formData.amount}
-            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Steuer (€)</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={formData.taxAmount}
-            onChange={(e) => setFormData({ ...formData, taxAmount: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label>Datum</Label>
-        <Input
-          type="date"
-          value={formData.date}
-          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-        />
-      </div>
-
-      <DialogFooter>
-        <Button variant="outline" onClick={resetForm}>
-          Abbrechen
-        </Button>
-        <Button onClick={onSubmit} disabled={!formData.name || !formData.amount || createDividend.isPending || deleteDividend.isPending}>
-          {submitLabel}
-        </Button>
-      </DialogFooter>
-    </div>
-  );
 
   if (isLoading) {
     return (
@@ -322,7 +345,15 @@ export default function DividendenPage() {
                     Erfassen Sie eine erhaltene Dividende.
                   </DialogDescription>
                 </DialogHeader>
-                <DividendForm onSubmit={handleSubmit} submitLabel="Hinzufügen" />
+                <DividendForm
+                  formData={formData}
+                  setFormData={setFormData}
+                  portfolioTickers={portfolioTickers}
+                  onSubmit={handleSubmit}
+                  submitLabel="Hinzufügen"
+                  onCancel={resetForm}
+                  disabled={createDividend.isPending || deleteDividend.isPending}
+                />
               </DialogContent>
             </Dialog>
           </div>
@@ -532,7 +563,15 @@ export default function DividendenPage() {
                 Aktualisieren Sie die Dividendendetails.
               </DialogDescription>
             </DialogHeader>
-            <DividendForm onSubmit={handleSubmit} submitLabel="Speichern" />
+            <DividendForm
+              formData={formData}
+              setFormData={setFormData}
+              portfolioTickers={portfolioTickers}
+              onSubmit={handleSubmit}
+              submitLabel="Speichern"
+              onCancel={resetForm}
+              disabled={createDividend.isPending || deleteDividend.isPending}
+            />
           </DialogContent>
         </Dialog>
       </div>

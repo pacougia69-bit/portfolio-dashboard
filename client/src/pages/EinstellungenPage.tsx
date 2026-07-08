@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { trpc } from '@/lib/trpc';
+import { parseGermanNumber } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/_core/hooks/useAuth';
 import TaxManagement from '@/components/TaxManagement';
@@ -125,9 +126,9 @@ export default function EinstellungenPage() {
   });
 
   const handleManualTxSubmit = () => {
-    const qty = parseFloat(manualTx.quantity);
-    const price = parseFloat(manualTx.price);
-    const fees = parseFloat(manualTx.fees) || 0;
+    const qty = parseGermanNumber(manualTx.quantity);
+    const price = parseGermanNumber(manualTx.price);
+    const fees = parseGermanNumber(manualTx.fees) || 0;
     if (!manualTx.name || !manualTx.ticker || !qty || !price) {
       toast.error('Bitte alle Pflichtfelder ausfüllen');
       return;
@@ -967,9 +968,9 @@ export default function EinstellungenPage() {
               <div className="space-y-1">
                 <Label className="text-xs">Stückzahl *</Label>
                 <Input
-                  type="number"
-                  step="0.0001"
-                  placeholder="z.B. 3.8462"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="z.B. 3,8462"
                   value={manualTx.quantity}
                   onChange={(e) => setManualTx({ ...manualTx, quantity: e.target.value })}
                 />
@@ -977,9 +978,9 @@ export default function EinstellungenPage() {
               <div className="space-y-1">
                 <Label className="text-xs">Kurs (€) *</Label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="z.B. 52.37"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="z.B. 52,37"
                   value={manualTx.price}
                   onChange={(e) => setManualTx({ ...manualTx, price: e.target.value })}
                 />
@@ -987,8 +988,8 @@ export default function EinstellungenPage() {
               <div className="space-y-1">
                 <Label className="text-xs">Gebühren (€)</Label>
                 <Input
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={manualTx.fees}
                   onChange={(e) => setManualTx({ ...manualTx, fees: e.target.value })}
                 />
@@ -996,7 +997,7 @@ export default function EinstellungenPage() {
             </div>
             {manualTx.quantity && manualTx.price && (
               <p className="text-xs text-muted-foreground">
-                Gesamtbetrag: {(parseFloat(manualTx.quantity) * parseFloat(manualTx.price) + (parseFloat(manualTx.fees) || 0)).toFixed(2)} €
+                Gesamtbetrag: {(parseGermanNumber(manualTx.quantity) * parseGermanNumber(manualTx.price) + (parseGermanNumber(manualTx.fees) || 0)).toFixed(2)} €
               </p>
             )}
             <Button onClick={handleManualTxSubmit} disabled={addManualTx.isPending} className="w-full sm:w-auto">

@@ -684,8 +684,18 @@ export async function createTransaction(
   try {
     const orderNumberString = String(data.orderNumber);
 
-    // Delete any existing record with this invoiceNumber (any userId) to allow re-import
+    // Pruefen, ob diese Abrechnung (invoiceNumber) schon EINMAL importiert wurde.
+    // Wichtig fuer den Aufrufer: Bei einem Re-Import derselben PDF darf die
+    // Depot-Position nicht ein zweites Mal aufaddiert werden - nur diese
+    // Transaktionszeile selbst wird ersetzt (siehe wasReimport im Rueckgabewert).
+    let wasReimport = false;
     if (data.invoiceNumber) {
+      const existing = await db.select({ id: transactions.id }).from(transactions)
+        .where(eq(transactions.invoiceNumber, data.invoiceNumber))
+        .limit(1);
+      wasReimport = existing.length > 0;
+
+      // Delete any existing record with this invoiceNumber (any userId) to allow re-import
       await db.delete(transactions)
         .where(eq(transactions.invoiceNumber, data.invoiceNumber));
     }
@@ -708,6 +718,7 @@ export async function createTransaction(
 
     return {
       duplicate: false,
+      wasReimport,
       id: Number(result[0].insertId),
       orderNumber: data.orderNumber
     };
