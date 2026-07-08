@@ -24,10 +24,10 @@ interface TaxAllowance {
   year: number;
   amount: number;
   used: number;
-  broker?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
+  broker: string | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 interface LossCarryforward {
@@ -35,10 +35,10 @@ interface LossCarryforward {
   year: number;
   category: 'general' | 'stocks' | 'other';
   amount: number;
-  broker?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
+  broker: string | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export default function TaxManagement() {
