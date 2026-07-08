@@ -3,7 +3,7 @@
  * Übersicht mit Gesamtvermögen, Charts, Risiko-Warnung, Action Items
  */
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { motion } from 'framer-motion';
 import { trpc } from '@/lib/trpc';
+import { DEFAULT_TARGET_ALLOCATIONS } from '@shared/strategy';
 import {
   Wallet, TrendingUp, TrendingDown, PieChart as PieChartIcon, BarChart3,
   AlertTriangle, ArrowRight, Briefcase, Coins, Target,
@@ -31,6 +32,7 @@ import {
 import {
   PieChart as RechartsPie, Pie, Cell, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
+  LineChart, Line,
 } from 'recharts';
 import { toast } from 'sonner';
 
@@ -67,55 +69,34 @@ const DEFAULT_SETTINGS: DashboardSettings = {
   desiredPension: 1000,
 };
 
-// LocalStorage helpers
-const SETTINGS_KEY = 'dashboard-settings';
+// Rentenziel lag frueher nur im Browser (localStorage) - dadurch auf jedem
+// Geraet ein anderer Wert. LEGACY_KEY wird nur noch fuer die einmalige
+// Migration eines eventuell vorhandenen alten Werts in die Datenbank gelesen.
+const LEGACY_SETTINGS_KEY = 'dashboard-settings';
 
-const loadSettings = (): DashboardSettings => {
-  // Check if localStorage is available (client-side only)
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return DEFAULT_SETTINGS;
-  }
-
+const readLegacyLocalSettings = (): Partial<DashboardSettings> | null => {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return null;
   try {
-    const stored = localStorage.getItem(SETTINGS_KEY);
-    if (stored) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
-    }
-  } catch (error) {
-    console.error('Failed to load settings:', error);
-  }
-  return DEFAULT_SETTINGS;
-};
-
-const saveSettings = (settings: DashboardSettings) => {
-  // Check if localStorage is available (client-side only)
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return;
-  }
-
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch (error) {
-    console.error('Failed to save settings:', error);
+    const stored = localStorage.getItem(LEGACY_SETTINGS_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
   }
 };
 
 export default function DashboardPage() {
   const [, setLocation] = useLocation();
 
-  // Settings state
-  const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
+  // Rentenziel-Einstellungen - Wert kommt aus der Datenbank (siehe useEffect
+  // unten), vorher nur in localStorage und dadurch pro Geraet unterschiedlich.
+  const [settings, setSettings] = useState<DashboardSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [tempSettings, setTempSettings] = useState<DashboardSettings>(settings);
+  const [tempSettings, setTempSettings] = useState<DashboardSettings>(DEFAULT_SETTINGS);
+  const migratedLegacyRef = useRef(false);
 
   // Available capital for investment suggestions
   const [availableCapital, setAvailableCapital] = useState<number>(0);
 
-  // Save settings to localStorage when changed
-  useEffect(() => {
-    saveSettings(settings);
-  }, [settings]);
-  
   // Fetch data from backend
   const { data: portfolio = [], isLoading: portfolioLoading, refetch: refetchPortfolio } = trpc.portfolio.list.useQuery();
   const { data: dividends = [], isLoading: dividendsLoading } = trpc.dividends.list.useQuery({});
@@ -123,27 +104,52 @@ export default function DashboardPage() {
   const { data: taxSources = [] } = trpc.tax.listSources.useQuery();
   const { data: totalExemptionData } = trpc.tax.getTotalExemption.useQuery();
   const totalExemptionOrder = totalExemptionData?.total || 0;
+
+  // Rentenziel aus der Datenbank laden; falls dort noch nichts steht, einmalig
+  // einen eventuell vorhandenen alten localStorage-Wert dorthin uebernehmen.
+  const { data: userSettingsData } = trpc.settings.get.useQuery();
+  const saveDashboardSettings = trpc.settings.save.useMutation();
+
+  useEffect(() => {
+    if (!userSettingsData) return;
+    const hasDbValue = userSettingsData.retirementTargetSum !== null || userSettingsData.desiredPension !== null;
+    if (hasDbValue) {
+      const loaded: DashboardSettings = {
+        targetSum: userSettingsData.retirementTargetSum ?? DEFAULT_SETTINGS.targetSum,
+        desiredPension: userSettingsData.desiredPension ?? DEFAULT_SETTINGS.desiredPension,
+      };
+      setSettings(loaded);
+      setTempSettings(loaded);
+    } else if (!migratedLegacyRef.current) {
+      migratedLegacyRef.current = true;
+      const legacy = readLegacyLocalSettings();
+      if (legacy && (legacy.targetSum !== undefined || legacy.desiredPension !== undefined)) {
+        const merged: DashboardSettings = { ...DEFAULT_SETTINGS, ...legacy };
+        setSettings(merged);
+        setTempSettings(merged);
+        saveDashboardSettings.mutate({
+          retirementTargetSum: merged.targetSum,
+          desiredPension: merged.desiredPension,
+        });
+      }
+    }
+  }, [userSettingsData]);
   
   // Check if Twelve Data API key is configured
   const { data: apiKeyStatus } = trpc.prices.hasApiKey.useQuery();
-  
-  // Fetch live prices mutation (Twelve Data)
-  const fetchPricesTwelveData = trpc.prices.fetchTwelveData.useMutation({
+
+  // Vermoegensverlauf: Snapshots laden + heutigen Stand nachtragen (kein Cron noetig)
+  const { data: snapshots = [], refetch: refetchSnapshots } = trpc.snapshots.list.useQuery({});
+  const recordSnapshot = trpc.snapshots.recordIfNeeded.useMutation({
     onSuccess: (data) => {
-      const parts = [`${data.updatedCount} Kurse aktualisiert`];
-      if (data.proxyFallbackCount > 0) {
-        parts.push(`${data.proxyFallbackCount} davon über Yahoo (echter Kurs statt Näherungswert)`);
-      }
-      if (data.skippedCount > 0) {
-        parts.push(`${data.skippedCount} übersprungen (manuell oder Fremdwährung ohne Umrechnung)`);
-      }
-      toast.success(parts.join(', '));
-      refetchPortfolio();
-    },
-    onError: (error) => {
-      toast.error("Fehler beim Abrufen der Kurse: " + error.message);
+      if (data.created) refetchSnapshots();
     },
   });
+  const snapshotRecordedRef = useRef(false);
+  
+  // Fetch live prices mutation (Twelve Data) - wird in Häppchen aufgerufen,
+  // siehe handleRefreshPrices. Erfolgsmeldung kommt erst dort, gesammelt.
+  const fetchPricesTwelveData = trpc.prices.fetchTwelveData.useMutation();
   
   // Fallback: Yahoo Finance
   const fetchPricesYahoo = trpc.prices.fetch.useMutation({
@@ -159,16 +165,10 @@ export default function DashboardPage() {
     },
   });
   
-  // Depot-Struktur 2026: Zielwerte pro Baustein (Finalplan 08.07.2026, Ist nach Umbau)
+  // Depot-Zielstruktur: kommt jetzt aus einer zentralen Quelle (shared/strategy.ts)
+  // statt hier fest hinterlegt zu sein.
   // frozen = bewusste Wette, kein neues Geld — nie in Kaufempfehlungen aufnehmen
-  const STRATEGY_TARGETS = [
-    { name: 'Kern (All-World)', wkn: 'A3D7QX', targetPercent: 34, frozen: false },
-    { name: 'Anleihen (Global Agg.)', wkn: 'A2H6ZT', targetPercent: 22, frozen: false },
-    { name: 'Small Caps', wkn: 'A2DWBY', targetPercent: 13, frozen: false },
-    { name: 'KI-Wette (eingefroren)', wkn: 'A2N6LC', targetPercent: 17, frozen: true },
-    { name: 'Defence-Wette (eingefroren)', wkn: 'A3EB9T', targetPercent: 9, frozen: true },
-    { name: 'KI-Infra-Wette (eingefroren)', wkn: 'A40L9T', targetPercent: 5, frozen: true },
-  ];
+  const STRATEGY_TARGETS = DEFAULT_TARGET_ALLOCATIONS;
 
   // Calculate stats with Depot-Struktur 2026
   const stats = useMemo(() => {
@@ -249,7 +249,17 @@ export default function DashboardPage() {
       assetsByCategory,
       waveValues,
     };
-  }, [portfolio, taxSettings, totalExemptionOrder]);
+  }, [portfolio, taxSettings, totalExemptionOrder, STRATEGY_TARGETS]);
+
+  // Einmal pro Seitenaufruf den heutigen Depotwert als Snapshot nachtragen -
+  // der Server verhindert per Unique-Constraint ohnehin mehr als einen Eintrag
+  // pro Tag, der Ref hier spart nur den unnoetigen zusaetzlichen Aufruf.
+  useEffect(() => {
+    if (!snapshotRecordedRef.current && !portfolioLoading && stats.totalValue > 0) {
+      snapshotRecordedRef.current = true;
+      recordSnapshot.mutate({ totalValue: stats.totalValue, totalInvested: stats.totalInvested });
+    }
+  }, [portfolioLoading, stats.totalValue, stats.totalInvested]);
 
   // Investment suggestions based on Depot-Struktur 2026
   const investmentSuggestions = useMemo(() => {
@@ -347,19 +357,59 @@ export default function DashboardPage() {
   }, 0);
   const riskPercent = stats.totalValue > 0 ? (riskyValue / stats.totalValue) * 100 : 0;
   
-  // Handle refresh prices - prefer Twelve Data if API key is configured
-  const handleRefreshPrices = () => {
+  // Free-Plan-Limit bei Twelve Data: 8 Credits/Minute. Statt einer einzigen,
+  // minutenlangen Server-Anfrage (Timeout-Risiko bei vielen Positionen) werden
+  // hier mehrere KURZE Anfragen nacheinander geschickt, mit Pause dazwischen
+  // im Browser - der Server haelt dabei nie eine Verbindung laenger offen.
+  const TWELVE_DATA_CHUNK_SIZE = 7;
+  const CHUNK_DELAY_MS = 62000;
+  const [bulkRefreshProgress, setBulkRefreshProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const handleRefreshPrices = async () => {
     const tickers = portfolio.map(p => p.ticker);
-    if (tickers.length > 0) {
-      if (apiKeyStatus?.hasKey) {
-        fetchPricesTwelveData.mutate({ tickers });
-      } else {
-        fetchPricesYahoo.mutate({ tickers });
+    if (tickers.length === 0) return;
+
+    if (!apiKeyStatus?.hasKey) {
+      fetchPricesYahoo.mutate({ tickers });
+      return;
+    }
+
+    const chunks: string[][] = [];
+    for (let i = 0; i < tickers.length; i += TWELVE_DATA_CHUNK_SIZE) {
+      chunks.push(tickers.slice(i, i + TWELVE_DATA_CHUNK_SIZE));
+    }
+
+    let totalUpdated = 0;
+    let totalProxyFallback = 0;
+    let totalSkipped = 0;
+    let hadError = false;
+
+    for (let i = 0; i < chunks.length; i++) {
+      setBulkRefreshProgress({ done: i, total: chunks.length });
+      try {
+        const result = await fetchPricesTwelveData.mutateAsync({ tickers: chunks[i] });
+        totalUpdated += result.updatedCount;
+        totalProxyFallback += result.proxyFallbackCount;
+        totalSkipped += result.skippedCount;
+      } catch (error) {
+        hadError = true;
+        console.error('Chunk-Fehler beim Kurs-Update:', error);
+      }
+      if (i < chunks.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, CHUNK_DELAY_MS));
       }
     }
+
+    setBulkRefreshProgress(null);
+    const parts = [`${totalUpdated} Kurse aktualisiert`];
+    if (totalProxyFallback > 0) parts.push(`${totalProxyFallback} davon über Yahoo`);
+    if (totalSkipped > 0) parts.push(`${totalSkipped} übersprungen`);
+    if (hadError) parts.push('einzelne Häppchen fehlgeschlagen - erneut versuchen');
+    toast[hadError ? 'warning' : 'success'](parts.join(', '));
+    refetchPortfolio();
   };
-  
-  const isRefreshing = fetchPricesTwelveData.isPending || fetchPricesYahoo.isPending;
+
+  const isRefreshing = fetchPricesTwelveData.isPending || fetchPricesYahoo.isPending || bulkRefreshProgress !== null;
 
   const isLoading = portfolioLoading || dividendsLoading;
 
@@ -452,7 +502,13 @@ export default function DashboardPage() {
                     onClick={() => {
                       setSettings(tempSettings);
                       setSettingsOpen(false);
-                      toast.success('Einstellungen gespeichert');
+                      saveDashboardSettings.mutate({
+                        retirementTargetSum: tempSettings.targetSum,
+                        desiredPension: tempSettings.desiredPension,
+                      }, {
+                        onSuccess: () => toast.success('Einstellungen gespeichert'),
+                        onError: (error) => toast.error('Fehler beim Speichern: ' + error.message),
+                      });
                     }}
                   >
                     Speichern
@@ -467,9 +523,13 @@ export default function DashboardPage() {
               onClick={handleRefreshPrices}
               disabled={isRefreshing}
               className="touch-target text-xs sm:text-sm"
+              title={bulkRefreshProgress ? `Häppchen ${bulkRefreshProgress.done + 1} von ${bulkRefreshProgress.total} - wegen Twelve-Data-Limit mit Pausen dazwischen` : undefined}
             >
               <RefreshCw className={`w-4 h-4 mr-1 sm:mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Kurse </span>aktualisieren
+              <span className="hidden sm:inline">
+                {bulkRefreshProgress ? `${bulkRefreshProgress.done + 1}/${bulkRefreshProgress.total}...` : 'Kurse aktualisieren'}
+              </span>
+              <span className="sm:hidden">{bulkRefreshProgress ? `${bulkRefreshProgress.done + 1}/${bulkRefreshProgress.total}` : 'aktualisieren'}</span>
             </Button>
             <Button
               variant="default"
@@ -567,7 +627,9 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-base sm:text-lg text-cyan-400">Rebalancing - Depot-Struktur 2026</h3>
-                    <p className="text-xs text-muted-foreground">All-World 34% | Anleihen 22% | Small Caps 13% | KI 17% | Defence 9% | KI-Infra 5%</p>
+                    <p className="text-xs text-muted-foreground">
+                      {STRATEGY_TARGETS.map((t: { shortLabel?: string; name: string; targetPercent: number }) => `${t.shortLabel || t.name} ${t.targetPercent}%`).join(' | ')}
+                    </p>
                   </div>
                 </div>
 
@@ -914,6 +976,51 @@ export default function DashboardPage() {
             </Card>
           </motion.div>
         )}
+
+        {/* Vermögensverlauf */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55 }}
+        >
+          <Card className="glass-card">
+            <CardHeader className="p-3 sm:p-6 pb-2 sm:pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                Vermögensverlauf
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 sm:p-6 pt-0">
+              {snapshots.length >= 2 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={snapshots.map((s) => ({
+                    date: new Date(s.snapshotDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
+                    Depotwert: s.totalValue,
+                    Eingezahlt: s.totalInvested,
+                  }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.01 285)" />
+                    <XAxis dataKey="date" stroke="oklch(0.5 0.01 285)" />
+                    <YAxis tickFormatter={(v) => formatCurrency(v)} stroke="oklch(0.5 0.01 285)" width={80} />
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                      contentStyle={{
+                        backgroundColor: 'oklch(0.15 0.01 285)',
+                        border: '1px solid oklch(0.3 0.01 285)',
+                        borderRadius: '8px',
+                      }}
+                    />
+                    <Line type="monotone" dataKey="Depotwert" stroke="oklch(0.75 0.15 195)" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="Eingezahlt" stroke="oklch(0.5 0.01 285)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[200px] flex items-center justify-center text-center text-sm text-muted-foreground px-4">
+                  Noch nicht genug Daten für einen Verlauf — jeder Besuch des Dashboards trägt automatisch den heutigen Stand nach. In ein paar Tagen sehen Sie hier die Entwicklung.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">

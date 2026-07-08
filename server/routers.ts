@@ -54,9 +54,12 @@ import {
   createLossCarryforward,
   updateLossCarryforward,
   deleteLossCarryforward,
+  recordSnapshotIfNeeded,
+  getPortfolioSnapshots,
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
 import { getEurUsdRate } from "./currency";
+import { DEFAULT_TARGET_ALLOCATIONS } from "@shared/strategy";
 import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningHistory } from "./tech-warning";
 
 export const appRouter = router({
@@ -425,6 +428,21 @@ export const appRouter = router({
     }),
   }),
 
+  // Vermoegensverlauf - kein Cron, wird beim Oeffnen des Dashboards nachgetragen
+  snapshots: router({
+    recordIfNeeded: protectedProcedure
+      .input(z.object({ totalValue: z.number(), totalInvested: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return recordSnapshotIfNeeded(ctx.user.id, input.totalValue, input.totalInvested);
+      }),
+
+    list: protectedProcedure
+      .input(z.object({ days: z.number().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        return getPortfolioSnapshots(ctx.user.id, input?.days);
+      }),
+  }),
+
   // AI Assistant
   ai: router({
     analyzePortfolio: protectedProcedure.mutation(async ({ ctx }) => {
@@ -484,54 +502,24 @@ export const appRouter = router({
 
     // Template Management
     listTemplates: protectedProcedure.query(async () => {
-      console.log('📋 listTemplates called');
-
       try {
-        const { aiQuestionTemplates } = await import('../drizzle/schema');
         const { getDb } = await import('./db');
         const { sql } = await import('drizzle-orm');
 
         const db = await getDb();
-        if (!db) {
-          console.error('❌ listTemplates: Database not available');
-          return [];
-        }
+        if (!db) return [];
 
-        console.log('✓ Database connection OK');
-
-        // Use raw SQL to avoid type mismatch with TINYINT(1) vs boolean
-        console.log('🔍 Executing query: SELECT * FROM ai_question_templates WHERE isActive = 1 ORDER BY sortOrder');
-
+        // Raw SQL, um Typ-Mismatch TINYINT(1) vs boolean zu umgehen
         const result = await db.execute(sql`
           SELECT * FROM ai_question_templates
           WHERE isActive = 1
           ORDER BY sortOrder
         `);
 
-        console.log('✓ Query executed successfully');
-        console.log('📊 Raw result type:', typeof result);
-        console.log('📊 Result is array:', Array.isArray(result));
-        console.log('📊 Result length:', result ? result.length : 'null');
-        console.log('📊 Result[0] type:', typeof result[0]);
-        console.log('📊 Result[0] is array:', Array.isArray(result[0]));
-        console.log('📊 Result[0] length:', result[0] ? (result[0] as any).length : 'null');
-
         // MySQL2 returns [rows, fields] - we need the first element
-        const rows = Array.isArray(result[0]) ? result[0] : [];
-        console.log(`✅ Returning ${rows.length} templates`);
-
-        if (rows.length > 0) {
-          console.log('📝 First template:', JSON.stringify(rows[0], null, 2));
-        }
-
-        return rows;
+        return Array.isArray(result[0]) ? result[0] : [];
       } catch (error: any) {
-        console.error('❌❌❌ listTemplates ERROR:', error);
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-        console.error('Error code:', error.code);
-        console.error('Error sqlMessage:', error.sqlMessage);
-
+        console.error('listTemplates error:', error.message);
         // Return empty array instead of throwing to prevent 500 error
         return [];
       }
@@ -711,13 +699,7 @@ export const appRouter = router({
           ];
 
           // Step 1: Drop and recreate table with correct schema
-          console.log('');
-          console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
-          console.log('!!! RESET NUR DURCH BUTTON !!!');
-          console.log('!!! resetTemplates mutation wurde aufgerufen !!!');
-          console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
-          console.log('');
-          console.log('Dropping ai_question_templates table...');
+          console.log('[resetTemplates] Dropping ai_question_templates table...');
           await db.execute(sql`DROP TABLE IF EXISTS ai_question_templates`);
 
           console.log('Recreating ai_question_templates table...');
@@ -1020,19 +1002,13 @@ export const appRouter = router({
 
         let updated = 0;
         const errors: string[] = [];
-        // 1 API call per stock (time_series with 200 data points)
-        // Free tier: 8 calls/minute → process up to 8 per batch
-        const batchSize = 8;
-
-        for (let i = 0; i < entries.length; i += batchSize) {
-          const batch = entries.slice(i, i + batchSize);
-
-          if (i > 0) {
-            console.log('[Ampel] Warte 62s für nächsten Batch...');
-            await new Promise(r => setTimeout(r, 62000));
-          }
-
-          for (const entry of batch) {
+        // 1 API-Aufruf pro Aktie (time_series, 200 Datenpunkte). Free-Plan: 8/Minute.
+        // Diese Funktion verarbeitet die uebergebenen Eintraege in EINEM Rutsch ohne
+        // Wartezeit - fuer "alle aktualisieren" ruft der Client diese Funktion mehrfach
+        // mit Haeppchen von je AMPEL_MAX_ENTRIES_PER_CALL Eintraegen auf und pausiert
+        // selbst dazwischen. So bleibt jede einzelne Server-Anfrage kurz (kein
+        // Timeout-Risiko mehr bei vielen Eintraegen).
+        for (const entry of entries) {
             try {
               const { convertTickerForTwelveData } = await import('./services');
               const converted = convertTickerForTwelveData(entry.ticker);
@@ -1106,7 +1082,6 @@ export const appRouter = router({
               console.error(`[Ampel] Fehler bei ${entry.ticker}:`, err);
               errors.push(entry.name || entry.ticker);
             }
-          }
         }
 
         const errMsg = errors.length > 0 ? ` (${errors.join(', ')} nicht gefunden)` : '';
@@ -1131,6 +1106,8 @@ export const appRouter = router({
           targetPercent: z.number(),
           description: z.string().optional(),
         })).optional(),
+        retirementTargetSum: z.number().optional(),
+        desiredPension: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         return saveUserSettings(ctx.user.id, input);
@@ -1267,15 +1244,9 @@ export const appRouter = router({
           return sum + (pos.amount * price);
         }, 0);
 
-        // 3. Define individual ETF targets (Depot-Struktur final 08.07.2026: 34/22/13/17/9/5)
-        const individualETFTargets = [
-          { wkn: 'A3D7QX', name: 'FTSE All-World',            targetPercent: 34 },
-          { wkn: 'A2H6ZT', name: 'Global Aggregate Bond',     targetPercent: 22 },
-          { wkn: 'A2DWBY', name: 'World Small Cap',           targetPercent: 13 },
-          { wkn: 'A2N6LC', name: 'KI-Wette (eingefroren)',    targetPercent: 17 },
-          { wkn: 'A3EB9T', name: 'Defence-Wette (eingefroren)', targetPercent: 9 },
-          { wkn: 'A40L9T', name: 'KI-Infra-Wette (eingefroren)', targetPercent: 5 },
-        ];
+        // 3. Ziel-Allokation aus der zentralen Quelle (shared/strategy.ts) -
+        // nicht mehr hier fest hinterlegt.
+        const individualETFTargets = DEFAULT_TARGET_ALLOCATIONS;
 
         // 4. Find matching positions by WKN and calculate deficits
         const etfDeficits: any[] = [];
@@ -1298,6 +1269,7 @@ export const appRouter = router({
           etfDeficits.push({
             wkn: etfTarget.wkn,
             name: etfTarget.name,
+            frozen: (etfTarget as any).frozen === true,
             currentValue,
             currentPercent,
             targetPercent: etfTarget.targetPercent,
@@ -1309,9 +1281,11 @@ export const appRouter = router({
           });
         });
 
-        // 5. Sort into underweight and overweight
+        // 5. Sort into underweight and overweight - eingefrorene Wetten NIE als
+        // Kaufempfehlung vorschlagen, auch wenn sie untergewichtet sind (bewusste
+        // Wette, kein neues Geld - siehe Finalplan).
         const underweightGroups = etfDeficits
-          .filter(g => g.isUnderweight)
+          .filter(g => g.isUnderweight && !g.frozen)
           .sort((a, b) => a.difference - b.difference);
 
         const overweightGroups = etfDeficits

@@ -59,6 +59,11 @@ const faqData: FAQItem[] = [
   },
   {
     category: "dashboard",
+    question: "Was ist der Vermögensverlauf?",
+    answer: "Seit dem 08.07.2026 speichert das Dashboard jeden Tag, an dem Sie es öffnen, automatisch Ihren Depotwert. Nach ein paar Tagen erscheint darüber ein Verlaufs-Diagramm mit zwei Linien: der tatsächliche Depotwert und das, was Sie eingezahlt haben. Der Abstand zwischen beiden Linien zeigt Ihren Gewinn/Verlust über Zeit. Es ist kein separater Knopf nötig — der heutige Stand wird beim Öffnen der Seite automatisch nachgetragen, höchstens einmal pro Tag."
+  },
+  {
+    category: "dashboard",
     question: "Was bedeutet die Risiko-Warnung?",
     answer: "Die Risiko-Warnung erscheint, wenn Ihr Portfolio einen hohen Anteil risikoreicher Positionen enthält (z.B. Biotech, Krypto). Empfohlen sind maximal 30% für eine ausgewogene Diversifikation."
   },
@@ -240,20 +245,15 @@ const faqData: FAQItem[] = [
   },
   {
     category: "einstellungen",
-    question: "Was macht 'Alle Daten löschen'?",
-    answer: "ACHTUNG: Dieser Button löscht ALLES — Portfolio, Watchlist, Dividenden, Transaktionen, Einstellungen. Nur verwenden, wenn Sie komplett von vorne anfangen möchten. Vorher unbedingt einen Export machen!"
-  },
-  {
-    category: "einstellungen",
     question: "Wie exportiere ich meine Daten als Backup?",
-    answer: "Auf der Einstellungen-Seite finden Sie den 'Daten exportieren' Button. Der Export enthält Ihr gesamtes Portfolio, Transaktionen und Einstellungen als JSON-Datei. Machen Sie regelmäßig Backups!"
+    answer: "Auf der Einstellungen-Seite finden Sie den 'Daten exportieren' Button. Der Export enthält seit dem 08.07.2026 ALLES als JSON-Datei: Portfolio, Watchlist, Dividenden, Transaktionshistorie, Notizen, Sparpläne und Einstellungen. Machen Sie regelmäßig Backups! Ein 'Alle Daten löschen'-Button existiert bewusst nicht — Datenlöschung ist eine zu große Entscheidung für einen einzelnen Klick."
   },
 
   // Technisches
   {
     category: "technisch",
     question: "Woher kommen die Kursdaten?",
-    answer: "Die Kursdaten werden über Yahoo Finance (Echtzeit-Kurse) und Twelve Data (SMA-Berechnung für die Ampel) abgerufen. Die Frühwarnsystem-Daten kommen zusätzlich von FRED (US-Notenbank) für Zinsen und Inflation."
+    answer: "Kurse aktualisieren nutzt Twelve Data für Ihre Depot-Positionen (bei ausländischen ETFs, wo Twelve Data nur einen anderen Fonds als Näherung liefern könnte, springt automatisch Yahoo Finance mit dem echten Ticker ein) oder Yahoo Finance direkt, falls kein Twelve-Data-Schlüssel hinterlegt ist. Die Aktien-Ampel nutzt für SMA 50/200 immer Twelve Data. Die Frühwarnsystem-Daten kommen zusätzlich von FRED (US-Notenbank) für Zinsen und Inflation."
   },
   {
     category: "technisch",

@@ -17,9 +17,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { trpc } from '@/lib/trpc';
+import { DEFAULT_TARGET_ALLOCATIONS } from '@shared/strategy';
 import { toast } from 'sonner';
 import {
-  Target, Pencil, TrendingUp, PieChart, 
+  Target, Pencil, TrendingUp, PieChart,
   ArrowRight, Wallet, ArrowUpRight, ArrowDownRight, Scale,
   CheckCircle2, AlertTriangle, Info, Sparkles, Loader2, Save
 } from 'lucide-react';
@@ -52,15 +53,17 @@ const formatPercent = (value: number) => {
   return `${value.toFixed(1)}%`;
 };
 
-// Depot-Struktur 2026: Ziel-Allokationen (Finalplan 08.07.2026, Ist nach Umbau)
-const DEFAULT_ALLOCATIONS = [
-  { category: 'Kern (All-World)', targetPercent: 34, description: 'Invesco FTSE All-World — ganze Welt inkl. EM, Sparplan 750 € (WKN: A3D7QX)' },
-  { category: 'Anleihen (Global Aggregate)', targetPercent: 22, description: 'Weltweite Anleihen EUR-hedged — Krisenpuffer, Sparplan 550 € (WKN: A2H6ZT)' },
-  { category: 'Small Caps', targetPercent: 13, description: 'MSCI World Small Cap — echte Ergänzung, Sparplan 100 € (WKN: A2DWBY)' },
-  { category: 'KI-Wette (eingefroren)', targetPercent: 17, description: 'Xtrackers AI & Big Data — kein neues Geld, Ampel-Backstop + Kill-Kriterien (WKN: A2N6LC)' },
-  { category: 'Defence-Wette (eingefroren)', targetPercent: 9, description: 'Future of Defence — kein neues Geld, Ampel-Backstop (WKN: A3EB9T)' },
-  { category: 'KI-Infra-Wette (eingefroren)', targetPercent: 5, description: 'iShares AI Infrastructure — kein neues Geld, Ampel-Backstop, Wiedervorlage Jan 2027 (WKN: A40L9T)' },
-];
+// Startwerte kommen aus shared/strategy.ts (einzige Quelle fuer die Prozente).
+// Diese Seite gruppiert intern weiterhin nach dem freien "category"-Textfeld
+// jeder Position (nicht nach WKN) - das bleibt bewusst so, ist aber deshalb
+// eine ANDERE Datenstruktur als bei Dashboard/Rebalancing und wird separat
+// in den Einstellungen gespeichert (userSettings.targetAllocations), damit
+// sich beide Systeme nicht gegenseitig ueberschreiben.
+const DEFAULT_ALLOCATIONS = DEFAULT_TARGET_ALLOCATIONS.map((t) => ({
+  category: t.name,
+  targetPercent: t.targetPercent,
+  description: `${t.description} (WKN: ${t.wkn})`,
+}));
 
 export default function StrategiePage() {
   const [isEditTargetOpen, setIsEditTargetOpen] = useState(false);
@@ -134,19 +137,6 @@ export default function StrategiePage() {
       const rates: Record<string, number> = {};
       const etfTickers = etfPositions.map(etf => etf.ticker);
       
-      // Debug: Log all savings plans
-      console.log('🔍 DEBUG: All savings plans from DB:', savingsPlans.map(p => ({
-        ticker: p.ticker,
-        name: p.name,
-        amount: p.monthlyAmount
-      })));
-      
-      // Debug: Log current ETF positions
-      console.log('🔍 DEBUG: Current ETF positions:', etfPositions.map(e => ({
-        ticker: e.ticker,
-        name: e.name
-      })));
-      
       // Only load rates for ETFs that are currently in portfolio
       savingsPlans.forEach(plan => {
         if (etfTickers.includes(plan.ticker)) {
@@ -155,10 +145,6 @@ export default function StrategiePage() {
           console.warn(`⚠️ Found orphaned savings plan for ticker "${plan.ticker}" (${plan.name}) with ${plan.monthlyAmount}€ - will be cleaned up on next save`);
         }
       });
-      
-      // Debug: Log filtered rates
-      console.log('🔍 DEBUG: Filtered etfSparRates:', rates);
-      console.log('🔍 DEBUG: Total of filtered rates:', Object.values(rates).reduce((sum, val) => sum + val, 0));
       
       setEtfSparRates(rates);
     }

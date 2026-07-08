@@ -26,8 +26,8 @@ import {
 
 export default function EinstellungenPage() {
   const { user } = useAuth();
+  const utils = trpc.useUtils();
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
   const [jsonInput, setJsonInput] = useState('');
   
@@ -262,39 +262,23 @@ export default function EinstellungenPage() {
     }
   };
   
-  const handleExportJSON = () => {
-    const exportData = {
-      portfolio: portfolio.map(p => ({
-        wkn: p.wkn,
-        ticker: p.ticker,
-        name: p.name,
-        type: p.type,
-        category: p.category,
-        amount: p.amount,
-        buyPrice: p.buyPrice,
-        currentPrice: p.currentPrice,
-        status: p.status,
-        notes: p.notes,
-      })),
-      watchlist: watchlist.map(w => ({
-        ticker: w.ticker,
-        name: w.name,
-        currentPrice: w.currentPrice,
-        targetPrice: w.targetPrice,
-        notes: w.notes,
-      })),
-      exportDate: new Date().toISOString(),
-      version: '2.0',
-    };
-    
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `finanzplaner_backup_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast.success('Backup exportiert');
+  // Nutzt den vollstaendigen Server-Export (Portfolio, Watchlist, Dividenden,
+  // Transaktionen, Notizen, Sparplaene, Einstellungen) statt vorher nur
+  // Portfolio+Watchlist client-seitig zusammenzubauen.
+  const handleExportJSON = async () => {
+    try {
+      const exportData = await utils.portfolio.export.fetch();
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `finanzplaner_backup_${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Vollständiges Backup exportiert (Portfolio, Watchlist, Dividenden, Transaktionen, Notizen, Sparpläne, Einstellungen)');
+    } catch (error) {
+      toast.error('Fehler beim Export: ' + (error instanceof Error ? error.message : 'Unbekannter Fehler'));
+    }
   };
   
   const handleSetPin = () => {
@@ -1118,37 +1102,6 @@ export default function EinstellungenPage() {
                 Transaktionshistorie leeren
               </Button>
             </div>
-            <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="destructive" size="sm">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Alle Daten löschen
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Alle Daten löschen?</DialogTitle>
-                  <DialogDescription>
-                    Diese Aktion löscht alle Ihre Portfolio-Positionen, Watchlist-Einträge und Dividenden.
-                    Diese Aktion kann nicht rückgängig gemacht werden.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
-                    Abbrechen
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      toast.info('Funktion noch nicht implementiert');
-                      setIsDeleteDialogOpen(false);
-                    }}
-                  >
-                    Ja, alle Daten löschen
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
           </CardContent>
         </Card>
       </div>

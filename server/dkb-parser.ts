@@ -15,14 +15,23 @@ export interface DKBTransaction {
   category: string | null;
 }
 
+import { DEFAULT_TARGET_ALLOCATIONS } from "../shared/strategy";
+
 /**
- * WKN → Strategy category mapping (Depot-Struktur final 08.07.2026: 34/22/13/17/9/5)
+ * WKN → Strategy category mapping. Die Prozentzahlen fuer die aktiven
+ * Bausteine kommen aus shared/strategy.ts (einzige Quelle) statt hier
+ * ein zweites Mal fest eingetragen zu sein.
  */
+const activeLabel = (wkn: string): string => {
+  const target = DEFAULT_TARGET_ALLOCATIONS.find((t) => t.wkn === wkn);
+  return target ? `${target.shortLabel} ${target.targetPercent}%` : 'Unbekannt';
+};
+
 const WKN_STRATEGY_MAP: Record<string, string> = {
-  // Depot-Struktur 2026
-  'A3D7QX': 'Kern 34%',
-  'A2H6ZT': 'Anleihen 22%',
-  'A2DWBY': 'Small Caps 13%',
+  // Depot-Struktur 2026 (aktive Bausteine)
+  'A3D7QX': activeLabel('A3D7QX'),
+  'A2H6ZT': activeLabel('A2H6ZT'),
+  'A2DWBY': activeLabel('A2DWBY'),
   // Eingefroren (Halten, kein aktiver Kauf)
   'A2N6LC': 'Eingefroren',
   'A3EB9T': 'Eingefroren',

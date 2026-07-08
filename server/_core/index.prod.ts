@@ -109,6 +109,54 @@ async function runDatabaseMigration() {
     console.error('⚠️  Error creating stock_traffic_light table:', stlError?.message || stlError);
   }
 
+  // === Vermoegensverlauf: portfolio_snapshots Tabelle sicherstellen ===
+  try {
+    console.log('🔍 Checking portfolio_snapshots table...');
+    const snapConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await snapConn.query(`
+        CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          snapshotDate VARCHAR(10) NOT NULL,
+          totalValue DECIMAL(18,2) NOT NULL,
+          totalInvested DECIMAL(18,2) NOT NULL,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          UNIQUE KEY portfolio_snapshots_user_date (userId, snapshotDate)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ portfolio_snapshots table ready');
+    } finally {
+      await snapConn.end();
+    }
+  } catch (snapError: any) {
+    console.error('⚠️  Error creating portfolio_snapshots table:', snapError?.message || snapError);
+  }
+
+  // === Rentenziel-Spalten in user_settings sicherstellen (vorher nur localStorage) ===
+  try {
+    console.log('🔍 Checking retirementTargetSum/desiredPension columns...');
+    const retConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      const [cols]: any = await retConn.query(`
+        SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_settings'
+      `);
+      const existing = new Set((cols as any[]).map((c) => c.COLUMN_NAME));
+      if (!existing.has('retirementTargetSum')) {
+        await retConn.query(`ALTER TABLE user_settings ADD COLUMN retirementTargetSum DECIMAL(18,2)`);
+      }
+      if (!existing.has('desiredPension')) {
+        await retConn.query(`ALTER TABLE user_settings ADD COLUMN desiredPension DECIMAL(18,2)`);
+      }
+      console.log('✅ Rentenziel-Spalten bereit');
+    } finally {
+      await retConn.end();
+    }
+  } catch (retError: any) {
+    console.error('⚠️  Error ensuring retirement columns:', retError?.message || retError);
+  }
+
   // === Fix UNIQUE constraint: remove global unique, add per-user composite ===
   // Sparplan-PDFs teilen sich dieselbe Auftragsnummer, Duplikat-Prüfung läuft jetzt per User im Code
   try {

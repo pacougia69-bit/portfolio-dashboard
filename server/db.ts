@@ -564,20 +564,31 @@ export async function getUserSettings(userId: number) {
     ...result[0],
     monthlyBudget: Number(result[0].monthlyBudget),
     targetAllocations: result[0].targetAllocations as any[] || null,
+    retirementTargetSum: result[0].retirementTargetSum !== null && result[0].retirementTargetSum !== undefined
+      ? Number(result[0].retirementTargetSum) : null,
+    desiredPension: result[0].desiredPension !== null && result[0].desiredPension !== undefined
+      ? Number(result[0].desiredPension) : null,
   };
 }
 
-export async function saveUserSettings(userId: number, data: { monthlyBudget?: number; targetAllocations?: any[] }) {
+export async function saveUserSettings(userId: number, data: {
+  monthlyBudget?: number;
+  targetAllocations?: any[];
+  retirementTargetSum?: number;
+  desiredPension?: number;
+}) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
+
   const existing = await getUserSettings(userId);
-  
+
   if (existing) {
     const updateData: Record<string, unknown> = {};
     if (data.monthlyBudget !== undefined) updateData.monthlyBudget = String(data.monthlyBudget);
     if (data.targetAllocations !== undefined) updateData.targetAllocations = data.targetAllocations;
-    
+    if (data.retirementTargetSum !== undefined) updateData.retirementTargetSum = String(data.retirementTargetSum);
+    if (data.desiredPension !== undefined) updateData.desiredPension = String(data.desiredPension);
+
     await db.update(userSettings)
       .set(updateData)
       .where(eq(userSettings.userId, userId));
@@ -586,9 +597,11 @@ export async function saveUserSettings(userId: number, data: { monthlyBudget?: n
       userId,
       monthlyBudget: data.monthlyBudget ? String(data.monthlyBudget) : "500",
       targetAllocations: data.targetAllocations || null,
+      retirementTargetSum: data.retirementTargetSum !== undefined ? String(data.retirementTargetSum) : null,
+      desiredPension: data.desiredPension !== undefined ? String(data.desiredPension) : null,
     });
   }
-  
+
   return { success: true };
 }
 
@@ -1265,4 +1278,54 @@ export async function deleteTrafficLightEntry(userId: number, id: number) {
     .where(and(eq(stockTrafficLight.id, id), eq(stockTrafficLight.userId, userId)));
 
   return { success: true };
+}
+
+/**
+ * Vermoegensverlauf: legt hoechstens EINEN Eintrag pro Kalendertag an.
+ * Kein Cron noetig - wird beim Oeffnen des Dashboards aufgerufen; die
+ * UNIQUE-Constraint (userId, snapshotDate) verhindert Duplikate, auch wenn
+ * die Funktion mehrfach am selben Tag aufgerufen wird.
+ */
+export async function recordSnapshotIfNeeded(userId: number, totalValue: number, totalInvested: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { portfolioSnapshots } = await import('../drizzle/schema');
+  const today = new Date().toISOString().split('T')[0]; // 'YYYY-MM-DD'
+
+  try {
+    await db.insert(portfolioSnapshots).values({
+      userId,
+      snapshotDate: today,
+      totalValue: String(totalValue),
+      totalInvested: String(totalInvested),
+    });
+    return { created: true };
+  } catch (error: any) {
+    if (error?.code === 'ER_DUP_ENTRY' || String(error?.message || '').includes('Duplicate entry')) {
+      // Heute gab es schon einen Eintrag - kein Fehler, einfach nichts tun.
+      return { created: false };
+    }
+    throw error;
+  }
+}
+
+export async function getPortfolioSnapshots(userId: number, days: number = 730) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { portfolioSnapshots } = await import('../drizzle/schema');
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+
+  const result = await db.select().from(portfolioSnapshots)
+    .where(and(eq(portfolioSnapshots.userId, userId), gte(portfolioSnapshots.snapshotDate, cutoffStr)))
+    .orderBy(asc(portfolioSnapshots.snapshotDate));
+
+  return result.map(s => ({
+    ...s,
+    totalValue: Number(s.totalValue),
+    totalInvested: Number(s.totalInvested),
+  }));
 }

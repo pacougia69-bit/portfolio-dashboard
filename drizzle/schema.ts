@@ -152,6 +152,9 @@ export const userSettings = mysqlTable("user_settings", {
   userId: int("userId").notNull().unique(),
   monthlyBudget: decimal("monthlyBudget", { precision: 18, scale: 2 }).default("500"),
   targetAllocations: json("targetAllocations"),
+  // Rentenziel (Dashboard) - vorher nur in localStorage, dadurch pro Geraet unterschiedlich
+  retirementTargetSum: decimal("retirementTargetSum", { precision: 18, scale: 2 }),
+  desiredPension: decimal("desiredPension", { precision: 18, scale: 2 }),
   // PIN-Sperre Einstellungen
   pinEnabled: boolean("pinEnabled").default(false),
   pinHash: varchar("pinHash", { length: 128 }),
@@ -325,4 +328,21 @@ export const techWarningSignals = mysqlTable("tech_warning_signals", {
 
 export type TechWarningSignal = typeof techWarningSignals.$inferSelect;
 export type InsertTechWarningSignal = typeof techWarningSignals.$inferInsert;
+
+/**
+ * Vermoegensverlauf - ein Eintrag pro Tag, an dem das Dashboard geoeffnet wurde
+ * (kein Cron noetig: wird beim Laden des Dashboards automatisch nachgetragen,
+ * hoechstens ein Eintrag pro Kalendertag)
+ */
+export const portfolioSnapshots = mysqlTable("portfolio_snapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  snapshotDate: varchar("snapshotDate", { length: 10 }).notNull(), // 'YYYY-MM-DD'
+  totalValue: decimal("totalValue", { precision: 18, scale: 2 }).notNull(),
+  totalInvested: decimal("totalInvested", { precision: 18, scale: 2 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PortfolioSnapshot = typeof portfolioSnapshots.$inferSelect;
+export type InsertPortfolioSnapshot = typeof portfolioSnapshots.$inferInsert;
 

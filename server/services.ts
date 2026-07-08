@@ -181,7 +181,15 @@ export function convertTickerForTwelveData(ticker: string): { symbol: string; ex
   return { symbol: ticker };
 }
 
-// Fetch live prices from Twelve Data API
+// Free-Plan-Limit: 8 API-Credits/Minute. Der Aufrufer (Client) schickt hoechstens
+// so viele Ticker pro Aufruf und pausiert selbst zwischen mehreren Haeppchen -
+// dadurch bleibt JEDE einzelne Server-Anfrage kurz (keine Minuten-langen
+// Wartezeiten mehr innerhalb einer HTTP-Anfrage, die sonst in einen Browser-
+// oder Railway-Timeout laufen koennten).
+export const TWELVE_DATA_MAX_TICKERS_PER_CALL = 7;
+
+// Fetch live prices from Twelve Data API - verarbeitet GENAU EINEN Haeppchen
+// (keine interne Schleife/Wartezeit mehr, siehe TWELVE_DATA_MAX_TICKERS_PER_CALL)
 export async function fetchLivePricesTwelveData(
   tickers: string[],
   apiKey: string
@@ -195,7 +203,7 @@ export async function fetchLivePricesTwelveData(
   // liefern kann, werden hier gar nicht erst angefragt - der echte Kurs kommt
   // stattdessen ueber Yahoo Finance (Aufrufer kuemmert sich darum).
   const skippedAsProxy = tickers.filter((t) => PROXY_ONLY_TICKERS.has(t));
-  const safeTickers = tickers.filter((t) => !PROXY_ONLY_TICKERS.has(t));
+  const safeTickers = tickers.filter((t) => !PROXY_ONLY_TICKERS.has(t)).slice(0, TWELVE_DATA_MAX_TICKERS_PER_CALL);
 
   if (!apiKey) {
     console.error("Twelve Data API key not provided");
@@ -205,99 +213,73 @@ export async function fetchLivePricesTwelveData(
     return { results, skippedAsProxy };
   }
 
-  // Get EUR/USD rate for conversion
   const eurUsdRate = await getEurUsdRate(apiKey);
 
-  // Process tickers in smaller batches to respect rate limits
-  // Free tier: 8 API credits per minute, each symbol in a batch counts as 1 credit
-  // Using batch size of 7 to leave room for EUR/USD rate fetch
-  const batchSize = 7;
-  const batchDelayMs = 62000; // Wait 62 seconds between batches to reset rate limit
+  const symbolsForApi = safeTickers.map(t => {
+    const converted = convertTickerForTwelveData(t);
+    return converted.exchange ? `${converted.symbol}:${converted.exchange}` : converted.symbol;
+  });
 
-  console.log(`Starting price update for ${safeTickers.length} tickers in ${Math.ceil(safeTickers.length / batchSize)} batches`);
+  try {
+    console.log(`Fetching prices for: ${symbolsForApi.join(', ')}`);
 
-  for (let i = 0; i < safeTickers.length; i += batchSize) {
-    const batch = safeTickers.slice(i, i + batchSize);
-    const batchNumber = Math.floor(i / batchSize) + 1;
-    const totalBatches = Math.ceil(safeTickers.length / batchSize);
-    
-    console.log(`Processing batch ${batchNumber}/${totalBatches}...`);
-    
-    // Build symbols string
-    const symbolsForApi = batch.map(t => {
-      const converted = convertTickerForTwelveData(t);
-      return converted.exchange ? `${converted.symbol}:${converted.exchange}` : converted.symbol;
-    });
-    
-    try {
-      // Log what we're requesting
-      console.log(`Fetching prices for: ${symbolsForApi.join(', ')}`);
-      
-      // Fetch quotes for batch
-      const response = await fetch(
-        `https://api.twelvedata.com/quote?symbol=${symbolsForApi.join(',')}&apikey=${apiKey}`
-      );
-      
-      if (!response.ok) {
-        console.warn(`Twelve Data API error: ${response.status}`);
-        continue;
-      }
-      
-      const data = await response.json();
-      console.log('Twelve Data response:', JSON.stringify(data).substring(0, 500));
-      
-      // Handle single vs multiple results
-      const quotes = symbolsForApi.length === 1 ? { [symbolsForApi[0]]: data } : data;
-      
-      for (let j = 0; j < batch.length; j++) {
-        const originalTicker = batch[j];
-        const apiSymbol = symbolsForApi[j];
-        const quote = quotes[apiSymbol];
-        
-        if (quote && !quote.code && quote.close) {
-          const price = parseFloat(quote.close);
-          const previousClose = parseFloat(quote.previous_close) || price;
-          const changePercent = previousClose ? ((price - previousClose) / previousClose) * 100 : 0;
-          const currency = quote.currency || 'USD';
+    const response = await fetch(
+      `https://api.twelvedata.com/quote?symbol=${symbolsForApi.join(',')}&apikey=${apiKey}`
+    );
 
-          // Umrechnung nach EUR - nur USD ist unterstuetzt. Bei jeder anderen
-          // Fremdwaehrung (z.B. CAD, GBP, CHF) den Kurs NICHT uebernehmen,
-          // statt den Fremdwaehrungsbetrag faelschlich 1:1 als Euro zu speichern.
-          let priceEur: number | null = price;
-          if (currency === 'USD') {
-            priceEur = price / eurUsdRate;
-          } else if (currency !== 'EUR') {
-            console.warn(`[Prices] ${originalTicker}: Waehrung ${currency} wird nicht unterstuetzt - Kurs wird NICHT uebernommen (bisheriger Wert bleibt stehen)`);
-            priceEur = null;
-          }
-
-          if (priceEur === null) {
-            continue;
-          }
-
-          results.push({
-            ticker: originalTicker,
-            price,
-            changePercent,
-            currency,
-            priceEur,
-          });
-
-          // Update cache with EUR price
-          await updatePriceCache(originalTicker, priceEur, changePercent);
-        } else if (quote?.code) {
-          console.warn(`Twelve Data error for ${originalTicker}: ${quote.message}`);
-        }
-      }
-      
-      // Rate limiting - wait between batches (62 seconds to reset API credits)
-      if (i + batchSize < safeTickers.length) {
-        console.log(`Waiting 62 seconds for API rate limit reset before next batch...`);
-        await new Promise(resolve => setTimeout(resolve, batchDelayMs));
-      }
-    } catch (error) {
-      console.error(`Error fetching prices from Twelve Data:`, error);
+    if (!response.ok) {
+      console.warn(`Twelve Data API error: ${response.status}`);
+      return { results, skippedAsProxy };
     }
+
+    const data = await response.json();
+    console.log('Twelve Data response:', JSON.stringify(data).substring(0, 500));
+
+    // Handle single vs multiple results
+    const quotes = symbolsForApi.length === 1 ? { [symbolsForApi[0]]: data } : data;
+
+    for (let j = 0; j < safeTickers.length; j++) {
+      const originalTicker = safeTickers[j];
+      const apiSymbol = symbolsForApi[j];
+      const quote = quotes[apiSymbol];
+
+      if (quote && !quote.code && quote.close) {
+        const price = parseFloat(quote.close);
+        const previousClose = parseFloat(quote.previous_close) || price;
+        const changePercent = previousClose ? ((price - previousClose) / previousClose) * 100 : 0;
+        const currency = quote.currency || 'USD';
+
+        // Umrechnung nach EUR - nur USD ist unterstuetzt. Bei jeder anderen
+        // Fremdwaehrung (z.B. CAD, GBP, CHF) den Kurs NICHT uebernehmen,
+        // statt den Fremdwaehrungsbetrag faelschlich 1:1 als Euro zu speichern.
+        let priceEur: number | null = price;
+        if (currency === 'USD') {
+          priceEur = price / eurUsdRate;
+        } else if (currency !== 'EUR') {
+          console.warn(`[Prices] ${originalTicker}: Waehrung ${currency} wird nicht unterstuetzt - Kurs wird NICHT uebernommen (bisheriger Wert bleibt stehen)`);
+          priceEur = null;
+        }
+
+        if (priceEur === null) {
+          continue;
+        }
+
+        results.push({
+          ticker: originalTicker,
+          price,
+          changePercent,
+          currency,
+          priceEur,
+        });
+
+        // Update cache with EUR price
+        await updatePriceCache(originalTicker, priceEur, changePercent);
+      } else if (quote?.code) {
+        console.warn(`Twelve Data error for ${originalTicker}: ${quote.message}`);
+      }
+    }
+  } catch (error) {
+    console.error(`Error fetching prices from Twelve Data:`, error);
   }
 
   return { results, skippedAsProxy };

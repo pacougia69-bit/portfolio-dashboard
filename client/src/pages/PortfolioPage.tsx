@@ -211,6 +211,37 @@ export default function PortfolioPage() {
     onError: (error) => toast.error(error.message),
   });
 
+  // Free-Plan-Limit: 8 Twelve-Data-Aufrufe/Minute. "Alle aktualisieren" ruft den
+  // Server jetzt in kurzen Haeppchen auf statt in EINER minutenlangen Anfrage -
+  // die Pause zwischen den Haeppchen macht der Browser, damit keine einzelne
+  // Server-Anfrage in einen Timeout laufen kann.
+  const AMPEL_CHUNK_SIZE = 8;
+  const AMPEL_CHUNK_DELAY_MS = 62000;
+  const [ampelBulkProgress, setAmpelBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const handleRefreshAllAmpel = async () => {
+    const ids = ampelEntries.map((e) => e.id);
+    if (ids.length === 0) return;
+
+    const chunks: number[][] = [];
+    for (let i = 0; i < ids.length; i += AMPEL_CHUNK_SIZE) {
+      chunks.push(ids.slice(i, i + AMPEL_CHUNK_SIZE));
+    }
+
+    for (let i = 0; i < chunks.length; i++) {
+      setAmpelBulkProgress({ done: i, total: chunks.length });
+      try {
+        await refreshAmpel.mutateAsync({ ids: chunks[i] });
+      } catch (error) {
+        console.error('Chunk-Fehler bei Ampel-Update:', error);
+      }
+      if (i < chunks.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, AMPEL_CHUNK_DELAY_MS));
+      }
+    }
+    setAmpelBulkProgress(null);
+  };
+
   const ampelWknLookup = trpc.lookup.byWKN.useMutation({
     onSuccess: (result) => {
       if (result.success && result.data) {
@@ -943,15 +974,16 @@ export default function PortfolioPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => refreshAmpel.mutate({})}
-                disabled={refreshAmpel.isPending || ampelEntries.length === 0}
+                onClick={handleRefreshAllAmpel}
+                disabled={refreshAmpel.isPending || ampelBulkProgress !== null || ampelEntries.length === 0}
+                title={ampelBulkProgress ? `Häppchen ${ampelBulkProgress.done + 1} von ${ampelBulkProgress.total} - wegen Twelve-Data-Limit mit Pausen dazwischen` : undefined}
               >
-                {refreshAmpel.isPending ? (
+                {(refreshAmpel.isPending || ampelBulkProgress !== null) ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-1" />
                 ) : (
                   <RefreshCw className="w-4 h-4 mr-1" />
                 )}
-                Ampeln aktualisieren
+                {ampelBulkProgress ? `Häppchen ${ampelBulkProgress.done + 1}/${ampelBulkProgress.total}...` : 'Ampeln aktualisieren'}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -1143,9 +1175,11 @@ export default function PortfolioPage() {
               </p>
             )}
 
-            {refreshAmpel.isPending && (
+            {(refreshAmpel.isPending || ampelBulkProgress !== null) && (
               <p className="text-xs text-muted-foreground text-center">
-                Ampeln werden aktualisiert... Einzelne Einträge gehen schnell; „Aktualisieren" für alle braucht bei vielen Einträgen mehrere Minuten (Twelve Data Rate-Limit: 8 Abrufe/Minute).
+                {ampelBulkProgress
+                  ? `Häppchen ${ampelBulkProgress.done + 1} von ${ampelBulkProgress.total} wird aktualisiert... (Twelve Data Rate-Limit: 8 Abrufe/Minute, daher Pausen dazwischen)`
+                  : 'Ampeln werden aktualisiert... Einzelne Einträge gehen schnell.'}
               </p>
             )}
           </CardContent>
