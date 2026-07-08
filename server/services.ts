@@ -112,8 +112,11 @@ const TICKER_MAPPINGS: Record<string, string> = {
   'XAIX.DE': 'AIQ',
   'XDWH.DE': 'IXJ',
   'CBUX.DE': 'IGF',
-  // AIFS = AI Infrastructure, Semi-lastig (AMD/TSMC/KLA/Micron/ASML) → SMH statt BOTZ
-  'AIFS.DE': 'SMH',
+  // AIFS = AI Infrastructure → AIQ wie XAIX (SMH waere praeziser, ist aber erst ab
+  // Twelve-Data-Grow-Plan verfuegbar; AIQ funktioniert nachweislich im Free-Plan).
+  // Beide KI-ETFs teilen damit denselben Zwilling = identisches Ampel-Signal — passt,
+  // weil die Kill-Regel ohnehin beide gemeinsam halbiert (eine Wette, zwei Verpackungen).
+  'AIFS.DE': 'AIQ',
   'IQQH.DE': 'ICLN',
   'NUCL.DE': 'URA',
   'NATO.DE': 'ITA',

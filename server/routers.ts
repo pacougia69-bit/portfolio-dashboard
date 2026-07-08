@@ -1002,7 +1002,9 @@ export const appRouter = router({
                 console.warn(`[Ampel] Kein Kurs für ${entry.ticker} (${symbol}): ${msg}`);
                 await updateTrafficLightData(entry.id, ctx.user.id, {
                   signal: 'GELB',
-                  signalDetail: `Ticker "${symbol}" nicht bei Twelve Data gefunden`,
+                  // Echte API-Meldung anzeigen — "nicht gefunden" und "im Plan gesperrt"
+                  // sind verschiedene Probleme mit verschiedenen Loesungen
+                  signalDetail: `Ticker "${symbol}": ${String(msg).slice(0, 140)}`,
                 });
                 errors.push(entry.name || entry.ticker);
                 updated++;
