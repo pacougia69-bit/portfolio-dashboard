@@ -61,6 +61,7 @@ const formatPercent = (value: number) => {
 // sich beide Systeme nicht gegenseitig ueberschreiben.
 const DEFAULT_ALLOCATIONS = DEFAULT_TARGET_ALLOCATIONS.map((t) => ({
   category: t.name,
+  shortLabel: t.shortLabel,
   wkn: t.wkn,
   frozen: t.frozen,
   targetPercent: t.targetPercent,
@@ -195,12 +196,23 @@ export default function StrategiePage() {
   // Session 09.07.2026). ETFs ohne passenden WKN in der Ziel-Allokation landen
   // sichtbar in "Nicht zugeordnet" statt lautlos in einem falschen Bucket.
   const allocationComparison = useMemo(() => {
-    type Bucket = { category: string; current: number; target: number; etfs: typeof etfPositions; frozen: boolean };
+    type Bucket = { category: string; shortLabel: string; current: number; target: number; etfs: typeof etfPositions; frozen: boolean };
     const buckets = new Map<string, Bucket>();
+    // Volle ETF-Namen sind fuer Kreisdiagramm-Label und Balken-Achse zu lang
+    // (liefen bisher aus dem Rahmen bzw. brachen in zu viele Zeilen um) -
+    // Fallback-Kurzform fuer Positionen ohne Ziel-Match.
+    const shorten = (name: string) => (name.length > 16 ? `${name.slice(0, 15)}…` : name);
 
     targetAllocations.forEach(t => {
       const key = (t as any).wkn || t.category;
-      buckets.set(key, { category: t.category, current: 0, target: t.targetPercent, etfs: [], frozen: !!(t as any).frozen });
+      buckets.set(key, {
+        category: t.category,
+        shortLabel: (t as any).shortLabel || shorten(t.category),
+        current: 0,
+        target: t.targetPercent,
+        etfs: [],
+        frozen: !!(t as any).frozen,
+      });
     });
 
     etfPositions.forEach(etf => {
@@ -209,6 +221,7 @@ export default function StrategiePage() {
       if (!buckets.has(key)) {
         buckets.set(key, {
           category: target ? target.category : (etf.category || 'Nicht zugeordnet'),
+          shortLabel: target ? ((target as any).shortLabel || shorten(target.category)) : shorten(etf.category || 'Nicht zugeordnet'),
           current: 0,
           target: target ? target.targetPercent : 0,
           etfs: [],
@@ -223,6 +236,7 @@ export default function StrategiePage() {
 
     return Array.from(buckets.values()).map(b => ({
       category: b.category,
+      shortLabel: b.shortLabel,
       current: b.current,
       target: b.target,
       frozen: b.frozen,
@@ -398,17 +412,21 @@ Format: Liste jeden aktiven ETF mit dem empfohlenen monatlichen Betrag. Erwähne
     }
   };
   
-  // Pie chart data for current allocation
+  // Pie chart data for current allocation - Kurzlabel statt vollem ETF-Namen,
+  // sonst ragt das Label bei langen Namen aus dem Diagramm-Rahmen (siehe
+  // Session 09.07.2026, "lobal Aggregate Bond" statt "Global Aggregate Bond")
   const pieChartData = allocationComparison
     .filter(a => a.current > 0)
     .map(a => ({
-      name: a.category,
+      name: a.shortLabel,
+      fullName: a.category,
       value: a.current,
     }));
-  
-  // Bar chart data for comparison
+
+  // Bar chart data for comparison - Kurzlabel statt vollem ETF-Namen, sonst
+  // bricht die Y-Achsen-Beschriftung in zu viele Zeilen um und ueberlappt
   const barChartData = allocationComparison.map(a => ({
-    category: a.category.replace('-ETF', ''),
+    category: a.shortLabel,
     Ist: a.current,
     Soll: a.target,
   }));
@@ -579,13 +597,13 @@ Format: Liste jeden aktiven ETF mit dem empfohlenen monatlichen Betrag. Erwähne
                   <div className="h-[200px] sm:h-[300px]">
                     {pieChartData.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
-                        <RechartsPie>
+                        <RechartsPie margin={{ top: 20, right: 40, bottom: 20, left: 40 }}>
                           <Pie
                             data={pieChartData}
                             cx="50%"
                             cy="50%"
-                            innerRadius={60}
-                            outerRadius={100}
+                            innerRadius={55}
+                            outerRadius={85}
                             paddingAngle={2}
                             dataKey="value"
                             label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}
@@ -594,7 +612,7 @@ Format: Liste jeden aktiven ETF mit dem empfohlenen monatlichen Betrag. Erwähne
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
+                          <Tooltip formatter={(value: number, _n, item: any) => [`${value.toFixed(1)}%`, item?.payload?.fullName]} />
                         </RechartsPie>
                       </ResponsiveContainer>
                     ) : (
@@ -617,7 +635,7 @@ Format: Liste jeden aktiven ETF mit dem empfohlenen monatlichen Betrag. Erwähne
                       <BarChart data={barChartData} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
                         <XAxis type="number" domain={[0, 60]} tickFormatter={(v) => `${v}%`} />
-                        <YAxis type="category" dataKey="category" width={80} />
+                        <YAxis type="category" dataKey="category" width={110} tick={{ fontSize: 12 }} />
                         <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
                         <Legend />
                         <Bar dataKey="Ist" fill="oklch(0.75 0.15 195)" radius={[0, 4, 4, 0]} />
