@@ -61,6 +61,8 @@ const formatPercent = (value: number) => {
 // sich beide Systeme nicht gegenseitig ueberschreiben.
 const DEFAULT_ALLOCATIONS = DEFAULT_TARGET_ALLOCATIONS.map((t) => ({
   category: t.name,
+  wkn: t.wkn,
+  frozen: t.frozen,
   targetPercent: t.targetPercent,
   description: `${t.description} (WKN: ${t.wkn})`,
 }));
@@ -113,17 +115,30 @@ export default function StrategiePage() {
       }
       if (settings.targetAllocations) {
         try {
-          const allocations = typeof settings.targetAllocations === 'string' 
-            ? JSON.parse(settings.targetAllocations) 
+          const allocations = typeof settings.targetAllocations === 'string'
+            ? JSON.parse(settings.targetAllocations)
             : settings.targetAllocations;
-          if (Array.isArray(allocations) && allocations.length > 0) {
+          // Alte Ziel-Allokationen (vor dem ETF-Umbau 06./08.07.2026) hatten Kategorien
+          // wie "Welt-ETF"/"Tech-ETF" ohne WKN-Bezug und sind mit der aktuellen
+          // 6-ETF-Struktur nicht mehr kompatibel. Erkennungsmerkmal: fehlende wkn.
+          const isCurrentFormat = Array.isArray(allocations) && allocations.length > 0 &&
+            allocations.every((a: any) => typeof a?.wkn === 'string' && a.wkn.length > 0);
+          if (isCurrentFormat) {
             setTargetAllocations(allocations);
+          } else if (Array.isArray(allocations) && allocations.length > 0) {
+            console.warn('Veraltete Ziel-Allokation erkannt (kein WKN-Bezug) - setze auf aktuelle Strategie zurueck');
+            setTargetAllocations(DEFAULT_ALLOCATIONS);
+            saveSettings.mutate({
+              monthlyBudget: settings.monthlyBudget ? Number(settings.monthlyBudget) : monthlyBudget,
+              targetAllocations: DEFAULT_ALLOCATIONS,
+            });
           }
         } catch (e) {
           console.error('Error parsing target allocations:', e);
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
   
   // Filter ETF positions
@@ -175,39 +190,52 @@ export default function StrategiePage() {
   // Differenz zur Ziel-Sparrate
   const sparRateDifference = monthlyBudget - totalSparRate;
   
-  // Group ETFs by category for charts
+  // Group ETFs by target allocation, per WKN abgeglichen (nicht mehr per freiem
+  // Kategorie-Textfeld - das driftete nach dem ETF-Umbau auseinander, siehe
+  // Session 09.07.2026). ETFs ohne passenden WKN in der Ziel-Allokation landen
+  // sichtbar in "Nicht zugeordnet" statt lautlos in einem falschen Bucket.
   const allocationComparison = useMemo(() => {
-    const categoryMap: Record<string, { current: number; target: number; etfs: typeof etfPositions }> = {};
-    
-    // Initialize with target allocations
+    type Bucket = { category: string; current: number; target: number; etfs: typeof etfPositions; frozen: boolean };
+    const buckets = new Map<string, Bucket>();
+
     targetAllocations.forEach(t => {
-      categoryMap[t.category] = { current: 0, target: t.targetPercent, etfs: [] };
+      const key = (t as any).wkn || t.category;
+      buckets.set(key, { category: t.category, current: 0, target: t.targetPercent, etfs: [], frozen: !!(t as any).frozen });
     });
-    
-    // Calculate current allocation
+
     etfPositions.forEach(etf => {
-      const category = etf.category || 'Sonstige';
-      if (!categoryMap[category]) {
-        categoryMap[category] = { current: 0, target: 0, etfs: [] };
+      const target = targetAllocations.find(t => (t as any).wkn && (t as any).wkn === etf.wkn);
+      const key = target ? (target as any).wkn : (etf.category || 'Nicht zugeordnet');
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          category: target ? target.category : (etf.category || 'Nicht zugeordnet'),
+          current: 0,
+          target: target ? target.targetPercent : 0,
+          etfs: [],
+          frozen: !!(target as any)?.frozen,
+        });
       }
+      const bucket = buckets.get(key)!;
       const value = Number(etf.amount) * (Number(etf.currentPrice) || Number(etf.buyPrice));
-      categoryMap[category].current += totalValue > 0 ? (value / totalValue) * 100 : 0;
-      categoryMap[category].etfs.push(etf);
+      bucket.current += totalValue > 0 ? (value / totalValue) * 100 : 0;
+      bucket.etfs.push(etf);
     });
-    
-    return Object.entries(categoryMap).map(([category, data]) => ({
-      category,
-      current: data.current,
-      target: data.target,
-      difference: data.current - data.target,
-      etfs: data.etfs,
+
+    return Array.from(buckets.values()).map(b => ({
+      category: b.category,
+      current: b.current,
+      target: b.target,
+      frozen: b.frozen,
+      difference: b.current - b.target,
+      etfs: b.etfs,
     }));
   }, [etfPositions, targetAllocations, totalValue]);
-  
-  // Rebalancing suggestions
+
+  // Rebalancing suggestions - eingefrorene Wetten bekommen nie eine
+  // Nachkauf-Empfehlung (gleiche Regel wie beim Dashboard-Rebalancing).
   const rebalancingSuggestions = useMemo(() => {
     return allocationComparison
-      .filter(a => Math.abs(a.difference) > 1)
+      .filter(a => Math.abs(a.difference) > 1 && !(a.frozen && a.difference < 0))
       .map(a => ({
         category: a.category,
         action: a.difference > 0 ? 'reduce' : 'increase',
@@ -322,36 +350,45 @@ export default function StrategiePage() {
   const handleGenerateAiSuggestion = async () => {
     setIsAiLoading(true);
     try {
-      const portfolioSummary = etfPositions.map(p => ({
-        name: p.name,
-        ticker: p.ticker,
-        wkn: p.wkn || '',
-        category: p.category || 'Sonstige',
-        value: Number(p.amount) * (Number(p.currentPrice) || Number(p.buyPrice)),
-        currentRate: etfSparRates[p.ticker] || 0,
-      }));
-      
+      const portfolioSummary = etfPositions.map(p => {
+        const target = targetAllocations.find(t => (t as any).wkn && (t as any).wkn === p.wkn);
+        return {
+          name: p.name,
+          ticker: p.ticker,
+          wkn: p.wkn || '',
+          category: target ? target.category : (p.category || 'Nicht zugeordnet'),
+          frozen: !!(target as any)?.frozen,
+          value: Number(p.amount) * (Number(p.currentPrice) || Number(p.buyPrice)),
+          currentRate: etfSparRates[p.ticker] || 0,
+        };
+      });
+
+      const frozenNames = portfolioSummary.filter(p => p.frozen).map(p => p.name);
+      const activeCount = portfolioSummary.filter(p => !p.frozen).length;
+
       const prompt = `Analysiere mein ETF-Portfolio und empfehle eine optimale Verteilung meiner monatlichen Sparrate von ${monthlyBudget}€.
 
 Meine ETFs:
-${portfolioSummary.map(p => `- ${p.name} (WKN: ${p.wkn || 'N/A'}, Ticker: ${p.ticker}): Wert ${p.value.toFixed(0)}€, Kategorie: ${p.category}, Aktuelle Sparrate: ${p.currentRate}€`).join('\n')}
+${portfolioSummary.map(p => `- ${p.name} (WKN: ${p.wkn || 'N/A'}, Ticker: ${p.ticker}): Wert ${p.value.toFixed(0)}€, Baustein: ${p.category}, Aktuelle Sparrate: ${p.currentRate}€${p.frozen ? ' — EINGEFROREN, bekommt KEIN neues Geld' : ''}`).join('\n')}
 
 Meine Ziel-Allokation:
-${targetAllocations.map(t => `- ${t.category}: ${t.targetPercent}%`).join('\n')}
+${targetAllocations.map(t => `- ${t.category}: ${t.targetPercent}%${(t as any).frozen ? ' (eingefroren, kein Neugeld)' : ''}`).join('\n')}
+${frozenNames.length > 0 ? `\nWICHTIG: ${frozenNames.join(', ')} sind eingefroren (feste Regel, keine Ausnahme). Für diese ETFs IMMER 0€ vorschlagen - sie wachsen nur durch Kurssteigerung, nicht durch neue Sparraten.` : ''}
 
-Bitte empfehle für JEDEN einzelnen ETF einen konkreten monatlichen Betrag in Euro.
+Bitte empfehle für JEDEN der ${activeCount} NICHT eingefrorenen ETFs einen konkreten monatlichen Betrag in Euro, sodass die Summe ${monthlyBudget}€ ergibt.
 Berücksichtige dabei:
-1. Die Ziel-Allokation nach Kategorien
+1. Die Ziel-Allokation der aktiven (nicht eingefrorenen) Bausteine
 2. Welche ETFs unter- oder übergewichtet sind
 3. Praktische Beträge (runde auf 25€ oder 50€)
+4. Schlage KEINE neuen, bisher nicht gehaltenen ETFs vor - nur die oben gelisteten
 
-Format: Liste jeden ETF mit dem empfohlenen monatlichen Betrag.`;
+Format: Liste jeden aktiven ETF mit dem empfohlenen monatlichen Betrag. Erwähne eingefrorene ETFs nur kurz mit 0€, ohne sie zu bewerten.`;
 
       // Use the AI chat endpoint
       const response = await utils.client.ai.chat.mutate({
         message: prompt,
       });
-      
+
       setAiSuggestion(response.analysis);
     } catch (error) {
       console.error('AI Error:', error);

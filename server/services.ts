@@ -362,7 +362,12 @@ export async function analyzePortfolio(
   
   const topPerformers = withGain.slice(0, 5);
   const worstPerformers = withGain.slice(-5).reverse();
-  
+
+  // Watchlist nur einblenden, wenn die konkrete Frage sie auch betrifft (allgemeine
+  // Portfolio-Analyse ohne Frage zaehlt dazu) - sonst driftet sie unpassend in
+  // themenfremde Antworten wie die Sparplan-Verteilung rein (Bug vom 09.07.2026).
+  const includeWatchlist = !customQuestion || /watchlist/i.test(customQuestion);
+
   const portfolioSummary = `
 Portfolio-Übersicht:
 - Gesamtwert: ${totalValue.toFixed(2)} €
@@ -379,7 +384,7 @@ ${topPerformers.map(p => `- ${p.name}: ${p.gain.toFixed(2)}%`).join('\n')}
 Schlechteste 5 Performer:
 ${worstPerformers.map(p => `- ${p.name}: ${p.gain.toFixed(2)}%`).join('\n')}
 
-${watchlist && watchlist.length > 0 ? `
+${includeWatchlist && watchlist && watchlist.length > 0 ? `
 Watchlist (${watchlist.length} Positionen):
 ${watchlist.map(w => `- ${w.name} (${w.ticker}): Zielpreis ${w.targetPrice || 'nicht gesetzt'} €`).join('\n')}
 ` : ''}

@@ -1105,6 +1105,8 @@ export const appRouter = router({
           category: z.string(),
           targetPercent: z.number(),
           description: z.string().optional(),
+          wkn: z.string().optional(),
+          frozen: z.boolean().optional(),
         })).optional(),
         retirementTargetSum: z.number().optional(),
         desiredPension: z.number().optional(),
