@@ -989,6 +989,11 @@ export default function DashboardPage() {
                 <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 Vermögensverlauf
               </CardTitle>
+              {snapshots.length >= 1 && (
+                <p className="text-xs sm:text-sm text-muted-foreground pl-6">
+                  Aktuell: <span className="text-foreground font-medium">{formatCurrency(snapshots[snapshots.length - 1].totalValue)}</span>
+                </p>
+              )}
             </CardHeader>
             <CardContent className="p-3 sm:p-6 pt-0">
               {snapshots.length >= 2 ? (
@@ -1000,7 +1005,12 @@ export default function DashboardPage() {
                   }))}>
                     <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.01 285)" />
                     <XAxis dataKey="date" stroke="oklch(0.5 0.01 285)" />
-                    <YAxis tickFormatter={(v) => formatCurrency(v)} stroke="oklch(0.5 0.01 285)" width={80} />
+                    <YAxis
+                      domain={[(min: number) => Math.floor(min * 0.95), (max: number) => Math.ceil(max * 1.05)]}
+                      tickFormatter={(v) => formatCurrency(v)}
+                      stroke="oklch(0.5 0.01 285)"
+                      width={80}
+                    />
                     <Tooltip
                       formatter={(value: number) => formatCurrency(value)}
                       contentStyle={{
@@ -1009,7 +1019,7 @@ export default function DashboardPage() {
                         borderRadius: '8px',
                       }}
                     />
-                    <Line type="monotone" dataKey="Depotwert" stroke="oklch(0.75 0.15 195)" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="Depotwert" stroke="oklch(0.75 0.15 195)" strokeWidth={2} dot={{ r: 3, fill: 'oklch(0.75 0.15 195)' }} />
                     <Line type="monotone" dataKey="Eingezahlt" stroke="oklch(0.5 0.01 285)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
