@@ -32,7 +32,7 @@ import {
 import {
   PieChart as RechartsPie, Pie, Cell, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
-  LineChart, Line,
+  LineChart, Line, ComposedChart, Legend,
 } from 'recharts';
 import { toast } from 'sonner';
 
@@ -997,31 +997,47 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-3 sm:p-6 pt-0">
               {snapshots.length >= 2 ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={snapshots.map((s) => ({
+                <ResponsiveContainer width="100%" height={220}>
+                  <ComposedChart data={snapshots.map((s, i) => ({
                     date: new Date(s.snapshotDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
                     Depotwert: s.totalValue,
-                    Eingezahlt: s.totalInvested,
+                    Zuwachs: i > 0 ? s.totalValue - snapshots[i - 1].totalValue : null,
                   }))}>
                     <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.01 285)" />
                     <XAxis dataKey="date" stroke="oklch(0.5 0.01 285)" />
                     <YAxis
-                      domain={[(min: number) => Math.floor(min * 0.95), (max: number) => Math.ceil(max * 1.05)]}
+                      yAxisId="zuwachs"
                       tickFormatter={(v) => formatCurrency(v)}
                       stroke="oklch(0.5 0.01 285)"
                       width={80}
                     />
+                    <YAxis
+                      yAxisId="depotwert"
+                      orientation="right"
+                      domain={[(min: number) => Math.floor(min * 0.95), (max: number) => Math.ceil(max * 1.05)]}
+                      tickFormatter={(v) => formatCurrency(v)}
+                      stroke="oklch(0.75 0.15 195)"
+                      width={80}
+                    />
                     <Tooltip
-                      formatter={(value: number) => formatCurrency(value)}
+                      formatter={(value: number | string | Array<number | string>) => value == null ? 'keine Vortagsdaten' : formatCurrency(Number(value))}
                       contentStyle={{
                         backgroundColor: 'oklch(0.15 0.01 285)',
                         border: '1px solid oklch(0.3 0.01 285)',
                         borderRadius: '8px',
                       }}
                     />
-                    <Line type="monotone" dataKey="Depotwert" stroke="oklch(0.75 0.15 195)" strokeWidth={2} dot={{ r: 3, fill: 'oklch(0.75 0.15 195)' }} />
-                    <Line type="monotone" dataKey="Eingezahlt" stroke="oklch(0.5 0.01 285)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
-                  </LineChart>
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar yAxisId="zuwachs" dataKey="Zuwachs" name="Zuwachs zum Vortag" radius={[4, 4, 0, 0]}>
+                      {snapshots.map((s, i) => {
+                        const zuwachs = i > 0 ? s.totalValue - snapshots[i - 1].totalValue : 0;
+                        return (
+                          <Cell key={`cell-${i}`} fill={zuwachs >= 0 ? 'oklch(0.65 0.18 145)' : 'oklch(0.60 0.2 30)'} />
+                        );
+                      })}
+                    </Bar>
+                    <Line yAxisId="depotwert" type="monotone" dataKey="Depotwert" name="Depotwert" stroke="oklch(0.75 0.15 195)" strokeWidth={2} dot={{ r: 3, fill: 'oklch(0.75 0.15 195)' }} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="h-[200px] flex items-center justify-center text-center text-sm text-muted-foreground px-4">
