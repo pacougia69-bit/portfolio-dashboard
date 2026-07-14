@@ -179,12 +179,26 @@ export default function EinstiegsanalysePage() {
   const fetchTechnicalData = trpc.einstiegsanalyse.fetchTechnicalData.useMutation();
   const technicalData = fetchTechnicalData.data?.success ? fetchTechnicalData.data.data : null;
 
+  // Befuellt den Namen automatisch aus dem Ticker (Yahoo-Lookup, gleicher Endpunkt wie
+  // die Ampel-Suche) — nur wenn das Namensfeld noch leer ist, damit ein bereits
+  // eingetippter Name nicht ueberschrieben wird.
+  const lookupTicker = trpc.lookup.byTicker.useMutation({
+    onSuccess: (result) => {
+      if (result.success && result.data) {
+        setName(result.data.name);
+      }
+    },
+  });
+
   const handleLoadData = () => {
     if (!ticker.trim()) {
       toast.error("Bitte zuerst einen Ticker eingeben.");
       return;
     }
     fetchTechnicalData.mutate({ ticker: ticker.trim() });
+    if (!name.trim()) {
+      lookupTicker.mutate({ ticker: ticker.trim() });
+    }
   };
 
   // === Kurssprung-Filter ===
