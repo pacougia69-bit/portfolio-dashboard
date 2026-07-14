@@ -53,14 +53,99 @@ function signalStyles(signal: Signal) {
   }
 }
 
-function AmpelBadge({ signal, detail }: { signal: Signal; detail?: string }) {
-  const s = signalStyles(signal);
+// Ampel-Zeile im Stil von einstiegsanalyse.html (Punkt + Label + Detail auf farbigem
+// Untergrund) statt einer Icon-Box — auf Rafaels Wunsch näher an der Standalone-HTML.
+function ampelRowColors(signal: Signal) {
+  switch (signal) {
+    case "GRUEN":
+      return { bg: "bg-green-500/10", border: "border-green-500/30", dot: "bg-green-500", text: "text-green-600 dark:text-green-400" };
+    case "GELB":
+      return { bg: "bg-yellow-500/10", border: "border-yellow-500/30", dot: "bg-yellow-500", text: "text-yellow-600 dark:text-yellow-400" };
+    case "ROT":
+      return { bg: "bg-red-500/10", border: "border-red-500/30", dot: "bg-red-500", text: "text-red-600 dark:text-red-400" };
+  }
+}
+
+function AmpelRow({ label, signal, detail }: { label: string; signal: Signal; detail?: string }) {
+  const c = ampelRowColors(signal);
   return (
-    <div className={`rounded-lg border-2 ${s.bg} ${s.border} p-3 flex items-start gap-2`}>
-      <s.Icon className={`h-5 w-5 shrink-0 ${s.text}`} />
-      <div className="min-w-0">
-        <div className={`font-bold text-sm ${s.text}`}>{s.label}</div>
-        {detail && <div className="text-xs text-muted-foreground mt-0.5 break-words">{detail}</div>}
+    <div className={`rounded-lg border ${c.bg} ${c.border} px-3.5 py-2.5`}>
+      <div className="flex items-center gap-2">
+        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${c.dot}`} />
+        <span className="font-medium text-sm">{label}</span>
+      </div>
+      {detail && <div className="text-xs text-muted-foreground mt-1 ml-[18px] break-words">{detail}</div>}
+    </div>
+  );
+}
+
+// Kriterium-3-Gauge, 1:1 aus updateTechSignal() in einstiegsanalyse.html (Zeile 521-568)
+// portiert — Gradient-Balken + Marker + drei einzeln eingefärbte Kennzahl-Karten.
+type TagColor = "green" | "red" | "yellow";
+
+const tagCardStyles: Record<TagColor, string> = {
+  green: "bg-green-500/10",
+  red: "bg-red-500/10",
+  yellow: "bg-yellow-500/10",
+};
+const tagBadgeStyles: Record<TagColor, string> = {
+  green: "bg-green-500/20 text-green-600 dark:text-green-400",
+  red: "bg-red-500/20 text-red-600 dark:text-red-400",
+  yellow: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400",
+};
+const tagValueStyles: Record<TagColor, string> = {
+  green: "text-green-600 dark:text-green-400",
+  red: "text-red-600 dark:text-red-400",
+  yellow: "text-yellow-600 dark:text-yellow-400",
+};
+
+function TechCard({ label, value, tag, tagColor }: { label: string; value: string; tag: string; tagColor: TagColor }) {
+  return (
+    <div className={`rounded-lg p-3 ${tagCardStyles[tagColor]}`}>
+      <div className="flex items-center justify-between gap-1.5">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold whitespace-nowrap ${tagBadgeStyles[tagColor]}`}>{tag}</span>
+      </div>
+      <div className={`text-lg font-bold mt-1.5 ${tagValueStyles[tagColor]}`}>{value}</div>
+    </div>
+  );
+}
+
+function TechGauge({ kurs, sma50, sma200, rsi }: { kurs: number; sma50: number | null; sma200: number | null; rsi: number | null }) {
+  if (sma50 === null || sma200 === null || rsi === null) {
+    return <p className="text-sm text-muted-foreground">Noch keine technischen Daten geladen.</p>;
+  }
+  let score = 0;
+  score += kurs > sma50 ? 1 : -1;
+  score += kurs > sma200 ? 1 : -1;
+  score += rsi > 60 ? 1 : rsi < 40 ? -1 : 0;
+  const gaugePct = ((score + 3) / 6) * 100;
+  const gesamtLabel = gaugePct < 33 ? "Bärisch" : gaugePct > 66 ? "Bullisch" : "Neutral";
+  const gesamtColorClass = gaugePct < 33 ? "text-red-500" : gaugePct > 66 ? "text-green-500" : "text-yellow-500";
+
+  const sma50Tag: { label: string; color: TagColor } = kurs > sma50 ? { label: "Darüber", color: "green" } : { label: "Darunter", color: "red" };
+  const sma200Tag: { label: string; color: TagColor } = kurs > sma200 ? { label: "Darüber", color: "green" } : { label: "Darunter", color: "red" };
+  const rsiTag: { label: string; color: TagColor } = rsi > 60 ? { label: "Bullisch", color: "green" } : rsi < 40 ? { label: "Bärisch", color: "red" } : { label: "Neutral", color: "yellow" };
+
+  return (
+    <div className="mt-1">
+      <div className="text-xs text-muted-foreground mb-1.5">
+        Gesamtsignal — eigene Kurzformel aus RSI + SMA50 + SMA200
+      </div>
+      <div className="relative h-2 rounded-full bg-gradient-to-r from-red-500 via-yellow-400 to-green-500">
+        <div
+          className="absolute -top-1 w-[3px] h-4 rounded bg-white shadow-[0_0_0_2px_rgba(0,0,0,0.4)]"
+          style={{ left: `${gaugePct}%`, transform: "translateX(-50%)" }}
+        />
+      </div>
+      <div className={`text-center font-bold text-sm mt-1.5 ${gesamtColorClass}`}>{gesamtLabel}</div>
+      <div className="flex justify-between text-[11px] text-muted-foreground mt-0.5">
+        <span>Bärisch</span><span>Neutral</span><span>Bullisch</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2.5 mt-3.5">
+        <TechCard label="SMA 50" value={sma50.toFixed(2)} tag={sma50Tag.label} tagColor={sma50Tag.color} />
+        <TechCard label="SMA 200" value={sma200.toFixed(2)} tag={sma200Tag.label} tagColor={sma200Tag.color} />
+        <TechCard label="RSI (14)" value={rsi.toFixed(1)} tag={rsiTag.label} tagColor={rsiTag.color} />
       </div>
     </div>
   );
@@ -420,7 +505,7 @@ EXIT-THESE: <ein Satz>`;
                 <CardDescription>Läuft vor der Checkliste — Auslöser: ±8% in 5 Handelstagen.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <AmpelBadge signal={kurssprung.amp} detail={kurssprung.konsequenz} />
+                <AmpelRow label={kurssprung.ausgeloest ? `Kurssprung ausgelöst (${technicalData?.wochenperf?.toFixed(1) ?? "?"}% in 5 Handelstagen)` : "Kein starker Kurssprung erkannt"} signal={kurssprung.amp} detail={kurssprung.konsequenz} />
                 {kurssprung.ausgeloest && (
                   <div className="space-y-4 pt-2 border-t border-border/40">
                     <div>
@@ -461,70 +546,66 @@ EXIT-THESE: <ein Satz>`;
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* K1 */}
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
-                  <div className="space-y-2">
-                    <Label>1. Bewertung — KGV/PEG vs. Historie & Peers</Label>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Select value={bewertung} onValueChange={(v) => setBewertung(v as any)}>
-                        <SelectTrigger className="sm:w-[180px]"><SelectValue placeholder="Einschätzung" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="guenstig">Günstig</SelectItem>
-                          <SelectItem value="neutral">Neutral</SelectItem>
-                          <SelectItem value="teuer">Teuer</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input value={kgv} onChange={(e) => setKgv(e.target.value)} placeholder="KGV (optional)" className="sm:w-[140px]" />
-                    </div>
-                    <Textarea value={bewertungNotiz} onChange={(e) => setBewertungNotiz(e.target.value)} placeholder="Notiz (optional)" rows={2} />
+                <div className="space-y-2">
+                  <Label>1. Bewertung — KGV/PEG vs. Historie & Peers</Label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Select value={bewertung} onValueChange={(v) => setBewertung(v as any)}>
+                      <SelectTrigger className="sm:w-[180px]"><SelectValue placeholder="Einschätzung" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="guenstig">Günstig</SelectItem>
+                        <SelectItem value="neutral">Neutral</SelectItem>
+                        <SelectItem value="teuer">Teuer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input value={kgv} onChange={(e) => setKgv(e.target.value)} placeholder="KGV (optional)" className="sm:w-[140px]" />
                   </div>
-                  <AmpelBadge signal={k1Signal} />
+                  <Textarea value={bewertungNotiz} onChange={(e) => setBewertungNotiz(e.target.value)} placeholder="Notiz (optional)" rows={2} />
+                  <AmpelRow label="Bewertung" signal={k1Signal} detail={k1Detail} />
                 </div>
 
                 {/* K2 */}
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
-                  <div className="space-y-2">
-                    <Label>2. Wachstumstrend — letzte 4 Quartale</Label>
-                    <Select value={wachstum} onValueChange={(v) => setWachstum(v as any)}>
-                      <SelectTrigger className="sm:w-[180px]"><SelectValue placeholder="Richtung" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="beschleunigt">Beschleunigt</SelectItem>
-                        <SelectItem value="stabil">Stabil</SelectItem>
-                        <SelectItem value="verlangsamt">Verlangsamt</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Textarea value={wachstumNotiz} onChange={(e) => setWachstumNotiz(e.target.value)} placeholder="Begründung (optional)" rows={2} />
-                  </div>
-                  <AmpelBadge signal={k2Signal} />
+                <div className="space-y-2">
+                  <Label>2. Wachstumstrend — letzte 4 Quartale</Label>
+                  <Select value={wachstum} onValueChange={(v) => setWachstum(v as any)}>
+                    <SelectTrigger className="sm:w-[180px]"><SelectValue placeholder="Richtung" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="beschleunigt">Beschleunigt</SelectItem>
+                      <SelectItem value="stabil">Stabil</SelectItem>
+                      <SelectItem value="verlangsamt">Verlangsamt</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Textarea value={wachstumNotiz} onChange={(e) => setWachstumNotiz(e.target.value)} placeholder="Begründung (optional)" rows={2} />
+                  <AmpelRow label="Wachstumstrend" signal={k2Signal} detail={wachstumNotiz || wachstum || undefined} />
                 </div>
 
-                {/* K3 */}
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
-                  <div className="space-y-1">
-                    <Label>3. Technische Lage — automatisch aus RSI + SMA50/200</Label>
-                    <p className="text-sm text-muted-foreground">{k3Detail}</p>
-                  </div>
-                  <AmpelBadge signal={k3Signal} />
+                {/* K3 — Gauge im Stil der Standalone-HTML, automatisch aus geladenen Daten */}
+                <div className="space-y-1">
+                  <Label>3. Technische Lage — automatisch aus RSI + SMA50/200</Label>
+                  <TechGauge
+                    kurs={technicalData?.currentPrice ?? 0}
+                    sma50={technicalData?.sma50 ?? null}
+                    sma200={technicalData?.sma200 ?? null}
+                    rsi={technicalData?.rsi14 ?? null}
+                  />
                 </div>
 
                 {/* K4 */}
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
-                  <div className="space-y-2">
-                    <Label>4. Depot-Fit + Doppelungs-Check</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input value={positionsgroesse} onChange={(e) => setPositionsgroesse(e.target.value)} placeholder="Positionsgröße €" inputMode="decimal" />
-                      <Input value={gesamtvermoegen} onChange={(e) => setGesamtvermoegen(e.target.value)} placeholder="Gesamtvermögen €" inputMode="decimal" />
-                    </div>
-                    <Select value={doppelung} onValueChange={(v) => setDoppelung(v as any)}>
-                      <SelectTrigger className="sm:w-[220px]"><SelectValue placeholder="Doppelung mit ETFs/Aktien?" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="keine">Keine Doppelung</SelectItem>
-                        <SelectItem value="teilweise">Teilweise Überschneidung</SelectItem>
-                        <SelectItem value="relevant">Relevante Top-Holdings bereits im Bestand</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Textarea value={doppelungNotiz} onChange={(e) => setDoppelungNotiz(e.target.value)} placeholder="Notiz (optional)" rows={2} />
+                <div className="space-y-2">
+                  <Label>4. Depot-Fit + Doppelungs-Check</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input value={positionsgroesse} onChange={(e) => setPositionsgroesse(e.target.value)} placeholder="Positionsgröße €" inputMode="decimal" />
+                    <Input value={gesamtvermoegen} onChange={(e) => setGesamtvermoegen(e.target.value)} placeholder="Gesamtvermögen €" inputMode="decimal" />
                   </div>
-                  <AmpelBadge signal={k4Signal} detail={`${depotanteilPct.toFixed(1)}% Depotanteil`} />
+                  <Select value={doppelung} onValueChange={(v) => setDoppelung(v as any)}>
+                    <SelectTrigger className="sm:w-[220px]"><SelectValue placeholder="Doppelung mit ETFs/Aktien?" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="keine">Keine Doppelung</SelectItem>
+                      <SelectItem value="teilweise">Teilweise Überschneidung</SelectItem>
+                      <SelectItem value="relevant">Relevante Top-Holdings bereits im Bestand</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Textarea value={doppelungNotiz} onChange={(e) => setDoppelungNotiz(e.target.value)} placeholder="Notiz (optional)" rows={2} />
+                  <AmpelRow label="Depot-Fit + Doppelung" signal={k4Signal} detail={`${depotanteilPct.toFixed(1)}% Depotanteil${doppelung ? " · Doppelung: " + doppelung : ""}${doppelungNotiz ? " — " + doppelungNotiz : ""}`} />
                 </div>
 
                 {/* K5 */}
@@ -667,10 +748,10 @@ EXIT-THESE: <ein Satz>`;
                   <DialogDescription>{new Date(detailAnalyse.createdAt).toLocaleString("de-DE")}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 text-sm">
-                  <AmpelBadge signal={detailAnalyse.kriterium1Signal} detail={"1. Bewertung — " + (detailAnalyse.kriterium1Detail || "")} />
-                  <AmpelBadge signal={detailAnalyse.kriterium2Signal} detail={"2. Wachstum — " + (detailAnalyse.kriterium2Detail || "")} />
-                  <AmpelBadge signal={detailAnalyse.kriterium3Signal} detail={"3. Technik — " + (detailAnalyse.kriterium3Detail || "")} />
-                  <AmpelBadge signal={detailAnalyse.kriterium4Signal} detail={"4. Depot-Fit — " + (detailAnalyse.kriterium4Detail || "")} />
+                  <AmpelRow label="1. Bewertung" signal={detailAnalyse.kriterium1Signal} detail={detailAnalyse.kriterium1Detail} />
+                  <AmpelRow label="2. Wachstum" signal={detailAnalyse.kriterium2Signal} detail={detailAnalyse.kriterium2Detail} />
+                  <AmpelRow label="3. Technik" signal={detailAnalyse.kriterium3Signal} detail={detailAnalyse.kriterium3Detail} />
+                  <AmpelRow label="4. Depot-Fit" signal={detailAnalyse.kriterium4Signal} detail={detailAnalyse.kriterium4Detail} />
                   <div className="pt-2 border-t border-border/40">
                     <div className="font-medium">These</div>
                     <p className="text-muted-foreground">{detailAnalyse.these}</p>
