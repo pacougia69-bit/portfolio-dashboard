@@ -346,3 +346,80 @@ export const portfolioSnapshots = mysqlTable("portfolio_snapshots", {
 export type PortfolioSnapshot = typeof portfolioSnapshots.$inferSelect;
 export type InsertPortfolioSnapshot = typeof portfolioSnapshots.$inferInsert;
 
+/**
+ * Einstiegsanalyse - Historie abgeschlossener Kauf-Entscheidungsprozesse
+ * (5-Kriterien-Checkliste + Kurssprung-Filter, siehe PROJEKTE/Aktien-Einstiegsanalyse)
+ */
+export const einstiegsanalysen = mysqlTable("einstiegsanalysen", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  wkn: varchar("wkn", { length: 20 }),
+  name: varchar("name", { length: 255 }).notNull(),
+  preisBeiAnalyse: decimal("preisBeiAnalyse", { precision: 18, scale: 4 }),
+
+  kurssprungAusgeloest: boolean("kurssprungAusgeloest").notNull().default(false),
+  kurssprungWochenperf: decimal("kurssprungWochenperf", { precision: 6, scale: 2 }),
+  kurssprungGrund: mysqlEnum("kurssprungGrund", ["ja", "nein"]),
+  kurssprungSpezifisch: mysqlEnum("kurssprungSpezifisch", ["firmenspezifisch", "sektor"]),
+  kurssprungVorlauf: mysqlEnum("kurssprungVorlauf", ["einklang", "vorlauf"]),
+  kurssprungKonsequenz: varchar("kurssprungKonsequenz", { length: 500 }),
+  coolDown: boolean("coolDown").notNull().default(false),
+
+  kriterium1Signal: mysqlEnum("kriterium1Signal", ["GRUEN", "GELB", "ROT"]).notNull(),
+  kriterium1Detail: varchar("kriterium1Detail", { length: 500 }),
+  kriterium2Signal: mysqlEnum("kriterium2Signal", ["GRUEN", "GELB", "ROT"]).notNull(),
+  kriterium2Detail: varchar("kriterium2Detail", { length: 500 }),
+  kriterium3Signal: mysqlEnum("kriterium3Signal", ["GRUEN", "GELB", "ROT"]).notNull(),
+  kriterium3Detail: varchar("kriterium3Detail", { length: 500 }),
+  kriterium4Signal: mysqlEnum("kriterium4Signal", ["GRUEN", "GELB", "ROT"]).notNull(),
+  kriterium4Detail: varchar("kriterium4Detail", { length: 500 }),
+
+  these: text("these").notNull(),
+  exitThese: text("exitThese").notNull(),
+
+  ergebnis: mysqlEnum("ergebnis", ["KAUF_MOEGLICH", "ABGELEHNT", "COOLDOWN"]).notNull(),
+  gruenCount: int("gruenCount").notNull(),
+  gelbCount: int("gelbCount").notNull(),
+  rotCount: int("rotCount").notNull(),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Einstiegsanalyse = typeof einstiegsanalysen.$inferSelect;
+export type InsertEinstiegsanalyse = typeof einstiegsanalysen.$inferInsert;
+
+/**
+ * Innovationsbudget - Jahresziel (manuell gepflegt, nicht automatisch aus Depotwert,
+ * weil das Geld dafuer nicht immer aus dem eigenen Depot kommt)
+ */
+export const innovationsbudgetJahresziel = mysqlTable("innovationsbudget_jahresziel", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  jahr: int("jahr").notNull(),
+  zielbetrag: decimal("zielbetrag", { precision: 18, scale: 2 }).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type InnovationsbudgetJahresziel = typeof innovationsbudgetJahresziel.$inferSelect;
+export type InsertInnovationsbudgetJahresziel = typeof innovationsbudgetJahresziel.$inferInsert;
+
+/**
+ * Innovationsbudget - einzelne Verbrauchs-Eintraege gegen das Jahresziel
+ */
+export const innovationsbudgetNutzung = mysqlTable("innovationsbudget_nutzung", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  jahr: int("jahr").notNull(),
+  ticker: varchar("ticker", { length: 20 }),
+  name: varchar("name", { length: 255 }),
+  betrag: decimal("betrag", { precision: 18, scale: 2 }).notNull(),
+  beschreibung: varchar("beschreibung", { length: 500 }),
+  einstiegsanalyseId: int("einstiegsanalyseId"),
+  datum: varchar("datum", { length: 10 }).notNull(), // 'YYYY-MM-DD'
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type InnovationsbudgetNutzung = typeof innovationsbudgetNutzung.$inferSelect;
+export type InsertInnovationsbudgetNutzung = typeof innovationsbudgetNutzung.$inferInsert;
+

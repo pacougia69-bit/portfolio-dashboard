@@ -56,11 +56,20 @@ import {
   deleteLossCarryforward,
   recordSnapshotIfNeeded,
   getPortfolioSnapshots,
+  saveEinstiegsanalyse,
+  getEinstiegsanalysen,
+  getEinstiegsanalyse,
+  deleteEinstiegsanalyse,
+  getInnovationsbudgetJahr,
+  setInnovationsbudgetZiel,
+  addInnovationsbudgetNutzung,
+  removeInnovationsbudgetNutzung,
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
 import { getEurUsdRate } from "./currency";
 import { DEFAULT_TARGET_ALLOCATIONS } from "@shared/strategy";
 import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningHistory } from "./tech-warning";
+import { fetchTechnicalData, researchThese } from "./einstiegsanalyse";
 
 export const appRouter = router({
   system: systemRouter,
@@ -1090,6 +1099,119 @@ export const appRouter = router({
           message: `${updated} von ${entries.length} Ampeln aktualisiert.${errMsg}`,
         };
       }),
+  }),
+
+  einstiegsanalyse: router({
+    fetchTechnicalData: protectedProcedure
+      .input(z.object({ ticker: z.string() }))
+      .mutation(async ({ input }) => {
+        try {
+          const data = await fetchTechnicalData(input.ticker);
+          return { success: true as const, data };
+        } catch (err: any) {
+          return { success: false as const, message: err?.message || "Fehler beim Laden der technischen Daten." };
+        }
+      }),
+
+    researchThese: protectedProcedure
+      .input(z.object({ ticker: z.string(), name: z.string() }))
+      .mutation(async ({ input }) => {
+        try {
+          const result = await researchThese(input.ticker, input.name);
+          return { success: true as const, ...result };
+        } catch (err: any) {
+          return { success: false as const, message: err?.message || "Recherche fehlgeschlagen." };
+        }
+      }),
+
+    save: protectedProcedure
+      .input(z.object({
+        ticker: z.string(),
+        wkn: z.string().optional(),
+        name: z.string(),
+        preisBeiAnalyse: z.number().optional(),
+        kurssprungAusgeloest: z.boolean(),
+        kurssprungWochenperf: z.number().optional(),
+        kurssprungGrund: z.enum(["ja", "nein"]).optional(),
+        kurssprungSpezifisch: z.enum(["firmenspezifisch", "sektor"]).optional(),
+        kurssprungVorlauf: z.enum(["einklang", "vorlauf"]).optional(),
+        kurssprungKonsequenz: z.string().optional(),
+        coolDown: z.boolean(),
+        kriterium1Signal: z.enum(["GRUEN", "GELB", "ROT"]),
+        kriterium1Detail: z.string().optional(),
+        kriterium2Signal: z.enum(["GRUEN", "GELB", "ROT"]),
+        kriterium2Detail: z.string().optional(),
+        kriterium3Signal: z.enum(["GRUEN", "GELB", "ROT"]),
+        kriterium3Detail: z.string().optional(),
+        kriterium4Signal: z.enum(["GRUEN", "GELB", "ROT"]),
+        kriterium4Detail: z.string().optional(),
+        these: z.string(),
+        exitThese: z.string(),
+        ergebnis: z.enum(["KAUF_MOEGLICH", "ABGELEHNT", "COOLDOWN"]),
+        gruenCount: z.number(),
+        gelbCount: z.number(),
+        rotCount: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id } = await saveEinstiegsanalyse(ctx.user.id, {
+          ...input,
+          preisBeiAnalyse: input.preisBeiAnalyse !== undefined ? String(input.preisBeiAnalyse) : null,
+          kurssprungWochenperf: input.kurssprungWochenperf !== undefined ? String(input.kurssprungWochenperf) : null,
+          wkn: input.wkn || null,
+        });
+        return { success: true, id };
+      }),
+
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return getEinstiegsanalysen(ctx.user.id);
+    }),
+
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return getEinstiegsanalyse(ctx.user.id, input.id);
+      }),
+
+    remove: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return deleteEinstiegsanalyse(ctx.user.id, input.id);
+      }),
+
+    budget: router({
+      getYear: protectedProcedure
+        .input(z.object({ jahr: z.number() }))
+        .query(async ({ ctx, input }) => {
+          return getInnovationsbudgetJahr(ctx.user.id, input.jahr);
+        }),
+
+      setZiel: protectedProcedure
+        .input(z.object({ jahr: z.number(), zielbetrag: z.number() }))
+        .mutation(async ({ ctx, input }) => {
+          return setInnovationsbudgetZiel(ctx.user.id, input.jahr, input.zielbetrag);
+        }),
+
+      addNutzung: protectedProcedure
+        .input(z.object({
+          jahr: z.number(),
+          ticker: z.string().optional(),
+          name: z.string().optional(),
+          betrag: z.number(),
+          beschreibung: z.string().optional(),
+          einstiegsanalyseId: z.number().optional(),
+          datum: z.string(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          const { id } = await addInnovationsbudgetNutzung(ctx.user.id, input);
+          return { success: true, id };
+        }),
+
+      removeNutzung: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ ctx, input }) => {
+          return removeInnovationsbudgetNutzung(ctx.user.id, input.id);
+        }),
+    }),
   }),
 
   // User Settings

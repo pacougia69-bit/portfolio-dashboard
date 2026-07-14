@@ -17,10 +17,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { trpc } from '@/lib/trpc';
 import { parseGermanNumber } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useLocation } from 'wouter';
 import {
   Briefcase, Search, Plus, ArrowUpDown, ArrowUp, ArrowDown,
   Edit, Trash2, RefreshCw, FileJson, Upload, Loader2, TrafficCone, X, CirclePlus,
-  MessageSquare, Copy, Check
+  MessageSquare, Copy, Check, SearchCheck
 } from 'lucide-react';
 
 const formatCurrency = (value: number) => {
@@ -39,6 +40,7 @@ type SortField = 'name' | 'value' | 'performance' | 'type' | 'category';
 type SortDirection = 'asc' | 'desc';
 
 export default function PortfolioPage() {
+  const [, setLocation] = useLocation();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -1112,6 +1114,22 @@ export default function PortfolioPage() {
                                   title="Nur diese Ampel aktualisieren (1 API-Credit)"
                                 >
                                   <RefreshCw className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-muted-foreground hover:text-emerald-400"
+                                  onClick={() => {
+                                    const params = new URLSearchParams({
+                                      ticker: entry.ticker,
+                                      name: entry.name,
+                                      ...(entry.wkn ? { wkn: entry.wkn } : {}),
+                                    });
+                                    setLocation(`/einstiegsanalyse?${params.toString()}`);
+                                  }}
+                                  title="Zur Einstiegsanalyse hinzufügen"
+                                >
+                                  <SearchCheck className="w-3 h-3" />
                                 </Button>
                                 <Button
                                   variant="ghost"

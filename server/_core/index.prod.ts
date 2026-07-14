@@ -133,6 +133,100 @@ async function runDatabaseMigration() {
     console.error('⚠️  Error creating portfolio_snapshots table:', snapError?.message || snapError);
   }
 
+  // === Einstiegsanalyse: Historie-Tabelle sicherstellen ===
+  try {
+    console.log('🔍 Checking einstiegsanalysen table...');
+    const eaConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await eaConn.query(`
+        CREATE TABLE IF NOT EXISTS einstiegsanalysen (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          ticker VARCHAR(20) NOT NULL,
+          wkn VARCHAR(20),
+          \`name\` VARCHAR(255) NOT NULL,
+          preisBeiAnalyse DECIMAL(18,4),
+          kurssprungAusgeloest BOOLEAN NOT NULL DEFAULT FALSE,
+          kurssprungWochenperf DECIMAL(6,2),
+          kurssprungGrund ENUM('ja','nein'),
+          kurssprungSpezifisch ENUM('firmenspezifisch','sektor'),
+          kurssprungVorlauf ENUM('einklang','vorlauf'),
+          kurssprungKonsequenz VARCHAR(500),
+          coolDown BOOLEAN NOT NULL DEFAULT FALSE,
+          kriterium1Signal ENUM('GRUEN','GELB','ROT') NOT NULL,
+          kriterium1Detail VARCHAR(500),
+          kriterium2Signal ENUM('GRUEN','GELB','ROT') NOT NULL,
+          kriterium2Detail VARCHAR(500),
+          kriterium3Signal ENUM('GRUEN','GELB','ROT') NOT NULL,
+          kriterium3Detail VARCHAR(500),
+          kriterium4Signal ENUM('GRUEN','GELB','ROT') NOT NULL,
+          kriterium4Detail VARCHAR(500),
+          these TEXT NOT NULL,
+          exitThese TEXT NOT NULL,
+          ergebnis ENUM('KAUF_MOEGLICH','ABGELEHNT','COOLDOWN') NOT NULL,
+          gruenCount INT NOT NULL,
+          gelbCount INT NOT NULL,
+          rotCount INT NOT NULL,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ einstiegsanalysen table ready');
+    } finally {
+      await eaConn.end();
+    }
+  } catch (eaError: any) {
+    console.error('⚠️  Error creating einstiegsanalysen table:', eaError?.message || eaError);
+  }
+
+  // === Innovationsbudget: Jahresziel + Nutzung-Tabellen sicherstellen ===
+  try {
+    console.log('🔍 Checking innovationsbudget_jahresziel table...');
+    const ibzConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await ibzConn.query(`
+        CREATE TABLE IF NOT EXISTS innovationsbudget_jahresziel (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          jahr INT NOT NULL,
+          zielbetrag DECIMAL(18,2) NOT NULL,
+          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          UNIQUE KEY innovationsbudget_jahresziel_user_jahr (userId, jahr)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ innovationsbudget_jahresziel table ready');
+    } finally {
+      await ibzConn.end();
+    }
+  } catch (ibzError: any) {
+    console.error('⚠️  Error creating innovationsbudget_jahresziel table:', ibzError?.message || ibzError);
+  }
+
+  try {
+    console.log('🔍 Checking innovationsbudget_nutzung table...');
+    const ibnConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await ibnConn.query(`
+        CREATE TABLE IF NOT EXISTS innovationsbudget_nutzung (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          jahr INT NOT NULL,
+          ticker VARCHAR(20),
+          \`name\` VARCHAR(255),
+          betrag DECIMAL(18,2) NOT NULL,
+          beschreibung VARCHAR(500),
+          einstiegsanalyseId INT,
+          datum VARCHAR(10) NOT NULL,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ innovationsbudget_nutzung table ready');
+    } finally {
+      await ibnConn.end();
+    }
+  } catch (ibnError: any) {
+    console.error('⚠️  Error creating innovationsbudget_nutzung table:', ibnError?.message || ibnError);
+  }
+
   // === Rentenziel-Spalten in user_settings sicherstellen (vorher nur localStorage) ===
   try {
     console.log('🔍 Checking retirementTargetSum/desiredPension columns...');

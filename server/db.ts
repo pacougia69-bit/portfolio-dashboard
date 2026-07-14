@@ -1329,3 +1329,149 @@ export async function getPortfolioSnapshots(userId: number, days: number = 730) 
     totalInvested: Number(s.totalInvested),
   }));
 }
+
+// ============================================
+// Einstiegsanalyse (Historie)
+// ============================================
+
+export async function saveEinstiegsanalyse(userId: number, data: Record<string, unknown>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { einstiegsanalysen } = await import('../drizzle/schema');
+
+  const result = await db.insert(einstiegsanalysen).values({
+    userId,
+    ...data,
+  } as any);
+
+  return { id: Number(result[0].insertId) };
+}
+
+export async function getEinstiegsanalysen(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { einstiegsanalysen } = await import('../drizzle/schema');
+  const result = await db.select().from(einstiegsanalysen)
+    .where(eq(einstiegsanalysen.userId, userId))
+    .orderBy(desc(einstiegsanalysen.createdAt));
+
+  return result.map(r => ({
+    ...r,
+    preisBeiAnalyse: r.preisBeiAnalyse ? Number(r.preisBeiAnalyse) : null,
+    kurssprungWochenperf: r.kurssprungWochenperf ? Number(r.kurssprungWochenperf) : null,
+  }));
+}
+
+export async function getEinstiegsanalyse(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const { einstiegsanalysen } = await import('../drizzle/schema');
+  const result = await db.select().from(einstiegsanalysen)
+    .where(and(eq(einstiegsanalysen.id, id), eq(einstiegsanalysen.userId, userId)))
+    .limit(1);
+
+  if (result.length === 0) return null;
+  const r = result[0];
+  return {
+    ...r,
+    preisBeiAnalyse: r.preisBeiAnalyse ? Number(r.preisBeiAnalyse) : null,
+    kurssprungWochenperf: r.kurssprungWochenperf ? Number(r.kurssprungWochenperf) : null,
+  };
+}
+
+export async function deleteEinstiegsanalyse(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { einstiegsanalysen } = await import('../drizzle/schema');
+  await db.delete(einstiegsanalysen)
+    .where(and(eq(einstiegsanalysen.id, id), eq(einstiegsanalysen.userId, userId)));
+
+  return { success: true };
+}
+
+// ============================================
+// Innovationsbudget
+// ============================================
+
+export async function getInnovationsbudgetJahr(userId: number, jahr: number) {
+  const db = await getDb();
+  if (!db) return { zielbetrag: null, nutzungen: [] as any[] };
+
+  const { innovationsbudgetJahresziel, innovationsbudgetNutzung } = await import('../drizzle/schema');
+
+  const zielResult = await db.select().from(innovationsbudgetJahresziel)
+    .where(and(eq(innovationsbudgetJahresziel.userId, userId), eq(innovationsbudgetJahresziel.jahr, jahr)))
+    .limit(1);
+
+  const nutzungenResult = await db.select().from(innovationsbudgetNutzung)
+    .where(and(eq(innovationsbudgetNutzung.userId, userId), eq(innovationsbudgetNutzung.jahr, jahr)))
+    .orderBy(desc(innovationsbudgetNutzung.datum));
+
+  return {
+    zielbetrag: zielResult.length > 0 ? Number(zielResult[0].zielbetrag) : null,
+    nutzungen: nutzungenResult.map(n => ({ ...n, betrag: Number(n.betrag) })),
+  };
+}
+
+export async function setInnovationsbudgetZiel(userId: number, jahr: number, zielbetrag: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { innovationsbudgetJahresziel } = await import('../drizzle/schema');
+
+  const existing = await db.select().from(innovationsbudgetJahresziel)
+    .where(and(eq(innovationsbudgetJahresziel.userId, userId), eq(innovationsbudgetJahresziel.jahr, jahr)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db.update(innovationsbudgetJahresziel)
+      .set({ zielbetrag: String(zielbetrag) })
+      .where(and(eq(innovationsbudgetJahresziel.userId, userId), eq(innovationsbudgetJahresziel.jahr, jahr)));
+  } else {
+    await db.insert(innovationsbudgetJahresziel).values({
+      userId,
+      jahr,
+      zielbetrag: String(zielbetrag),
+    });
+  }
+
+  return { success: true };
+}
+
+export async function addInnovationsbudgetNutzung(userId: number, data: {
+  jahr: number; ticker?: string; name?: string; betrag: number; beschreibung?: string;
+  einstiegsanalyseId?: number; datum: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { innovationsbudgetNutzung } = await import('../drizzle/schema');
+
+  const result = await db.insert(innovationsbudgetNutzung).values({
+    userId,
+    jahr: data.jahr,
+    ticker: data.ticker || null,
+    name: data.name || null,
+    betrag: String(data.betrag),
+    beschreibung: data.beschreibung || null,
+    einstiegsanalyseId: data.einstiegsanalyseId || null,
+    datum: data.datum,
+  });
+
+  return { id: Number(result[0].insertId) };
+}
+
+export async function removeInnovationsbudgetNutzung(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { innovationsbudgetNutzung } = await import('../drizzle/schema');
+  await db.delete(innovationsbudgetNutzung)
+    .where(and(eq(innovationsbudgetNutzung.id, id), eq(innovationsbudgetNutzung.userId, userId)));
+
+  return { success: true };
+}

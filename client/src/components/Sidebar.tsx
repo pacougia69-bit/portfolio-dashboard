@@ -25,6 +25,7 @@ import {
   HelpCircle,
   Scale,
   Activity,
+  SearchCheck,
 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,7 @@ const navItems = [
   { path: '/notizen', label: 'Notizen', icon: StickyNote },
   { path: '/ki-assistent', label: 'KI-Assistent', icon: Bot },
   { path: '/tech-fruehwarnsystem', label: 'Tech-Frühwarnsystem', icon: Activity },
+  { path: '/einstiegsanalyse', label: 'Einstiegsanalyse', icon: SearchCheck },
   { path: '/hilfe', label: 'Hilfe', icon: HelpCircle },
   { path: '/einstellungen', label: 'Einstellungen', icon: Settings },
 ];
