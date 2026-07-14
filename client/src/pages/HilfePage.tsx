@@ -24,7 +24,8 @@ import {
   Wrench,
   Activity,
   FileUp,
-  CircleDot
+  CircleDot,
+  SearchCheck
 } from "lucide-react";
 
 interface FAQItem {
@@ -115,6 +116,58 @@ const faqData: FAQItem[] = [
     category: "ampel",
     question: "Wie nutze ich die KI-Fragen bei der Ampel?",
     answer: "Bei jeder Aktie in der Ampel gibt es ein Chat-Symbol (💬). Klicken Sie darauf, um 5 vorgefertigte KI-Fragen zu sehen: Trend-Analyse, Kaufen/Halten/Verkaufen, Risiko-Check, News & Sentiment und Konkurrenz-Vergleich. Jede Frage enthält automatisch die aktuellen Daten der Aktie (Kurs, SMA, Signal). Klicken Sie auf 'Kopieren' und fügen Sie die Frage in Gemini, ChatGPT oder eine andere KI ein — kostenlos und ohne API-Kosten."
+  },
+  {
+    category: "ampel",
+    question: "Was macht der Lupe-Knopf bei einer Ampel-Zeile?",
+    answer: "Der Knopf 'Zur Einstiegsanalyse hinzufügen' (Lupe mit Haken) springt direkt zur Einstiegsanalyse-Seite und füllt Ticker, WKN und Name der Aktie schon aus. Praktisch, wenn Sie eine bestehende Ampel-Position noch einmal komplett durch die 5-Kriterien-Checkliste prüfen wollen, bevor Sie nachkaufen."
+  },
+
+  // Einstiegsanalyse
+  {
+    category: "einstiegsanalyse",
+    question: "Was ist die Einstiegsanalyse?",
+    answer: "Ein fester Ablauf für Kauf-Entscheidungen, damit nicht bei jeder Aktie neu verhandelt wird, was gerade wichtig erscheint. Fünf feste Kriterien (Bewertung, Wachstum, Technische Lage, Depot-Fit + Doppelung, These + Exit-These) werden nacheinander geprüft. Kauf gilt nur als vertretbar, wenn mindestens 4 von 5 Kriterien grün oder gelb sind und keins rot ist — die endgültige Entscheidung bleibt aber immer bei Ihnen."
+  },
+  {
+    category: "einstiegsanalyse",
+    question: "Was ist der Kurssprung-Filter?",
+    answer: "Läuft automatisch VOR der Checkliste. Ist eine Aktie in den letzten 5 Handelstagen um mehr als 8% gesprungen, fragt das Tool drei Dinge ab: Gibt es einen konkreten Grund? Ist er firmenspezifisch oder Sektor-weit? Läuft der Kurs der Bewertung voraus? Je nach Antwort verlangt die Ampel einen Cool-down (2-4 Wochen abwarten), statt sofort zu kaufen."
+  },
+  {
+    category: "einstiegsanalyse",
+    question: "Woher weiß ich, was ich bei Bewertung und Wachstumstrend auswählen soll?",
+    answer: "Beide Felder sind Pflicht — ohne Auswahl kann nicht gespeichert werden, damit ein Kriterium nicht unbewertet einfach als 'gelb' durchrutscht. Nutzen Sie den Button 'Direkt recherchieren' bei Kriterium 5: die KI recherchiert dann nicht nur These/Exit-These, sondern schlägt auch Bewertung (KGV/PEG vs. Historie & Peers) und Wachstumstrend (letzte 4 Quartale) mit Begründung vor. Sie prüfen den Vorschlag und übernehmen oder ändern ihn."
+  },
+  {
+    category: "einstiegsanalyse",
+    question: "Warum muss ich das KGV manuell eintragen?",
+    answer: "Twelve Data liefert im kostenlosen Tarif kein zuverlässiges KGV (der Versuch über den /statistics-Endpunkt blieb schon beim Standalone-Tool bei Testaktien leer). Kurs, SMA50/200 und RSI kommen automatisch — das KGV bleibt bewusst ein manuelles Feld, ebenso wie im ursprünglichen Standalone-Tool."
+  },
+  {
+    category: "einstiegsanalyse",
+    question: "Was bedeutet die Gauge bei 'Technische Lage'?",
+    answer: "Eine eigene Kurzformel aus RSI + SMA50 + SMA200 (nicht identisch mit Apps wie vincfi, die vermutlich mehr Indikatoren nutzen). Kurs über beiden gleitenden Durchschnitten + RSI über 60 = bullisch (grün), Kurs unter beiden + RSI unter 40 = bärisch (rot), alles dazwischen = neutral/gemischt (gelb). Wird automatisch aus den geladenen Kursdaten berechnet, keine manuelle Eingabe nötig."
+  },
+  {
+    category: "einstiegsanalyse",
+    question: "Wie unterscheidet sich die Einstiegsanalyse von der Aktien-Ampel?",
+    answer: "Die Ampel ist ein Wächter für bestehende Positionen (rot → Position halbieren, v.a. bei den eingefrorenen ETF-Wetten). Die Einstiegsanalyse ist eine Entscheidungshilfe VOR einem Neukauf. Beide teilen sich dieselbe Kurs/SMA-Datenquelle, sind aber bewusst getrennte Werkzeuge mit unterschiedlichem Zweck."
+  },
+  {
+    category: "einstiegsanalyse",
+    question: "Was ist das Innovationsbudget?",
+    answer: "Ein fester Jahresbetrag, der in neue thematische Einzelpositionen (statt in den ETF-Kern) fließen darf. Das Jahresziel tragen Sie manuell ein (nicht automatisch aus dem Depotwert berechnet, weil das Geld dafür nicht immer aus dem eigenen Depot kommt) — jede genutzte Position können Sie danach als Eintrag hinzufügen, der Balken zeigt den Verbrauch gegen das Ziel."
+  },
+  {
+    category: "einstiegsanalyse",
+    question: "Kann ich statt eines Tickers auch die WKN eingeben?",
+    answer: "Ja. Ticker oder WKN reichen jeweils allein — ist nur die WKN ausgefüllt, wird sie beim Laden automatisch zum Ticker aufgelöst. Sind beide ausgefüllt, hat der Ticker Vorrang."
+  },
+  {
+    category: "einstiegsanalyse",
+    question: "Werden abgeschlossene Analysen gespeichert?",
+    answer: "Ja, im Tab 'Historie' — jede gespeicherte Analyse zeigt Datum, Aktie und Ergebnis (Kauf möglich / Abgelehnt / Cool-down). Ein Klick auf eine Zeile öffnet die volle Checkliste mit allen Begründungen von damals."
   },
 
   // Frühwarnsystem
@@ -294,6 +347,7 @@ const categories = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "portfolio", label: "Portfolio", icon: Briefcase },
   { id: "ampel", label: "Aktien-Ampel", icon: CircleDot },
+  { id: "einstiegsanalyse", label: "Einstiegsanalyse", icon: SearchCheck },
   { id: "fruehwarnsystem", label: "Frühwarnsystem", icon: Activity },
   { id: "watchlist", label: "Watchlist", icon: Eye },
   { id: "strategie", label: "Strategie", icon: Target },

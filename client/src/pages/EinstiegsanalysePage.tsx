@@ -190,15 +190,30 @@ export default function EinstiegsanalysePage() {
     },
   });
 
-  const handleLoadData = () => {
-    if (!ticker.trim()) {
-      toast.error("Bitte zuerst einen Ticker eingeben.");
-      return;
+  // WKN-Alternative zum Ticker (Rafael kommt mit WKN besser zurecht) — loest die WKN
+  // erst zum Ticker auf (gleicher Lookup wie die Ampel-Suche), dann laeuft der normale
+  // Ticker-Weg weiter.
+  const lookupWkn = trpc.lookup.byWKN.useMutation();
+
+  const handleLoadData = async () => {
+    let effectiveTicker = ticker.trim();
+    if (!effectiveTicker) {
+      if (!wkn.trim()) {
+        toast.error("Bitte Ticker oder WKN eingeben.");
+        return;
+      }
+      const result = await lookupWkn.mutateAsync({ wkn: wkn.trim() });
+      if (!result.success || !result.data) {
+        toast.error(result.error || "WKN nicht gefunden.");
+        return;
+      }
+      effectiveTicker = result.data.ticker;
+      setTicker(result.data.ticker);
+      if (!name.trim()) setName(result.data.name);
+    } else if (!name.trim()) {
+      lookupTicker.mutate({ ticker: effectiveTicker });
     }
-    fetchTechnicalData.mutate({ ticker: ticker.trim() });
-    if (!name.trim()) {
-      lookupTicker.mutate({ ticker: ticker.trim() });
-    }
+    fetchTechnicalData.mutate({ ticker: effectiveTicker });
   };
 
   // === Kurssprung-Filter ===
@@ -277,12 +292,19 @@ export default function EinstiegsanalysePage() {
   const k5Signal: Signal = these.trim() && exitThese.trim() ? "GRUEN" : "ROT";
 
   // === Recherche ===
+  // Liefert jetzt auch einen Vorschlag fuer Kriterium 1 (Bewertung) + 2 (Wachstum) mit
+  // Begruendung — beantwortet Rafaels Frage "woher soll ich wissen, was ich auswaehle":
+  // die KI schlaegt vor, er prueft/uebernimmt statt selbst von Null zu recherchieren.
   const researchThese = trpc.einstiegsanalyse.researchThese.useMutation({
     onSuccess: (result) => {
       if (result.success) {
+        setBewertung(result.bewertung);
+        setBewertungNotiz(result.bewertungBegruendung);
+        setWachstum(result.wachstum);
+        setWachstumNotiz(result.wachstumBegruendung);
         setThese(result.investmentThese);
         setExitThese(result.exitThese);
-        toast.success("Recherche-Vorschlag übernommen — bitte prüfen vor dem Speichern.");
+        toast.success("Recherche-Vorschlag übernommen (Bewertung, Wachstum, These, Exit-These) — bitte prüfen vor dem Speichern.");
       } else {
         toast.error(result.message || "Recherche fehlgeschlagen.");
       }
@@ -299,12 +321,18 @@ export default function EinstiegsanalysePage() {
   };
 
   const handleCopyPrompt = async () => {
-    const prompt = `Recherchiere für die Aktie ${name || ticker} (${ticker}) aktuelle, belastbare Informationen (Quartalszahlen, Guidance, Wachstumstreiber, Risiken, Wettbewerbsposition) und formuliere daraus:
+    const prompt = `Recherchiere für die Aktie ${name || ticker} (${ticker}) aktuelle, belastbare Informationen (KGV/PEG vs. eigener Historie und Peers, Umsatz-/Gewinnentwicklung der letzten 4 Quartale, Guidance, Wachstumstreiber, Risiken, Wettbewerbsposition) und formuliere daraus:
 
-1. Eine INVESTMENT-THESE: ein Satz, warum diese Aktie jetzt interessant ist — was muss in 2 Jahren noch stimmen, damit sich der Kauf gelohnt hat.
-2. Eine EXIT-THESE: ein Satz, unter welcher konkreten Bedingung die Position überdacht/verkauft werden sollte.
+1. BEWERTUNG: günstig, neutral oder teuer gegenüber eigener Historie und Peers?
+2. WACHSTUM: hat sich das Wachstum der letzten 4 Quartale beschleunigt, ist es stabil, oder hat es sich verlangsamt?
+3. Eine INVESTMENT-THESE: ein Satz, warum diese Aktie jetzt interessant ist — was muss in 2 Jahren noch stimmen, damit sich der Kauf gelohnt hat.
+4. Eine EXIT-THESE: ein Satz, unter welcher konkreten Bedingung die Position überdacht/verkauft werden sollte.
 
 Antworte am Ende genau mit:
+BEWERTUNG: guenstig|neutral|teuer
+BEWERTUNG-BEGRUENDUNG: <ein Satz>
+WACHSTUM: beschleunigt|stabil|verlangsamt
+WACHSTUM-BEGRUENDUNG: <ein Satz>
 INVESTMENT-THESE: <ein Satz>
 EXIT-THESE: <ein Satz>`;
     try {
@@ -355,6 +383,14 @@ EXIT-THESE: <ein Satz>`;
   const handleSave = () => {
     if (!ticker.trim() || !name.trim()) {
       toast.error("Ticker und Name sind Pflicht.");
+      return;
+    }
+    if (!bewertung) {
+      toast.error("Bewertung (Kriterium 1) muss ausgewählt sein — sonst zählt das Kriterium ungeprüft mit. Tipp: \"Direkt recherchieren\" liefert einen Vorschlag.");
+      return;
+    }
+    if (!wachstum) {
+      toast.error("Wachstumstrend (Kriterium 2) muss ausgewählt sein — sonst zählt das Kriterium ungeprüft mit. Tipp: \"Direkt recherchieren\" liefert einen Vorschlag.");
       return;
     }
     if (!these.trim() || !exitThese.trim()) {
@@ -482,11 +518,11 @@ EXIT-THESE: <ein Satz>`;
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <Label>Ticker</Label>
+                    <Label>Ticker (oder WKN)</Label>
                     <Input value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder="z.B. AMZN" />
                   </div>
                   <div>
-                    <Label>WKN (optional)</Label>
+                    <Label>WKN (oder Ticker)</Label>
                     <Input value={wkn} onChange={(e) => setWkn(e.target.value)} placeholder="z.B. 906866" />
                   </div>
                   <div>
@@ -494,8 +530,9 @@ EXIT-THESE: <ein Satz>`;
                     <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="z.B. Amazon" />
                   </div>
                 </div>
-                <Button onClick={handleLoadData} disabled={fetchTechnicalData.isPending}>
-                  {fetchTechnicalData.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                <p className="text-xs text-muted-foreground -mt-1">Eines von beiden reicht — Ticker geht vor, falls beides ausgefüllt ist.</p>
+                <Button onClick={handleLoadData} disabled={fetchTechnicalData.isPending || lookupWkn.isPending}>
+                  {fetchTechnicalData.isPending || lookupWkn.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                   Technische Daten laden
                 </Button>
                 {fetchTechnicalData.data && !fetchTechnicalData.data.success && (
@@ -503,10 +540,18 @@ EXIT-THESE: <ein Satz>`;
                 )}
                 {technicalData && (
                   <div className="text-sm text-muted-foreground grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
-                    <div>Kurs: <strong className="text-foreground">{technicalData.currentPrice.toFixed(2)}</strong></div>
+                    <div>
+                      Kurs: <strong className="text-foreground">{technicalData.currentPrice.toFixed(2)} €</strong>
+                      {technicalData.convertedToEur && (
+                        <span className="text-xs"> ({technicalData.currentPriceOriginal.toFixed(2)} {technicalData.currency})</span>
+                      )}
+                      {!technicalData.convertedToEur && technicalData.currency !== "EUR" && (
+                        <span className="text-xs"> ({technicalData.currency}, nicht umgerechnet)</span>
+                      )}
+                    </div>
                     <div>RSI14: <strong className="text-foreground">{technicalData.rsi14?.toFixed(1) ?? "–"}</strong></div>
-                    <div>SMA50: <strong className="text-foreground">{technicalData.sma50?.toFixed(2) ?? "–"}</strong></div>
-                    <div>SMA200: <strong className="text-foreground">{technicalData.sma200?.toFixed(2) ?? "–"}</strong></div>
+                    <div>SMA50: <strong className="text-foreground">{technicalData.sma50?.toFixed(2) ?? "–"} €</strong></div>
+                    <div>SMA200: <strong className="text-foreground">{technicalData.sma200?.toFixed(2) ?? "–"} €</strong></div>
                   </div>
                 )}
               </CardContent>
@@ -637,6 +682,21 @@ EXIT-THESE: <ein Satz>`;
                   <Textarea value={these} onChange={(e) => setThese(e.target.value)} placeholder="Investment-These: warum diese Aktie, was muss in 2 Jahren noch stimmen?" rows={2} />
                   <Textarea value={exitThese} onChange={(e) => setExitThese(e.target.value)} placeholder="Exit-These: wann überdenke/verkaufe ich?" rows={2} />
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Konsolidierte Checkliste-Uebersicht, wie in einstiegsanalyse.html —
+                alle 5 Ampeln gebuendelt an einer Stelle statt nur verstreut je Kriterium. */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm uppercase tracking-wide text-primary">Checkliste — Ampeln</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <AmpelRow label="1. Bewertung" signal={k1Signal} detail={k1Detail} />
+                <AmpelRow label="2. Wachstumstrend" signal={k2Signal} detail={wachstumNotiz || wachstum || undefined} />
+                <AmpelRow label="3. Technische Lage" signal={k3Signal} detail={k3Detail} />
+                <AmpelRow label="4. Depot-Fit + Doppelung" signal={k4Signal} detail={`${depotanteilPct.toFixed(1)}% Depotanteil${doppelung ? " · Doppelung: " + doppelung : ""}`} />
+                <AmpelRow label="5. These + Exit-These" signal={k5Signal} detail={k5Signal === "GRUEN" ? "Beide formuliert" : "These und/oder Exit-These fehlen"} />
               </CardContent>
             </Card>
 
