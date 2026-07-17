@@ -611,6 +611,132 @@ const WKN_DATABASE: Record<string, { ticker: string; name: string; type: string 
   'A3GX35': { ticker: 'SOLW.SW', name: 'WisdomTree Physical Solana', type: 'Krypto' },
 };
 
+// Berechnet die Pruefziffer einer ISIN (Luhn-Algorithmus auf den in Ziffern
+// umgewandelten Zeichen, A=10 ... Z=35) -- fuer den deutschen ISIN-Aufbau
+// "DE" + "000" + WKN + Pruefziffer (verifiziert an SAP: WKN 716460 -> DE0007164600).
+function computeIsinCheckDigit(isin11: string): string {
+  let digits = "";
+  for (const ch of isin11.toUpperCase()) {
+    digits += ch >= "0" && ch <= "9" ? ch : (ch.charCodeAt(0) - 55).toString();
+  }
+  let sum = 0;
+  let double = true;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = parseInt(digits[i], 10);
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return ((10 - (sum % 10)) % 10).toString();
+}
+
+function wknToIsin(wkn: string): string | null {
+  const cleaned = wkn.trim().toUpperCase();
+  if (cleaned.length !== 6) return null;
+  const base11 = `DE000${cleaned}`;
+  return `${base11}${computeIsinCheckDigit(base11)}`;
+}
+
+// Fragt die Yahoo-Finance-Suche ab und gibt die Rohtreffer zurueck (leeres Array bei Fehler).
+async function searchYahooQuotes(query: string): Promise<any[]> {
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0&enableFuzzyQuery=false&quotesQueryId=tss_match_phrase_query`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.quotes || [];
+  } catch {
+    return [];
+  }
+}
+
+// Bester Treffer aus einer Trefferliste -- bevorzugt deutsche Boersen (.DE, .F).
+function pickBestMatch(quotes: any[]): any | null {
+  return quotes.find((q: any) => q.symbol?.endsWith('.DE') || q.symbol?.endsWith('.F')) || quotes[0] || null;
+}
+
+// Holt zu einem Yahoo-Suchtreffer die Kursdetails (Chart-Endpunkt) und baut das
+// einheitliche Rueckgabeformat -- gemeinsam genutzt von WKN- und Namenssuche.
+async function fetchYahooQuoteDetails(bestMatch: any): Promise<{
+  success: true;
+  data: { name: string; ticker: string; currentPrice: number; currency: string; type: string; exchange: string };
+} | { success: false; error: string }> {
+  const ticker = bestMatch.symbol;
+  let type = 'Aktie';
+  if (bestMatch.quoteType === 'ETF') type = 'ETF';
+  else if (bestMatch.quoteType === 'CRYPTOCURRENCY') type = 'Krypto';
+  else if (bestMatch.quoteType === 'MUTUALFUND') type = 'Fonds';
+
+  const quoteResponse = await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`,
+    { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } }
+  );
+
+  if (!quoteResponse.ok) {
+    return {
+      success: true,
+      data: {
+        name: bestMatch.longname || bestMatch.shortname || ticker,
+        ticker,
+        currentPrice: 0,
+        currency: 'EUR',
+        type,
+        exchange: bestMatch.exchange || 'Unknown',
+      }
+    };
+  }
+
+  const quoteData = await quoteResponse.json();
+  const meta = quoteData.chart?.result?.[0]?.meta;
+  if (!meta) {
+    return { success: false, error: 'Kursdaten nicht verfügbar' };
+  }
+
+  let price = meta.regularMarketPrice || meta.previousClose || 0;
+  const currency = meta.currency || 'EUR';
+  if (currency === 'USD') price = price / 1.08; // Approximate EUR/USD rate
+
+  return {
+    success: true,
+    data: {
+      name: meta.longName || bestMatch.longname || bestMatch.shortname || ticker,
+      ticker,
+      currentPrice: price,
+      currency: 'EUR',
+      type,
+      exchange: meta.exchangeName || bestMatch.exchange || 'Unknown',
+    }
+  };
+}
+
+// Lookup by Security Name using Yahoo Finance API (Direktsuche per Firmenname,
+// da das Name-Feld bisher nirgends als Suchbegriff verwendet wurde).
+export async function lookupByName(name: string): Promise<{
+  success: boolean;
+  data?: { name: string; ticker: string; currentPrice: number; currency: string; type: string; exchange: string };
+  error?: string;
+}> {
+  const query = name.trim();
+  if (!query) {
+    return { success: false, error: 'Bitte einen Namen eingeben.' };
+  }
+  const bestMatch = pickBestMatch(await searchYahooQuotes(query));
+  if (!bestMatch) {
+    return { success: false, error: `Keine Daten für "${name}" gefunden` };
+  }
+  try {
+    return await fetchYahooQuoteDetails(bestMatch);
+  } catch (error) {
+    console.error('Error looking up name:', error);
+    return { success: false, error: 'Fehler beim Abrufen der Daten' };
+  }
+}
+
 // WKN to Security Data Lookup using Yahoo Finance API
 export async function lookupByWKN(wkn: string): Promise<{
   success: boolean;
@@ -688,109 +814,32 @@ export async function lookupByWKN(wkn: string): Promise<{
       };
     }
     
-    // If not in our database, try Yahoo Finance search
-    // First try direct search with WKN
-    const searchResponse = await fetch(
-      `https://query1.finance.yahoo.com/v1/finance/search?q=${searchQuery}&quotesCount=10&newsCount=0&enableFuzzyQuery=false&quotesQueryId=tss_match_phrase_query`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      }
-    );
-    
-    if (!searchResponse.ok) {
-      return { success: false, error: 'Yahoo Finance API nicht erreichbar' };
-    }
-    
-    const searchData = await searchResponse.json();
-    const quotes = searchData.quotes || [];
-    
-    // Find the best match - prefer German exchanges (.DE, .F)
-    let bestMatch = quotes.find((q: any) => 
-      q.symbol?.endsWith('.DE') || q.symbol?.endsWith('.F')
-    ) || quotes[0];
-    
+    // If not in our database, try Yahoo Finance search -- erst die rohe WKN direkt,
+    // dann mit .DE-Suffix, dann (neu) ueber die daraus berechnete ISIN, da Yahoo
+    // WKNs als Suchbegriff generell nicht zuverlaessig kennt, ISINs aber oft schon.
+    let bestMatch = pickBestMatch(await searchYahooQuotes(searchQuery));
+
     if (!bestMatch) {
-      // Try searching with .DE suffix
-      const searchResponseDE = await fetch(
-        `https://query1.finance.yahoo.com/v1/finance/search?q=${searchQuery}.DE&quotesCount=5&newsCount=0`,
-        {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
-        }
-      );
-      
-      if (searchResponseDE.ok) {
-        const searchDataDE = await searchResponseDE.json();
-        bestMatch = searchDataDE.quotes?.[0];
-      }
+      bestMatch = pickBestMatch(await searchYahooQuotes(`${searchQuery}.DE`));
     }
-    
+
+    const isin = wknToIsin(searchQuery);
+    if (!bestMatch && isin) {
+      bestMatch = pickBestMatch(await searchYahooQuotes(isin));
+    }
+
     if (!bestMatch) {
-      return { success: false, error: `Keine Daten für WKN ${wkn} gefunden` };
-    }
-    
-    // Get detailed quote data
-    const ticker = bestMatch.symbol;
-    const quoteResponse = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      }
-    );
-    
-    if (!quoteResponse.ok) {
-      return { 
-        success: true, 
-        data: {
-          name: bestMatch.longname || bestMatch.shortname || ticker,
-          ticker: ticker,
-          wkn: wkn.toUpperCase(),
-          currentPrice: 0,
-          currency: 'EUR',
-          type: bestMatch.quoteType === 'ETF' ? 'ETF' : 'Aktie',
-          exchange: bestMatch.exchange || 'Unknown',
-        }
+      return {
+        success: false,
+        error: isin
+          ? `Keine Daten für WKN ${wkn} gefunden (auch nicht über ISIN ${isin})`
+          : `Keine Daten für WKN ${wkn} gefunden`,
       };
     }
-    
-    const quoteData = await quoteResponse.json();
-    const meta = quoteData.chart?.result?.[0]?.meta;
-    
-    if (!meta) {
-      return { success: false, error: 'Kursdaten nicht verfügbar' };
-    }
-    
-    // Determine type based on quote type
-    let type = 'Aktie';
-    if (bestMatch.quoteType === 'ETF') type = 'ETF';
-    else if (bestMatch.quoteType === 'CRYPTOCURRENCY') type = 'Krypto';
-    else if (bestMatch.quoteType === 'MUTUALFUND') type = 'Fonds';
-    
-    // Convert price to EUR if needed
-    let price = meta.regularMarketPrice || meta.previousClose || 0;
-    const currency = meta.currency || 'EUR';
-    
-    if (currency === 'USD') {
-      price = price / 1.08; // Approximate EUR/USD rate
-    }
-    
-    return {
-      success: true,
-      data: {
-        name: meta.longName || bestMatch.longname || bestMatch.shortname || ticker,
-        ticker: ticker,
-        wkn: wkn.toUpperCase(),
-        currentPrice: price,
-        currency: 'EUR',
-        type: type,
-        exchange: meta.exchangeName || bestMatch.exchange || 'Unknown',
-      }
-    };
+
+    const result = await fetchYahooQuoteDetails(bestMatch);
+    if (!result.success) return result;
+    return { success: true, data: { ...result.data, wkn: wkn.toUpperCase() } };
   } catch (error) {
     console.error('Error looking up WKN:', error);
     return { success: false, error: 'Fehler beim Abrufen der Daten' };

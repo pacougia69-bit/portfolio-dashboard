@@ -192,24 +192,34 @@ export default function EinstiegsanalysePage() {
 
   // WKN-Alternative zum Ticker (Rafael kommt mit WKN besser zurecht) — loest die WKN
   // erst zum Ticker auf (gleicher Lookup wie die Ampel-Suche), dann laeuft der normale
-  // Ticker-Weg weiter.
+  // Ticker-Weg weiter. Name als dritte Alternative, falls weder Ticker noch WKN bekannt sind.
   const lookupWkn = trpc.lookup.byWKN.useMutation();
+  const lookupName = trpc.lookup.byName.useMutation();
 
   const handleLoadData = async () => {
     let effectiveTicker = ticker.trim();
     if (!effectiveTicker) {
-      if (!wkn.trim()) {
-        toast.error("Bitte Ticker oder WKN eingeben.");
+      if (wkn.trim()) {
+        const result = await lookupWkn.mutateAsync({ wkn: wkn.trim() });
+        if (!result.success || !result.data) {
+          toast.error(result.error || "WKN nicht gefunden.");
+          return;
+        }
+        effectiveTicker = result.data.ticker;
+        setTicker(result.data.ticker);
+        if (!name.trim()) setName(result.data.name);
+      } else if (name.trim()) {
+        const result = await lookupName.mutateAsync({ name: name.trim() });
+        if (!result.success || !result.data) {
+          toast.error(result.error || "Name nicht gefunden.");
+          return;
+        }
+        effectiveTicker = result.data.ticker;
+        setTicker(result.data.ticker);
+      } else {
+        toast.error("Bitte Ticker, WKN oder Name eingeben.");
         return;
       }
-      const result = await lookupWkn.mutateAsync({ wkn: wkn.trim() });
-      if (!result.success || !result.data) {
-        toast.error(result.error || "WKN nicht gefunden.");
-        return;
-      }
-      effectiveTicker = result.data.ticker;
-      setTicker(result.data.ticker);
-      if (!name.trim()) setName(result.data.name);
     } else if (!name.trim()) {
       lookupTicker.mutate({ ticker: effectiveTicker });
     }
@@ -530,9 +540,9 @@ EXIT-THESE: <ein Satz>`;
                     <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="z.B. Amazon" />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground -mt-1">Eines von beiden reicht — Ticker geht vor, falls beides ausgefüllt ist.</p>
-                <Button onClick={handleLoadData} disabled={fetchTechnicalData.isPending || lookupWkn.isPending}>
-                  {fetchTechnicalData.isPending || lookupWkn.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                <p className="text-xs text-muted-foreground -mt-1">Eines reicht — Priorität: Ticker vor WKN vor Name.</p>
+                <Button onClick={handleLoadData} disabled={fetchTechnicalData.isPending || lookupWkn.isPending || lookupName.isPending}>
+                  {fetchTechnicalData.isPending || lookupWkn.isPending || lookupName.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                   Technische Daten laden
                 </Button>
                 {fetchTechnicalData.data && !fetchTechnicalData.data.success && (

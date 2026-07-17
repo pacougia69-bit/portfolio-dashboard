@@ -65,7 +65,7 @@ import {
   addInnovationsbudgetNutzung,
   removeInnovationsbudgetNutzung,
 } from "./db";
-import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker } from "./services";
+import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker, lookupByName } from "./services";
 import { getEurUsdRate } from "./currency";
 import { DEFAULT_TARGET_ALLOCATIONS } from "@shared/strategy";
 import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningHistory } from "./tech-warning";
@@ -774,6 +774,12 @@ export const appRouter = router({
       .input(z.object({ ticker: z.string() }))
       .mutation(async ({ input }) => {
         return lookupByTicker(input.ticker);
+      }),
+
+    byName: protectedProcedure
+      .input(z.object({ name: z.string() }))
+      .mutation(async ({ input }) => {
+        return lookupByName(input.name);
       }),
   }),
 
