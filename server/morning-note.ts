@@ -16,12 +16,24 @@ import { desc, eq } from "drizzle-orm";
 import { getDb, getPortfolioPositions } from "./db";
 import { morningNotes } from "../drizzle/schema";
 import { checkOpenAIRateLimit } from "./_core/rate-limiter";
+import { fetchLivePricesTwelveData, TWELVE_DATA_MAX_TICKERS_PER_CALL } from "./services";
+import { getLatestTechWarningSnapshot } from "./tech-warning";
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-export type MorningNotePosition = { ticker: string; name: string; hasNews: boolean };
+export type SelectedPosition = { ticker: string; name: string; type: string };
+
+export type MorningNotePosition = {
+  ticker: string;
+  name: string;
+  hasNews: boolean;
+  // Optionaler Preiskontext (Twelve Data), nur gesetzt wenn ein Kurs abrufbar war.
+  price?: number;
+  changePercent?: number;
+  currency?: string;
+};
 
 export type MorningNoteSnapshot = {
   id: number;
@@ -43,33 +55,93 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
 const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 
 function buildSystemPrompt(): string {
-  return `Du bist ein persönlicher Recherche-Assistent für einen Privatanleger (keine institutionelle Analyse, keine Handelsempfehlungen). Du fasst zusammen, was über Nacht und heute früh an Nachrichten zu seinen tatsächlichen Positionen passiert ist — sachlich, kompakt, ohne Kauf-/Verkaufs- oder Long/Short-Aussagen. Eine Ampel-/Kauf-Verkauf-Einstufung gibt es an anderer Stelle im Dashboard bereits (Portfolio-Status, Tech-Frühwarnsystem, Einstiegsanalyse) — hier geht es nur um Fakten und neutrale Einordnung.`;
+  return `Du bist ein persönlicher Recherche-Assistent für einen Privatanleger (keine institutionelle Analyse, keine Handelsempfehlungen, kein Finanz-Fachwissen vorausgesetzt). Du fasst zusammen, was über Nacht und heute früh an Nachrichten zu seinen tatsächlichen Positionen passiert ist — sachlich, kompakt, ohne Kauf-/Verkaufs- oder Long/Short-Aussagen. Neue Kauf/Verkauf-Einstufungen erfindest du nicht, die gibt es an anderer Stelle im Dashboard bereits (Portfolio-Status, Aktien-Ampel, Einstiegsanalyse). Falls dir ein bestehendes Tech-Frühwarnsystem-Signal als Kontext mitgegeben wird, darfst und sollst du DIESES bestehende Signal in einfache, verständliche Alltagssprache übersetzen — das ist keine neue Einschätzung, sondern nur eine Erklärung dessen, was schon feststeht. Schreibe generell so, dass auch jemand ohne Börsen-Vorwissen alles versteht: Fachbegriffe (z.B. "SMA200", "Circular Financing") kurz miterklären statt vorauszusetzen.`;
 }
 
-function buildUserPrompt(positions: Array<{ ticker: string; name: string; type: string }>): string {
-  const list = positions.map((p) => `- ${p.name} (${p.ticker}, ${p.type})`).join("\n");
+function buildMarketContext(
+  snapshot: { overallSignal: string; summary: string | null; indicators: unknown } | null,
+): string {
+  if (!snapshot) return "";
+  let indicatorLines = "";
+  try {
+    indicatorLines = Object.values(snapshot.indicators as Record<string, any>)
+      .map((ind: any) => `- ${ind.label}: ${String(ind.signal).toUpperCase()} — ${ind.value}`)
+      .join("\n");
+  } catch {
+    indicatorLines = "";
+  }
+  return `\n\nZusätzlicher Kontext — aktueller Stand des Tech-Frühwarnsystems (Gesamt-Ampel: ${snapshot.overallSignal.toUpperCase()}):
+${indicatorLines || snapshot.summary || ""}
+
+Schreibe daraus als ERSTEN Abschnitt "## Marktlage einfach erklärt" — 2-4 Sätze in einfacher Alltagssprache, was dieser Stand ganz konkret bedeutet, ohne unerklärte Fachbegriffe. Das ist eine Übersetzung des bestehenden Signals, keine neue Kauf/Verkauf-Einschätzung.`;
+}
+
+function buildUserPrompt(
+  positions: Array<{ ticker: string; name: string; type: string }>,
+  priceMap: Map<string, { price: number; changePercent: number; currency: string }>,
+  marketContext: string,
+): string {
+  const list = positions
+    .map((p) => {
+      const px = priceMap.get(p.ticker);
+      const priceInfo = px
+        ? ` — aktueller Kurs: ${px.price.toFixed(2)} ${px.currency}, Tagesveränderung: ${px.changePercent >= 0 ? "+" : ""}${px.changePercent.toFixed(2)}%`
+        : "";
+      return `- ${p.name} (${p.ticker}, ${p.type})${priceInfo}`;
+    })
+    .join("\n");
   return `Der Anleger hält aktuell folgende Positionen:
 ${list}
 
 Recherchiere aktuelle Nachrichten der letzten 12-16 Stunden (über Nacht / heute früh) zu JEDER dieser Positionen.
 
 1. Für jede Position mit MATERIELL relevanten News: ein kurzer Abschnitt (2-4 Sätze) — was ist passiert, warum könnte es für einen Halter dieser Position relevant sein. Neutral formuliert, keine Kauf/Verkauf-Aussage.
-2. Positionen OHNE nennenswerte News: einfach weglassen, nichts erfinden.
+2. Positionen OHNE nennenswerte News: einfach weglassen, nichts erfinden. Falls eine Kursangabe vorhanden ist, darfst du sie zur Einordnung nutzen (z.B. "SAP -2%, kein erkennbarer Auslöser gefunden" ist eine erlaubte, hilfreiche Aussage) — aber erfinde KEINE Kursbewegung für eine Position ohne Kursangabe.
 3. Eine "Top-Meldung" — die wichtigste Einzelmeldung über alle Positionen hinweg, als kurze Schlagzeile (max. 15 Wörter).
-4. Optional ein kurzer Abschnitt "Heute im Blick" — Termine/Earnings/Events heute mit Relevanz fürs Portfolio, nur falls recherchierbar.`;
+4. Optional ein kurzer Abschnitt "Heute im Blick" — Termine/Earnings/Events heute mit Relevanz fürs Portfolio, nur falls recherchierbar.${marketContext}`;
+}
+
+/**
+ * Holt Kurs/Tagesveränderung für die ersten min(Ticker, 7) Positionen (Twelve-Data-
+ * Limit pro Anfrage). Bewusst KEIN Mehrfach-Batching mit Wartezeit: Rafael wählt
+ * selbst per Positions-Picker aus, welche Positionen einen Kurs bekommen sollen —
+ * Kurse sind für ihn ohnehin nur grobe Orientierung, keine Pause nötig.
+ * Nice-to-have: schlägt der Abruf fehl, läuft die Morning Note trotzdem weiter,
+ * nur ohne Kurskontext.
+ */
+async function fetchPriceContext(
+  tickers: string[],
+): Promise<Map<string, { price: number; changePercent: number; currency: string }>> {
+  const priceMap = new Map<string, { price: number; changePercent: number; currency: string }>();
+  const apiKey = process.env.TWELVE_DATA_API_KEY;
+  if (!apiKey || tickers.length === 0) return priceMap;
+
+  const batch = Array.from(new Set(tickers)).slice(0, TWELVE_DATA_MAX_TICKERS_PER_CALL);
+  try {
+    const { results } = await fetchLivePricesTwelveData(batch, apiKey);
+    for (const r of results) {
+      priceMap.set(r.ticker, { price: r.price, changePercent: r.changePercent, currency: r.currency });
+    }
+  } catch (err: any) {
+    console.warn("[morning-note] Preiskontext fehlgeschlagen:", err?.message || err);
+  }
+  return priceMap;
 }
 
 const JSON_FORMAT_INSTRUCTION = `WICHTIG: Antworte am Ende mit einem JSON-Block in genau diesem Format (zwischen \`\`\`json und \`\`\`):
 \`\`\`json
 {
   "headline": "Top-Meldung als kurze Schlagzeile",
-  "bodyMarkdown": "## Top-Meldung\\n...\\n\\n## Positionen\\n...\\n\\n## Heute im Blick\\n...",
+  "bodyMarkdown": "## Marktlage einfach erklärt\\n...\\n\\n## Top-Meldung\\n...\\n\\n## Positionen\\n...\\n\\n## Heute im Blick\\n...",
   "positionsCovered": [{"ticker": "...", "name": "...", "hasNews": true}]
 }
-\`\`\``;
+\`\`\`
+(Den Abschnitt "Marktlage einfach erklärt" nur aufnehmen, wenn dir dafür Kontext mitgegeben wurde — sonst weglassen.)`;
 
 async function callOpenAIForMorningNote(
   positions: Array<{ ticker: string; name: string; type: string }>,
+  priceMap: Map<string, { price: number; changePercent: number; currency: string }>,
+  marketContext: string,
 ): Promise<{ headline: string; bodyMarkdown: string; positionsCovered: MorningNotePosition[] }> {
   if (!openai) {
     throw new Error("OpenAI-Client nicht initialisiert — OPENAI_API_KEY fehlt.");
@@ -77,7 +149,7 @@ async function callOpenAIForMorningNote(
 
   checkOpenAIRateLimit();
 
-  const fullPrompt = `${buildSystemPrompt()}\n\n${buildUserPrompt(positions)}\n\n${JSON_FORMAT_INSTRUCTION}`;
+  const fullPrompt = `${buildSystemPrompt()}\n\n${buildUserPrompt(positions, priceMap, marketContext)}\n\n${JSON_FORMAT_INSTRUCTION}`;
 
   const response = await openai.responses.create({
     model: OPENAI_MODEL,
@@ -112,27 +184,65 @@ async function callOpenAIForMorningNote(
 // ============================================================================
 
 /**
- * Holt eine neue Morning Note für die aktuellen Portfolio-Positionen des Users,
- * speichert sie und gibt sie zurück. Bei leerem Portfolio wird KEIN OpenAI-Call
- * ausgelöst (spart Rate-Limit-Budget).
+ * Holt eine neue Morning Note für die übergebene Auswahl an Positionen (oder,
+ * falls keine Auswahl übergeben wurde, für das komplette Portfolio — Rückwärts-
+ * kompatibilität). `undefined` = kein Picker-Aufruf, altes Verhalten. Ein leeres
+ * Array `[]` bedeutet dagegen "bewusst nichts ausgewählt" und löst KEINEN
+ * Fallback aufs Portfolio aus, sondern den Leer-Hinweis unten.
  */
-export async function generateMorningNote(userId: number): Promise<MorningNoteSnapshot> {
-  const positions = await getPortfolioPositions(userId);
+export async function generateMorningNote(
+  userId: number,
+  selectedPositions?: SelectedPosition[],
+): Promise<MorningNoteSnapshot> {
+  let positions: SelectedPosition[];
+  if (selectedPositions !== undefined) {
+    positions = selectedPositions;
+  } else {
+    const portfolioPositions = await getPortfolioPositions(userId);
+    positions = portfolioPositions.map((p) => ({ ticker: p.ticker, name: p.name, type: p.type }));
+  }
 
   if (positions.length === 0) {
     return {
       id: -1,
       createdAt: new Date(),
-      headline: "Kein Portfolio hinterlegt",
-      bodyMarkdown: "Es sind noch keine Positionen im Portfolio hinterlegt, zu denen eine Morning Note erstellt werden könnte.",
+      headline: selectedPositions !== undefined ? "Keine Positionen ausgewählt" : "Kein Portfolio hinterlegt",
+      bodyMarkdown: selectedPositions !== undefined
+        ? "Es wurden keine Positionen zur Recherche ausgewählt."
+        : "Es sind noch keine Positionen im Portfolio hinterlegt, zu denen eine Morning Note erstellt werden könnte.",
       positionsCovered: [],
       errorMessage: null,
     };
   }
 
-  const { headline, bodyMarkdown, positionsCovered } = await callOpenAIForMorningNote(
-    positions.map((p) => ({ ticker: p.ticker, name: p.name, type: p.type })),
-  );
+  const priceMap = await fetchPriceContext(positions.map((p) => p.ticker));
+
+  // Best-effort: fehlt der Tech-Frühwarnsystem-Snapshot (noch keiner erstellt,
+  // oder DB-Problem), läuft die Morning Note trotzdem ganz normal weiter —
+  // nur ohne den "Marktlage einfach erklärt"-Abschnitt.
+  let marketContext = "";
+  try {
+    const techSnapshot = await getLatestTechWarningSnapshot(userId);
+    marketContext = buildMarketContext(techSnapshot);
+  } catch (err: any) {
+    console.warn("[morning-note] Tech-Frühwarnsystem-Kontext nicht verfügbar:", err?.message || err);
+  }
+
+  const { headline, bodyMarkdown, positionsCovered } = await callOpenAIForMorningNote(positions, priceMap, marketContext);
+
+  // Kurse deterministisch nachtraeglich mergen — unabhaengig davon, was das Modell
+  // in positionsCovered zurueckgab. Jede ausgewaehlte Position landet garantiert
+  // im Ergebnis (mit hasNews:false ergaenzt, falls das Modell sie ausliess).
+  const byTicker = new Map(positionsCovered.map((p) => [p.ticker, p]));
+  for (const p of positions) {
+    if (!byTicker.has(p.ticker)) {
+      byTicker.set(p.ticker, { ticker: p.ticker, name: p.name, hasNews: false });
+    }
+  }
+  const positionsCoveredWithPrices: MorningNotePosition[] = Array.from(byTicker.values()).map((p) => {
+    const px = priceMap.get(p.ticker);
+    return px ? { ...p, price: px.price, changePercent: px.changePercent, currency: px.currency } : p;
+  });
 
   const db = await getDb();
   if (!db) {
@@ -149,7 +259,7 @@ export async function generateMorningNote(userId: number): Promise<MorningNoteSn
       userId,
       headline,
       bodyMarkdown,
-      positionsCovered: positionsCovered as any, // json-Feld
+      positionsCovered: positionsCoveredWithPrices as any, // json-Feld
       errorMessage,
     });
     insertId = Number(result[0].insertId);
@@ -167,7 +277,7 @@ export async function generateMorningNote(userId: number): Promise<MorningNoteSn
     createdAt: new Date(),
     headline,
     bodyMarkdown,
-    positionsCovered,
+    positionsCovered: positionsCoveredWithPrices,
     errorMessage,
   };
 }

@@ -4,9 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import {
-  AlertTriangle,
-  AlertOctagon,
-  CheckCircle2,
   Loader2,
   RefreshCw,
   Activity,
@@ -14,8 +11,7 @@ import {
   Info,
 } from "lucide-react";
 import { toast } from "sonner";
-
-type Signal = "gruen" | "gelb" | "rot";
+import { type Signal, getSignalStyles } from "@/lib/signal-styles";
 
 type IndicatorResult = {
   label: string;
@@ -61,42 +57,6 @@ const INDICATOR_LABELS: Record<keyof Indicators, string> = {
   rates_inflation: "Zinsen & Inflation",
   market_breadth: "Marktbreite",
 };
-
-// ============================================================================
-// Farb-/Styling-Helfer pro Signal
-// ============================================================================
-
-function getSignalStyles(signal: Signal) {
-  switch (signal) {
-    case "gruen":
-      return {
-        bg: "bg-green-500/10",
-        border: "border-green-500/40",
-        text: "text-green-600 dark:text-green-400",
-        ring: "ring-green-500/30",
-        Icon: CheckCircle2,
-        label: "GRÜN",
-      };
-    case "gelb":
-      return {
-        bg: "bg-yellow-500/10",
-        border: "border-yellow-500/40",
-        text: "text-yellow-600 dark:text-yellow-400",
-        ring: "ring-yellow-500/30",
-        Icon: AlertTriangle,
-        label: "GELB",
-      };
-    case "rot":
-      return {
-        bg: "bg-red-500/10",
-        border: "border-red-500/40",
-        text: "text-red-600 dark:text-red-400",
-        ring: "ring-red-500/30",
-        Icon: AlertOctagon,
-        label: "ROT",
-      };
-  }
-}
 
 function formatRelativeTime(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;

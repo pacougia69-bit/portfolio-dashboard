@@ -1688,12 +1688,33 @@ export const appRouter = router({
 
   // Morning Note (On-Demand News-Zusammenfassung zu den eigenen Positionen)
   morningNote: router({
-    // Recherchiert per OpenAI-Websuche News zu den aktuellen Portfolio-Positionen
-    // und speichert das Ergebnis. Wird vom Button im Frontend ausgelöst, dauert
-    // ca. 10-30 Sekunden.
-    generate: protectedProcedure.mutation(async ({ ctx }) => {
-      return generateMorningNote(ctx.user.id);
-    }),
+    // Recherchiert per OpenAI-Websuche News zu den ausgewählten Positionen
+    // (Portfolio/Watchlist/Ad-hoc-WKN aus dem Frontend-Picker) und speichert das
+    // Ergebnis. Ohne Auswahl (undefined) fällt es auf das komplette Portfolio
+    // zurück (Rückwärtskompatibilität). Wird vom Button im Frontend ausgelöst,
+    // dauert ca. 10-30 Sekunden.
+    generate: protectedProcedure
+      .input(
+        z
+          .object({
+            selectedPositions: z
+              .array(
+                z.object({
+                  ticker: z.string(),
+                  name: z.string(),
+                  // z.string() statt Portfolio-Enum: Watchlist-Items haben kein
+                  // type-Feld, Ad-hoc-Treffer fließen nur als Freitext-Kontext
+                  // in den Prompt ein.
+                  type: z.string(),
+                }),
+              )
+              .optional(),
+          })
+          .optional(),
+      )
+      .mutation(async ({ ctx, input }) => {
+        return generateMorningNote(ctx.user.id, input?.selectedPositions);
+      }),
 
     // Liest die zuletzt gespeicherte Notiz aus der DB. Liefert null, wenn noch keine existiert.
     getLatest: protectedProcedure.query(async ({ ctx }) => {

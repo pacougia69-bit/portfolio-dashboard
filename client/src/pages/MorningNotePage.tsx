@@ -1,13 +1,23 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { Loader2, RefreshCw, Sunrise, Info } from "lucide-react";
+import { Loader2, RefreshCw, Sunrise, Info, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
+import { getSignalStyles } from "@/lib/signal-styles";
+import MorningNotePositionPicker, { type SelectedPosition } from "@/components/MorningNotePositionPicker";
 
-type MorningNotePosition = { ticker: string; name: string; hasNews: boolean };
+type MorningNotePosition = {
+  ticker: string;
+  name: string;
+  hasNews: boolean;
+  price?: number;
+  changePercent?: number;
+  currency?: string;
+};
 
 // Lokaler Notiz-Typ — der State, den wir in der Seite halten,
 // unabhängig davon, ob er aus der DB oder direkt aus der Mutation kommt.
@@ -62,19 +72,33 @@ function PositionBadges({ positions }: { positions: MorningNotePosition[] }) {
         {withNews} von {positions.length} Position{positions.length === 1 ? "" : "en"} mit Meldungen
       </div>
       <div className="flex flex-wrap gap-2">
-        {positions.map((p) => (
-          <span
-            key={p.ticker}
-            className={`inline-flex items-center text-xs font-mono px-2 py-1 rounded border ${
-              p.hasNews
-                ? "bg-primary/10 border-primary/30 text-foreground"
-                : "bg-muted/40 border-border/40 text-muted-foreground"
-            }`}
-            title={p.name}
-          >
-            {p.ticker}
-          </span>
-        ))}
+        {positions.map((p) => {
+          const hasPrice = typeof p.changePercent === "number";
+          const changeColor = hasPrice
+            ? p.changePercent! >= 0
+              ? "text-green-600 dark:text-green-400"
+              : "text-red-600 dark:text-red-400"
+            : "";
+          return (
+            <span
+              key={p.ticker}
+              className={`inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded border ${
+                p.hasNews
+                  ? "bg-primary/10 border-primary/30 text-foreground"
+                  : "bg-muted/40 border-border/40 text-muted-foreground"
+              }`}
+              title={p.name}
+            >
+              {p.ticker}
+              {hasPrice && (
+                <span className={changeColor}>
+                  {p.changePercent! >= 0 ? "+" : ""}
+                  {p.changePercent!.toFixed(1)}%
+                </span>
+              )}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
@@ -150,6 +174,13 @@ export default function MorningNotePage() {
   // Verlaufs-Liste der letzten 30 Notizen
   const { data: history = [] } = trpc.morningNote.getHistory.useQuery({ limit: 30 });
 
+  // Letzter Tech-Frühwarnsystem-Snapshot — unabhängig von der Morning Note selbst,
+  // immer aktuell, macht die Seite auch vor dem ersten Klick nicht leer.
+  const { data: techSnapshot } = trpc.techWarning.getLatest.useQuery();
+
+  // Aktuelle Auswahl aus dem Positions-Picker (Portfolio + Watchlist + Ad-hoc)
+  const [selectedPositions, setSelectedPositions] = useState<SelectedPosition[]>([]);
+
   // Lokaler State: das ist, was die Seite anzeigt. Wird mit DB-Daten initialisiert
   // und durch Mutation-Antworten aktualisiert. Bleibt sichtbar, auch wenn getLatest
   // zwischendurch null liefert.
@@ -193,6 +224,32 @@ export default function MorningNotePage() {
           </p>
         </div>
 
+        {/* Marktumfeld — letzter Tech-Frühwarnsystem-Snapshot, immer sichtbar */}
+        {techSnapshot && (() => {
+          const styles = getSignalStyles(techSnapshot.overallSignal as any);
+          return (
+            <Link href="/tech-fruehwarnsystem">
+              <Card className={`${styles.bg} ${styles.border} border cursor-pointer hover:opacity-90 transition-opacity`}>
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <Activity className={`h-8 w-8 shrink-0 ${styles.text}`} />
+                  <div className="min-w-0">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
+                      Marktumfeld · Tech-Frühwarnsystem
+                    </div>
+                    <div className="text-sm sm:text-base truncate">
+                      <span className={`font-bold ${styles.text}`}>{styles.label}</span>
+                      {techSnapshot.summary && <span className="text-muted-foreground"> · {techSnapshot.summary}</span>}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          );
+        })()}
+
+        {/* Positions-Auswahl */}
+        <MorningNotePositionPicker onSelectionChange={setSelectedPositions} />
+
         {/* Schlagzeile + Aktion (PROMINENT) */}
         <Card className={note ? "border-2 border-primary/30 shadow-lg" : "border-2 border-dashed border-border/60"}>
           <CardContent className="p-6 sm:p-8">
@@ -233,8 +290,8 @@ export default function MorningNotePage() {
                 {/* Rechte Seite: Button */}
                 <Button
                   size="lg"
-                  onClick={() => generateNote.mutate()}
-                  disabled={isFetching}
+                  onClick={() => generateNote.mutate({ selectedPositions })}
+                  disabled={isFetching || selectedPositions.length === 0}
                   className="w-full lg:w-auto text-base sm:text-lg py-6 sm:py-7 px-6 sm:px-8 shadow-md"
                 >
                   {isFetching ? (
