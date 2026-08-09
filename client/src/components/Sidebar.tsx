@@ -26,6 +26,7 @@ import {
   Scale,
   Activity,
   SearchCheck,
+  Sunrise,
 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/morning-note', label: 'Morning Note', icon: Sunrise },
   { path: '/portfolio', label: 'Portfolio', icon: Briefcase },
   { path: '/watchlist', label: 'Watchlist', icon: Eye },
   { path: '/strategie', label: 'Strategie', icon: Target },

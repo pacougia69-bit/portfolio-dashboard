@@ -178,6 +178,30 @@ async function runDatabaseMigration() {
     console.error('⚠️  Error creating einstiegsanalysen table:', eaError?.message || eaError);
   }
 
+  // === Morning Note: morning_notes Tabelle sicherstellen ===
+  try {
+    console.log('🔍 Checking morning_notes table...');
+    const mnConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await mnConn.query(`
+        CREATE TABLE IF NOT EXISTS morning_notes (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          headline VARCHAR(500) NOT NULL,
+          bodyMarkdown TEXT NOT NULL,
+          positionsCovered JSON NOT NULL,
+          errorMessage TEXT,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ morning_notes table ready');
+    } finally {
+      await mnConn.end();
+    }
+  } catch (mnError: any) {
+    console.error('⚠️  Error creating morning_notes table:', mnError?.message || mnError);
+  }
+
   // === Innovationsbudget: Jahresziel + Nutzung-Tabellen sicherstellen ===
   try {
     console.log('🔍 Checking innovationsbudget_jahresziel table...');

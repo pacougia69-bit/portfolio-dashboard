@@ -390,6 +390,23 @@ export type Einstiegsanalyse = typeof einstiegsanalysen.$inferSelect;
 export type InsertEinstiegsanalyse = typeof einstiegsanalysen.$inferInsert;
 
 /**
+ * Morning Note - On-Demand Zusammenfassung ueber Nacht/heute relevanter News
+ * zu den eigenen Portfolio-Positionen. Ein Eintrag = ein Knopfdruck.
+ */
+export const morningNotes = mysqlTable("morning_notes", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  headline: varchar("headline", { length: 500 }).notNull(),
+  bodyMarkdown: text("bodyMarkdown").notNull(),
+  positionsCovered: json("positionsCovered").notNull(), // Array<{ticker,name,hasNews}>
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MorningNote = typeof morningNotes.$inferSelect;
+export type InsertMorningNote = typeof morningNotes.$inferInsert;
+
+/**
  * Innovationsbudget - Jahresziel (manuell gepflegt, nicht automatisch aus Depotwert,
  * weil das Geld dafuer nicht immer aus dem eigenen Depot kommt)
  */

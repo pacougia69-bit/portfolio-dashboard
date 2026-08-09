@@ -70,6 +70,7 @@ import { getEurUsdRate } from "./currency";
 import { DEFAULT_TARGET_ALLOCATIONS } from "@shared/strategy";
 import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningHistory } from "./tech-warning";
 import { fetchTechnicalData, researchThese } from "./einstiegsanalyse";
+import { generateMorningNote, getLatestMorningNote, getMorningNoteHistory } from "./morning-note";
 
 export const appRouter = router({
   system: systemRouter,
@@ -1682,6 +1683,28 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().min(1).max(50).default(10) }).optional())
       .query(async ({ ctx, input }) => {
         return getTechWarningHistory(ctx.user.id, input?.limit ?? 10);
+      }),
+  }),
+
+  // Morning Note (On-Demand News-Zusammenfassung zu den eigenen Positionen)
+  morningNote: router({
+    // Recherchiert per OpenAI-Websuche News zu den aktuellen Portfolio-Positionen
+    // und speichert das Ergebnis. Wird vom Button im Frontend ausgelöst, dauert
+    // ca. 10-30 Sekunden.
+    generate: protectedProcedure.mutation(async ({ ctx }) => {
+      return generateMorningNote(ctx.user.id);
+    }),
+
+    // Liest die zuletzt gespeicherte Notiz aus der DB. Liefert null, wenn noch keine existiert.
+    getLatest: protectedProcedure.query(async ({ ctx }) => {
+      return getLatestMorningNote(ctx.user.id);
+    }),
+
+    // Liest die letzten N Notizen (Default 10) für die Verlaufs-Leiste.
+    getHistory: protectedProcedure
+      .input(z.object({ limit: z.number().min(1).max(50).default(10) }).optional())
+      .query(async ({ ctx, input }) => {
+        return getMorningNoteHistory(ctx.user.id, input?.limit ?? 10);
       }),
   }),
 });
