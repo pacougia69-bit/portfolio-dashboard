@@ -50,8 +50,10 @@ export default function MorningNotePositionPicker({
   const { data: portfolio = [] } = trpc.portfolio.list.useQuery();
   const { data: watchlist = [] } = trpc.watchlist.list.useQuery();
 
+  // Standardmäßig ist nichts ausgewählt — Rafael wählt aktiv aus, was geprüft
+  // werden soll (bei ~25 Portfolio-Positionen wäre "alles vorausgewählt" ein
+  // ständiges Abwählen statt Auswählen).
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [defaultsApplied, setDefaultsApplied] = useState(false);
   const [adhocEntries, setAdhocEntries] = useState<PickerEntry[]>([]);
   const [adhocInput, setAdhocInput] = useState("");
 
@@ -59,14 +61,6 @@ export default function MorningNotePositionPicker({
   const lookupTicker = trpc.lookup.byTicker.useMutation();
   const lookupName = trpc.lookup.byName.useMutation();
   const isLookingUp = lookupWkn.isPending || lookupTicker.isPending || lookupName.isPending;
-
-  // Portfolio-Positionen sind beim ersten Laden automatisch vorausgewählt,
-  // Watchlist bewusst nicht (opt-in, da nicht im eigenen Besitz).
-  useEffect(() => {
-    if (defaultsApplied || portfolio.length === 0) return;
-    setSelected(new Set(portfolio.map((p) => makeKey("portfolio", p.ticker))));
-    setDefaultsApplied(true);
-  }, [portfolio, defaultsApplied]);
 
   const portfolioEntries: PickerEntry[] = portfolio.map((p) => ({
     key: makeKey("portfolio", p.ticker),
@@ -91,6 +85,21 @@ export default function MorningNotePositionPicker({
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
+      reportSelection(next, allEntries);
+      return next;
+    });
+  }
+
+  // Schnellumschalter pro Abschnitt: sind schon alle Einträge dieser Gruppe
+  // ausgewählt, wählt der Klick alle ab — sonst wählt er alle an.
+  function toggleAll(entries: PickerEntry[]) {
+    setSelected((prev) => {
+      const allSelected = entries.every((e) => prev.has(e.key));
+      const next = new Set(prev);
+      for (const e of entries) {
+        if (allSelected) next.delete(e.key);
+        else next.add(e.key);
+      }
       reportSelection(next, allEntries);
       return next;
     });
@@ -147,14 +156,23 @@ export default function MorningNotePositionPicker({
           Positionen auswählen
         </CardTitle>
         <CardDescription className="text-sm">
-          Weniger Positionen = fokussiertere Recherche. Portfolio ist vorausgewählt.
+          Weniger Positionen = fokussiertere Recherche. Wähle aus, was geprüft werden soll.
         </CardDescription>
       </CardHeader>
       <CardContent className="p-5 sm:p-6 pt-0 space-y-5">
         {portfolioEntries.length > 0 && (
           <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1 font-medium">
-              Portfolio
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
+                Portfolio
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleAll(portfolioEntries)}
+                className="text-xs text-primary hover:underline"
+              >
+                {portfolioEntries.every((e) => selected.has(e.key)) ? "Alle abwählen" : "Alle auswählen"}
+              </button>
             </div>
             <div className="flex flex-col divide-y divide-border/20">
               {portfolioEntries.map((entry) => (
@@ -166,8 +184,17 @@ export default function MorningNotePositionPicker({
 
         {watchlistEntries.length > 0 && (
           <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1 font-medium">
-              Watchlist
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
+                Watchlist
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleAll(watchlistEntries)}
+                className="text-xs text-primary hover:underline"
+              >
+                {watchlistEntries.every((e) => selected.has(e.key)) ? "Alle abwählen" : "Alle auswählen"}
+              </button>
             </div>
             <div className="flex flex-col divide-y divide-border/20">
               {watchlistEntries.map((entry) => (
