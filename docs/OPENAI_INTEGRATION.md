@@ -30,6 +30,30 @@ Das Portfolio-Dashboard nutzt OpenAI's GPT-Modelle für KI-gestützte Portfolio-
 └─────────────────────────────────────┘
 ```
 
+## ⚠️ Zwei parallele Integrations-Muster (Stand 15.08.2026)
+
+Seit dem ursprünglichen Bau (Januar 2026) ist ein **zweites** OpenAI-Anbindungsmuster
+dazugekommen, das komplett unabhängig vom `llm.ts`-Client unten läuft. Wichtig, das nicht zu
+verwechseln:
+
+| | **Muster A: Chat Completions** | **Muster B: Responses API + Websuche** |
+|---|---|---|
+| Datei | `server/_core/llm.ts` (`invokeLLM()`) | jeweils eigener Client direkt in `server/tech-warning.ts`, `server/morning-note.ts`, `server/einstiegsanalyse.ts` |
+| API-Aufruf | `openai.chat.completions.create()` | `openai.responses.create()` mit `tools: [{ type: "web_search_preview" }]` |
+| Modell | Fallback-Kette: gpt-4o → gpt-4o-mini → gpt-4-turbo → gpt-3.5-turbo | fest `gpt-4o`, kein Fallback |
+| Kann im Internet suchen? | ❌ Nein, nur mit den mitgegebenen Daten | ✅ Ja, das ist der ganze Zweck |
+| Genutzt von | `ai.*`-Router: Portfolio-Analyse, Chat, Empfehlungen, Sparplan-Vorschlag | `techWarning.*`, `morningNote.*`, `einstiegsanalyse.researchThese` — überall wo aktuelle News/Marktdaten recherchiert werden müssen |
+| Rate-Limit | teilt sich denselben 20/Std-Limiter (siehe unten) | teilt sich denselben 20/Std-Limiter (siehe unten) |
+
+**Warum getrennt:** Die Chat-Completions-API kann nicht im Internet suchen — für alles, was
+aktuelle Ereignisse braucht (Übernacht-News, Kill-Kriterien-Indikatoren, Kaufthesen-Recherche),
+wurde stattdessen die neuere Responses API mit dem `web_search_preview`-Tool verwendet. Jedes
+der drei neueren Module (`tech-warning.ts`, `morning-note.ts`, `einstiegsanalyse.ts`)
+instanziert dafür einen eigenen `new OpenAI(...)`-Client statt den gemeinsamen `llm.ts`-Client
+zu nutzen — das ist historisch gewachsen (jedes Feature wurde einzeln nach dem Vorbild des
+vorherigen gebaut), keine bewusste Architektur-Entscheidung. Bei einer größeren Aufräumaktion
+könnte man das vereinheitlichen, ist aber nicht dringend.
+
 ## Komponenten
 
 ### 1. OpenAI Client (`server/_core/llm.ts`)
@@ -126,32 +150,65 @@ export async function generateRecommendation(
 
 ### 3. tRPC API Routen (`server/routers.ts`)
 
-API-Endpunkte für Frontend-Zugriff.
+API-Endpunkte für Frontend-Zugriff. **Aktualisiert 15.08.2026 — vier Namespaces statt einem.**
 
-#### Verfügbare Routen
+#### `ai.*` — Muster A (Chat Completions, kein Web-Zugriff)
 
 ```typescript
 ai: router({
-  // Portfolio-Analyse
-  analyzePortfolio: protectedProcedure.mutation(),
-  
-  // Aktien-Empfehlung
-  getRecommendation: protectedProcedure
+  analyzePortfolio: protectedProcedure.mutation(),        // Portfolio-Analyse
+  getRecommendation: protectedProcedure                    // Aktien-Empfehlung
     .input(z.object({ ticker: z.string(), name: z.string() }))
     .mutation(),
-  
-  // Freier Chat
-  chat: protectedProcedure
+  chat: protectedProcedure                                 // Freier Chat
     .input(z.object({ message: z.string() }))
     .mutation(),
-    
-  // Sparplan-Empfehlung
-  suggestSparplan: protectedProcedure
-    .input(z.object({ 
-      monthlyBudget: z.number(), 
-      currentAllocations: z.array(...)
-    }))
+  suggestSparplan: protectedProcedure                       // Sparplan-Empfehlung
+    .input(z.object({ monthlyBudget: z.number(), currentAllocations: z.array(...) }))
     .mutation(),
+  // Verwaltung der KI-Fragen-Vorlagen (Chat-Icon bei jeder Aktie in der Ampel):
+  listTemplates: protectedProcedure.query(),
+  createTemplate: protectedProcedure.mutation(),
+  updateTemplate: protectedProcedure.mutation(),
+  deleteTemplate: protectedProcedure.mutation(),
+  resetTemplates: protectedProcedure.mutation(),
+  getChatHistory: protectedProcedure.query(),
+  saveChatMessage: protectedProcedure.mutation(),
+})
+```
+
+#### `techWarning.*` — Muster B (Tech-Frühwarnsystem, 5 KI-Markt-Indikatoren)
+
+```typescript
+techWarning: router({
+  fetchSnapshot: protectedProcedure.mutation(),  // Neuer Snapshot, dauert 10-30s
+  getLatest: protectedProcedure.query(),         // Letzter gespeicherter Snapshot
+  getHistory: protectedProcedure.query(),        // Verlauf (Default 10 Einträge)
+})
+```
+
+#### `morningNote.*` — Muster B (Übernacht-News zu Portfolio-Positionen, seit 09.08.2026)
+
+```typescript
+morningNote: router({
+  generate: protectedProcedure               // Neue Notiz, optional mit Positions-Auswahl
+    .input(z.object({ selectedPositions: z.array(...).optional() }).optional())
+    .mutation(),
+  getLatest: protectedProcedure.query(),
+  getHistory: protectedProcedure.query(),
+})
+```
+
+#### `einstiegsanalyse.*` — Muster B (Kaufthesen-Recherche) + reine DB-Operationen
+
+```typescript
+einstiegsanalyse: router({
+  fetchTechnicalData: protectedProcedure.mutation(),  // Kurs/RSI/SMA laden (kein OpenAI)
+  researchThese: protectedProcedure.mutation(),        // KI-Recherche via Websuche
+  save: protectedProcedure.mutation(),
+  list: protectedProcedure.query(),
+  get: protectedProcedure.query(),
+  remove: protectedProcedure.mutation(),
 })
 ```
 
@@ -402,17 +459,29 @@ railway logs
 - Niemals Key in Frontend exponieren
 - Niemals Key in Logs ausgeben
 
-### Rate Limiting
+### Rate Limiting — tatsächlich implementiert (nicht nur Beispiel)
 
-Implementiere serverseitiges Rate Limiting:
+Datei: `server/_core/rate-limiter.ts`. Simples In-Memory-Array mit gleitendem Zeitfenster,
+**kein Redis, kein pro-User-Limit** — ein einziges globales Limit für die ganze App:
 
 ```typescript
-// Beispiel: Max 10 AI-Anfragen pro User pro Stunde
-const userRequestCount = await redis.get(`ai_requests:${userId}`);
-if (userRequestCount > 10) {
-  throw new Error("Rate limit exceeded");
+const WINDOW_MS = 60 * 60 * 1000; // 1 Stunde
+const MAX_REQUESTS = 20;
+
+export function checkOpenAIRateLimit(): void {
+  // wirft Error mit Wartezeit-Angabe, wenn Limit erreicht
 }
 ```
+
+**Wichtig:** `checkOpenAIRateLimit()` wird von **allen** OpenAI-Aufrufen genutzt — `llm.ts`
+(Muster A) genauso wie `tech-warning.ts`, `morning-note.ts` und `einstiegsanalyse.ts`
+(Muster B). Alle KI-Features teilen sich dasselbe 20-Anfragen/Stunde-Budget. Ein aktiver
+Morning-Note-Lauf kann also z.B. dazu führen, dass kurz danach eine Portfolio-Chat-Anfrage
+mit "Limit erreicht" abgelehnt wird — kein Bug, sondern Absicht (schützt vor unkontrollierten
+API-Kosten durch Bugs/Endlosschleifen, eingeführt 04.07.2026).
+
+Da das Limit In-Memory ist (kein Redis/DB), setzt es sich bei jedem Server-Neustart/Deployment
+automatisch zurück.
 
 ## Roadmap
 
@@ -440,8 +509,27 @@ Bei Fragen oder Problemen:
 3. Teste mit `curl` direkt
 4. Erstelle Issue im Repository
 
+## Changelog
+
+### Version 2.0 (15.08.2026)
+- ✅ Zweites Integrations-Muster dokumentiert: Responses API + `web_search_preview` in
+  `tech-warning.ts`, `morning-note.ts`, `einstiegsanalyse.ts` (eigene Clients, nicht über
+  `llm.ts`) — für alle Features, die aktuelle Web-Recherche brauchen
+- ✅ Vollständige tRPC-Routenliste (vorher nur `ai.*` mit 4 von inzwischen 11 Routen; jetzt
+  zusätzlich `techWarning.*`, `morningNote.*`, `einstiegsanalyse.*`)
+- ✅ Echte Rate-Limiting-Implementierung dokumentiert (war vorher nur ein Redis-Beispiel,
+  das im Code so gar nicht existiert — tatsächlich ein einfacher In-Memory-Zähler,
+  geteiltes Limit über alle Features hinweg)
+- ⚠️ Diese Aktualisierung wurde nachgeholt — seit Januar 2026 nicht mehr gepflegt, obwohl in
+  der Zwischenzeit drei komplette neue KI-Features dazugekommen sind. Künftig bei neuen
+  KI-Features direkt mit aktualisieren.
+
+### Version 1.0 (Januar 2026)
+- Ursprüngliche Dokumentation des `ai.*`-Namespace (Chat Completions, Modell-Fallback-Kette)
+
 ---
 
-**Letzte Aktualisierung:** Januar 2026  
-**Version:** 1.0.0  
-**Maintainer:** Portfolio Dashboard Team
+**Dokumentation erstellt:** Januar 2026
+**Zuletzt aktualisiert:** 15.08.2026
+**Version:** 2.0.0
+**Maintainer:** Portfolio Dashboard Team (Rafael + Claude Code)

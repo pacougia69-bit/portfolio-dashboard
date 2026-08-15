@@ -16,7 +16,7 @@ Das Portfolio Dashboard nutzt **Drizzle ORM** mit einer **MySQL-kompatiblen Date
 
 ## Tabellenübersicht
 
-Das Dashboard verwendet **10 Haupttabellen**:
+Das Dashboard verwendet **23 Tabellen** (Stand 15.08.2026, siehe `drizzle/schema.ts`):
 
 | # | Tabelle | Zweck | Beziehung |
 |---|---------|-------|-----------|
@@ -30,6 +30,24 @@ Das Dashboard verwendet **10 Haupttabellen**:
 | 8 | `ai_analyses` | KI-Analysehistorie | → `users.id` |
 | 9 | `user_settings` | Benutzereinstellungen | → `users.id` (1:1) |
 | 10 | `transactions` | Kauf-/Verkaufstransaktionen | → `users.id` |
+| 11 | `ai_question_templates` | Vorgefertigte KI-Fragen pro Aktie | Unabhängig (global) |
+| 12 | `ai_chat_history` | Verlauf des KI-Chats | → `users.id` |
+| 13 | `tax_sources` | Banken/Broker mit Freistellungsauftrag | → `users.id` |
+| 14 | `tax_settings` | Verlusttöpfe + maximaler Freibetrag | → `users.id` (1:1) |
+| 15 | `stock_traffic_light` | Aktien-Ampel (Trend-Signale SMA50/200) | → `users.id` |
+| 16 | `tax_allowances` | Jahres-Freibeträge pro Broker | → `users.id` |
+| 17 | `loss_carryforwards` | Verlustvorträge aus Vorjahren | → `users.id` |
+| 18 | `tech_warning_signals` | Tech-Frühwarnsystem-Snapshots (5 Indikatoren) | → `users.id` |
+| 19 | `portfolio_snapshots` | Vermögensverlauf (1 Eintrag/Tag) | → `users.id` |
+| 20 | `einstiegsanalysen` | Historie abgeschlossener Kauf-Entscheidungen | → `users.id` |
+| 21 | `morning_notes` | Übernacht-News-Zusammenfassungen | → `users.id` |
+| 22 | `innovationsbudget_jahresziel` | Jahresziel Innovationsbudget | → `users.id` |
+| 23 | `innovationsbudget_nutzung` | Verbrauchs-Einträge gg. Jahresziel | → `users.id`, `einstiegsanalysen.id` |
+
+**Tabellen 1-10** sind der ursprüngliche Kern (Januar 2026, siehe Detailbeschreibung unten).
+**Tabellen 11-23** kamen seither dazu (KI-Fragen-Feature, Steuer-Verwaltung, Aktien-Ampel,
+Tech-Frühwarnsystem, Vermögensverlauf, Einstiegsanalyse, Morning Note, Innovationsbudget) —
+Kurzbeschreibung je Tabelle im Abschnitt "Neuere Tabellen (seit Mai 2026)" weiter unten.
 
 ---
 
@@ -430,6 +448,97 @@ const result = await createTransaction(userId, {
 
 ---
 
+## Neuere Tabellen (seit Mai 2026)
+
+Kompakter gehalten als die Tabellen 1-10 oben — bei Bedarf direkt in `drizzle/schema.ts` nachschauen.
+
+### 11. `ai_question_templates`
+**Zweck:** Vorgefertigte KI-Fragen, die per Chat-Icon bei jeder Aktie in der Aktien-Ampel aufklappbar sind (Trend-Analyse, Kaufen/Halten/Verkaufen, Risiko-Check, News, Konkurrenz).
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `title`, `prompt` | text/varchar | Anzeigename + der eigentliche Fragetext |
+| `category`, `icon` | varchar | Für die Darstellung im Frontend |
+| `isActive`, `sortOrder` | boolean/int | Ein-/Ausblenden, Reihenfolge |
+
+### 12. `ai_chat_history`
+**Zweck:** Speichert den Verlauf des freien KI-Chats (Frage/Antwort-Paare).
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `role` | enum | `user` / `assistant` / `system` |
+| `content` | text | Nachrichtentext |
+| `templateId` | int | Falls die Nachricht aus einer Vorlage kam (→ `ai_question_templates.id`) |
+| `sessionId` | varchar | Gruppiert zusammenhängende Chat-Sitzungen |
+
+### 13. `tax_sources`
+**Zweck:** Banken/Broker mit ihrem jeweiligen Freistellungsauftrag (Steuer-Verwaltung).
+Felder: `name`, `exemptionOrder` (Betrag), `notes`.
+
+### 14. `tax_settings`
+**Zweck:** Verlusttöpfe und maximaler Freibetrag pro Nutzer (1:1 zu `users`).
+Felder: `stockLossPot`, `otherLossPot`, `maxExemptionOrder`.
+
+### 15. `stock_traffic_light` (Aktien-Ampel)
+**Zweck:** Trend-Signal grün/gelb/rot je beobachteter Position, auf Basis SMA50/SMA200-Kreuzung.
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `sma50`, `sma200` | decimal | Gleitende Durchschnitte |
+| `signal` | enum | `GRUEN` / `GELB` / `ROT` |
+| `signalDetail` | varchar | Kurzbegründung |
+| `lastUpdated` | timestamp | Letzter Kurs-Refresh (einzeln oder als Sammel-Update) |
+
+### 16. `tax_allowances`
+**Zweck:** Jahres-Freibeträge pro Broker, mit separat erfasstem Verbrauch.
+Felder: `year`, `amount` (Freibetrag), `used` (bereits verbraucht), `broker`, `notes`.
+
+### 17. `loss_carryforwards`
+**Zweck:** Verlustvorträge aus Vorjahren, nach Kategorie getrennt.
+Felder: `year`, `category` (`general`/`stocks`/`other`), `amount`, `broker`, `notes`.
+
+### 18. `tech_warning_signals` (Tech-Frühwarnsystem)
+**Zweck:** Ein Eintrag = ein Knopfdruck-Snapshot der 5 KI-Markt-Frühwarn-Indikatoren (Capex/Umsatz-Schere, Circular Financing, Effizienzsprünge, Zinsen/Inflation, Marktbreite SPY/QQQ vs. 200-Tage-Linie).
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `overallSignal` | enum | `gruen`/`gelb`/`rot` — Worst-Case aller 5 Indikatoren |
+| `indicators` | json | Alle 5 Einzelsignale + Details |
+| `summary` | text | KI-Kurzfassung |
+
+Backend: `server/tech-warning.ts`, tRPC-Namespace `techWarning.*`.
+
+### 19. `portfolio_snapshots`
+**Zweck:** Vermögensverlauf-Chart auf der Startseite. Ein Eintrag pro Kalendertag, an dem das Dashboard geöffnet wurde — kein Cron nötig, wird beim Laden nachgetragen.
+Felder: `snapshotDate` (`YYYY-MM-DD`), `totalValue`, `totalInvested`.
+
+### 20. `einstiegsanalysen`
+**Zweck:** Historie abgeschlossener Kauf-Entscheidungsprozesse (5-Kriterien-Checkliste + Kurssprung-Filter, siehe `PROJEKTE/Aktien-Einstiegsanalyse`).
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `kurssprung*` (6 Felder) | — | Ergebnis des Kurssprung-Filters (ausgelöst, Wochenperformance, Grund, firmenspezifisch/Sektor, Vorlauf, Konsequenz), plus `coolDown` |
+| `kriterium1-4Signal/-Detail` | enum/varchar | Die 4 Checkliste-Kriterien mit Ampel + Begründung |
+| `these`, `exitThese` | text | Kaufthese und Ausstiegs-Kriterium |
+| `ergebnis` | enum | `KAUF_MOEGLICH` / `ABGELEHNT` / `COOLDOWN` |
+| `gruenCount`/`gelbCount`/`rotCount` | int | Zusammenfassung der 4 Kriterien-Ampeln |
+
+Backend: `server/einstiegsanalyse.ts`, tRPC-Namespace `einstiegsanalyse.*`.
+
+### 21. `morning_notes`
+**Zweck:** On-Demand-Zusammenfassung von Übernacht-News zu ausgewählten Portfolio-Positionen (Feature seit 09.08.2026).
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `headline`, `bodyMarkdown` | varchar/text | KI-generierte Zusammenfassung |
+| `positionsCovered` | json | `Array<{ticker, name, hasNews}>` — welche Position tatsächlich News hatte |
+
+Backend: `server/morning-note.ts`, tRPC-Namespace `morningNote.*`.
+
+### 22. `innovationsbudget_jahresziel`
+**Zweck:** Jahresziel für das Innovationsbudget — **manuell gepflegt**, nicht automatisch aus dem Depotwert berechnet (das Geld dafür kommt nicht immer aus dem eigenen Depot).
+Felder: `jahr`, `zielbetrag`.
+
+### 23. `innovationsbudget_nutzung`
+**Zweck:** Einzelne Verbrauchs-Einträge gegen das Jahresziel, optional verknüpft mit der auslösenden Einstiegsanalyse.
+Felder: `jahr`, `ticker`, `name`, `betrag`, `beschreibung`, `einstiegsanalyseId` (→ `einstiegsanalysen.id`), `datum`.
+
+---
+
 ## Datenbankbeziehungen (ER-Diagramm)
 
 ```
@@ -452,7 +561,16 @@ const result = await createTransaction(userId, {
 ┌──────────────┐
 │ price_cache  │  ← Global (kein userId)
 └──────────────┘
+
+┌───────────────────────┐
+│ ai_question_templates │  ← Global (kein userId)
+└───────────────────────┘
 ```
+
+**Hinweis:** Das Diagramm oben zeigt nur die 8 ursprünglichen `users`-Kindtabellen. Alle 13
+neueren Tabellen (11-23) hängen ebenfalls 1:N an `users` (Ausnahme: `tax_settings` ist 1:1,
+`ai_question_templates` ist wie `price_cache` global) — der Übersicht halber nicht extra
+eingezeichnet, siehe Tabellenübersicht ganz oben für die vollständige Liste.
 
 ### Beziehungstypen
 
@@ -633,6 +751,19 @@ const amount = Number(position.amount);
 
 ## Changelog
 
+### Version 2.0 (15.08.2026)
+
+- ✅ Tabellenzahl 10 → 23, alle neuen Tabellen dokumentiert (siehe "Neuere Tabellen" oben)
+- ✅ Wichtigste Ergänzungen seit v1.0: Aktien-Ampel (`stock_traffic_light`), Tech-Frühwarnsystem
+  (`tech_warning_signals`), Vermögensverlauf (`portfolio_snapshots`), Einstiegsanalyse
+  (`einstiegsanalysen`), Morning Note (`morning_notes`), Steuer-Verwaltung (`tax_sources`,
+  `tax_settings`, `tax_allowances`, `loss_carryforwards`), Innovationsbudget
+  (`innovationsbudget_jahresziel`, `innovationsbudget_nutzung`), KI-Fragen-Vorlagen +
+  Chat-Verlauf (`ai_question_templates`, `ai_chat_history`)
+- ⚠️ Diese Aktualisierung wurde nachgeholt — die Datei war seit Januar 2026 nicht mehr
+  gepflegt worden, obwohl die Datenbank in der Zwischenzeit stark gewachsen ist. Künftig bei
+  jeder neuen Tabelle direkt mit aktualisieren, nicht erst wieder sammeln lassen.
+
 ### Version 1.0 (Januar 2026)
 
 - ✅ Initiale Datenbankstruktur
@@ -654,5 +785,6 @@ const amount = Number(position.amount);
 ---
 
 **Dokumentation erstellt:** Januar 2026
-**Version:** 1.0.0
-**Maintainer:** Portfolio Dashboard Team
+**Zuletzt aktualisiert:** 15.08.2026
+**Version:** 2.0.0
+**Maintainer:** Portfolio Dashboard Team (Rafael + Claude Code)
