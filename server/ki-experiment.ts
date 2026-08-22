@@ -61,51 +61,85 @@ const VIRTUAL_AMOUNT = 5000;
 // ============================================================================
 
 function buildSystemPrompt(): string {
-  return "Agiere als erfahrener Investmentbanker und Aktienanalyst mit Fokus auf Mid-Cap-Werte.";
+  return "Agiere als erfahrener Investmentbanker und Aktienanalyst mit Fokus auf Mid-Cap-Werte. Du antwortest AUSSCHLIESSLICH mit einem einzigen validen JSON-Objekt — kein Text, keine Markdown-Überschriften, keine Einleitung, keine Erklärung davor oder danach. Der komplette Investment-Case gehört als Markdown-formatierter String in das Feld \"bodyMarkdown\" des JSON-Objekts, nirgendwo sonst.";
 }
 
 function buildUserPrompt(): string {
-  return `Suche dir eigenständig eine Mid-Cap-Aktie aus (Marktkapitalisierung ca. 2-10 Mrd. USD/EUR), bei der du auf Basis aktueller Kennzahlen, Nachrichtenlage, Kursverlauf und Marktumfeld das höchste Renditepotenzial für die nächsten 30 Tage siehst.
+  return `Suche dir eigenständig eine Mid-Cap-Aktie aus (Marktkapitalisierung ca. 2-10 Mrd. USD/EUR), bei der du auf Basis aktueller Kennzahlen, Nachrichtenlage, Kursverlauf und Marktumfeld das höchste Renditepotenzial für die nächsten 30 Tage siehst. Nutze aktuelle, recherchierte Daten (keine erfundenen Schätzungen).
 
-Erstelle dazu einen vollständigen Investment-Case mit folgendem Aufbau (als Markdown mit ## Überschriften):
-1. Kurzfazit — Ticker, Unternehmen, aktueller Kurs, 30-Tage-Kursziel, erwartetes Renditepotenzial in %.
-2. Warum diese Aktie — Begründung der Auswahl (Katalysatoren, Quartalszahlen, Sektor-Momentum, technische Signale etc.).
-3. Fundamentale Kennzahlen — KGV, Umsatzwachstum, EBITDA-Marge, Verschuldungsgrad, Analystenkonsens (Kursziel & Rating).
-4. Technische Analyse — Kursverlauf der letzten 3-6 Monate, wichtige Unterstützungs-/Widerstandslinien, RSI/Momentum.
-5. Katalysatoren für die nächsten 30 Tage — konkrete Termine/Ereignisse (Earnings, Produktlaunch, regulatorische Entscheidungen etc.).
-6. Pro- und Kontra-Liste — jeweils mind. 4 Punkte, klar und prägnant.
-7. Risikohinweise — Volatilität, Sektorrisiken, makroökonomische Einflüsse.
-8. Disclaimer — dass dies KEINE Anlageberatung ist, sondern eine hypothetische/illustrative Analyse.
-
-Nutze aktuelle, recherchierte Daten (keine erfundenen Schätzungen).
-
-WICHTIG: Beende deine Antwort mit einem JSON-Block in genau diesem Format (zwischen \`\`\`json und \`\`\`), als LETZTES Element deiner Antwort, ohne weiteren Text danach:
-\`\`\`json
+Antworte mit GENAU diesem JSON-Objekt, sonst nichts:
 {
   "ticker": "Börsenticker, z.B. MGNI",
   "name": "Unternehmensname",
-  "bodyMarkdown": "der komplette Investment-Case von oben, als ein Markdown-String"
-}
-\`\`\``;
+  "bodyMarkdown": "<hier der komplette Investment-Case als EIN Markdown-String mit ## Überschriften>"
 }
 
+Der "bodyMarkdown"-String muss folgenden Aufbau haben:
+## Kurzfazit
+Ticker, Unternehmen, aktueller Kurs, 30-Tage-Kursziel, erwartetes Renditepotenzial in %.
+## Warum diese Aktie
+Begründung der Auswahl (Katalysatoren, Quartalszahlen, Sektor-Momentum, technische Signale etc.).
+## Fundamentale Kennzahlen
+KGV, Umsatzwachstum, EBITDA-Marge, Verschuldungsgrad, Analystenkonsens (Kursziel & Rating).
+## Technische Analyse
+Kursverlauf der letzten 3-6 Monate, wichtige Unterstützungs-/Widerstandslinien, RSI/Momentum.
+## Katalysatoren für die nächsten 30 Tage
+Konkrete Termine/Ereignisse (Earnings, Produktlaunch, regulatorische Entscheidungen etc.).
+## Pro und Kontra
+Jeweils mind. 4 Punkte, klar und prägnant.
+## Risikohinweise
+Volatilität, Sektorrisiken, makroökonomische Einflüsse.
+## Disclaimer
+Dass dies KEINE Anlageberatung ist, sondern eine hypothetische/illustrative Analyse.
+
+Halte dich strikt an das JSON-Format oben. Keine Code-Fence, kein zusätzlicher Text, keine Kommentare außerhalb des JSON-Objekts.`;
+}
+
+/**
+ * Bevorzugt: sauberes JSON-Objekt (mit oder ohne \`\`\`json-Fence). Fallback,
+ * falls die KI trotz Anweisung als reinen Markdown-Text antwortet (in der Praxis
+ * beobachtet — beide Modelle rutschen bei einer so langen Antwort gelegentlich
+ * zurück in Prosa): Ticker per Regex aus dem Text ziehen, den kompletten Text
+ * als bodyMarkdown übernehmen. Besser ein nicht perfekt strukturierter Pick als
+ * "Kein Pick zustande gekommen".
+ */
 function extractJsonBlock(raw: string): { ticker: string; name: string; bodyMarkdown: string } {
-  const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
-  if (!jsonMatch) {
-    throw new Error(`Keine JSON-Antwort gefunden. Erste 300 Zeichen: ${raw.slice(0, 300)}`);
+  const trimmed = raw.trim();
+
+  // 1) ```json-Fence
+  const fenced = trimmed.match(/```json\s*([\s\S]*?)\s*```/);
+  // 2) Erstes { bis letztes } (falls die Antwort ohne Fence direkt JSON ist)
+  const braceStart = trimmed.indexOf("{");
+  const braceEnd = trimmed.lastIndexOf("}");
+  const bareJson = !fenced && braceStart !== -1 && braceEnd > braceStart ? trimmed.slice(braceStart, braceEnd + 1) : null;
+
+  for (const candidate of [fenced?.[1], bareJson]) {
+    if (!candidate) continue;
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed.ticker && typeof parsed.ticker === "string" && parsed.bodyMarkdown && typeof parsed.bodyMarkdown === "string") {
+        return {
+          ticker: String(parsed.ticker).trim().toUpperCase(),
+          name: String(parsed.name || parsed.ticker),
+          bodyMarkdown: String(parsed.bodyMarkdown),
+        };
+      }
+    } catch {
+      // naechster Kandidat / Fallback unten
+    }
   }
-  const parsed = JSON.parse(jsonMatch[1]);
-  if (!parsed.ticker || typeof parsed.ticker !== "string") {
-    throw new Error("Ungültige Antwort: ticker fehlt.");
+
+  // 3) Fallback: reiner Markdown-Text ohne JSON — Ticker per Regex raten
+  const tickerMatch = raw.match(/\*\*?Ticker\*?\*?[:\s]+\(?([A-Z]{1,6})\)?/) || raw.match(/\(([A-Z]{1,6})[:)]/);
+  if (tickerMatch && raw.length > 100) {
+    return {
+      ticker: tickerMatch[1].toUpperCase(),
+      name: tickerMatch[1].toUpperCase(),
+      bodyMarkdown: raw,
+    };
   }
-  if (!parsed.bodyMarkdown || typeof parsed.bodyMarkdown !== "string") {
-    throw new Error("Ungültige Antwort: bodyMarkdown fehlt.");
-  }
-  return {
-    ticker: String(parsed.ticker).trim().toUpperCase(),
-    name: String(parsed.name || parsed.ticker),
-    bodyMarkdown: String(parsed.bodyMarkdown),
-  };
+
+  throw new Error(`Kein Ticker in der Antwort gefunden. Erste 300 Zeichen: ${raw.slice(0, 300)}`);
 }
 
 // ============================================================================
@@ -155,7 +189,7 @@ async function generateClaudePick(): Promise<{ ticker: string; name: string; bod
     },
     body: JSON.stringify({
       model: CLAUDE_MODEL,
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: buildSystemPrompt(),
       messages: [{ role: "user", content: buildUserPrompt() }],
       tools: [{ type: "web_search_20250305", name: "web_search" }],
