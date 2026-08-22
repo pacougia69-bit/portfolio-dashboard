@@ -425,6 +425,12 @@ export const kiExperimentPicks = mysqlTable("ki_experiment_picks", {
   entryDate: varchar("entryDate", { length: 10 }), // 'YYYY-MM-DD'
   currentPrice: decimal("currentPrice", { precision: 18, scale: 4 }),
   lastPriceCheckAt: timestamp("lastPriceCheckAt"),
+  // Nach 30 Tagen automatisch geschlossen (kein Cron — Check laeuft beim naechsten
+  // "Neues Experiment starten" oder "Kurse aktualisieren"), Endergebnis eingefroren.
+  status: mysqlEnum("status", ["offen", "geschlossen"]).notNull().default("offen"),
+  closedAt: timestamp("closedAt"),
+  closePrice: decimal("closePrice", { precision: 18, scale: 4 }),
+  closeReturnPercent: decimal("closeReturnPercent", { precision: 8, scale: 2 }),
   errorMessage: text("errorMessage"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

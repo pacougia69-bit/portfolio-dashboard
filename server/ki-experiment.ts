@@ -16,7 +16,7 @@
 
 import OpenAI from "openai";
 import { randomUUID } from "crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "./db";
 import { kiExperimentPicks } from "../drizzle/schema";
 import { checkOpenAIRateLimit, checkAnthropicRateLimit } from "./_core/rate-limiter";
@@ -28,6 +28,7 @@ import { lookupByTicker } from "./services";
 // ============================================================================
 
 export type KiExperimentModel = "openai" | "claude";
+export type KiExperimentStatus = "offen" | "geschlossen";
 
 export type KiExperimentPickResult = {
   id: number;
@@ -42,8 +43,21 @@ export type KiExperimentPickResult = {
   entryDate: string | null;
   currentPrice: number | null;
   lastPriceCheckAt: Date | null;
+  status: KiExperimentStatus;
+  closedAt: Date | null;
+  closePrice: number | null;
+  closeReturnPercent: number | null;
   errorMessage: string | null;
   createdAt: Date;
+};
+
+export type KiExperimentStats = {
+  decidedRuns: number;
+  openaiWins: number;
+  claudeWins: number;
+  ties: number;
+  openaiAvgReturn: number | null;
+  claudeAvgReturn: number | null;
 };
 
 export type KiExperimentRun = {
@@ -55,6 +69,7 @@ export type KiExperimentRun = {
 const OPENAI_MODEL = "gpt-4o";
 const CLAUDE_MODEL = "claude-sonnet-5";
 const VIRTUAL_AMOUNT = 5000;
+const HOLD_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 Tage
 
 // ============================================================================
 // GEMEINSAMER PROMPT (Vorlage: TikTok-Mid-Cap-Screening-Prompt, 22.08.2026)
@@ -301,11 +316,58 @@ async function generateOnePick(
 }
 
 /**
+ * Schliesst alle offenen Picks eines Users, deren 30-Tage-Haltedauer abgelaufen
+ * ist: holt einen letzten aktuellen Kurs, friert das Endergebnis ein
+ * (closePrice/closeReturnPercent), setzt status="geschlossen". Kein Cron —
+ * laeuft lazy bei jedem "Neues Experiment starten" und "Kurse aktualisieren".
+ * Fehlt Ticker/Kurs, wird trotzdem geschlossen (sonst bliebe der Pick fuer
+ * immer "offen" haengen), nur ohne Endergebnis.
+ */
+async function closeDuePicks(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  const openPicks = await db
+    .select()
+    .from(kiExperimentPicks)
+    .where(and(eq(kiExperimentPicks.userId, userId), eq(kiExperimentPicks.status, "offen")));
+
+  const now = Date.now();
+  for (const row of openPicks) {
+    if (!row.entryDate) continue;
+    const entryTime = new Date(row.entryDate).getTime();
+    if (Number.isNaN(entryTime) || now - entryTime < HOLD_PERIOD_MS) continue;
+
+    let closePrice: number | null = null;
+    let closeReturnPercent: number | null = null;
+    if (row.ticker && row.entryPrice) {
+      const price = await fetchPriceForTicker(row.ticker);
+      if (price) {
+        closePrice = price.price;
+        closeReturnPercent = ((price.price - Number(row.entryPrice)) / Number(row.entryPrice)) * 100;
+      }
+    }
+
+    await db
+      .update(kiExperimentPicks)
+      .set({
+        status: "geschlossen",
+        closedAt: new Date(),
+        closePrice: closePrice !== null ? String(closePrice) : null,
+        closeReturnPercent: closeReturnPercent !== null ? String(closeReturnPercent) : null,
+      })
+      .where(eq(kiExperimentPicks.id, row.id));
+  }
+}
+
+/**
  * Startet einen neuen Durchlauf: OpenAI und Claude picken unabhängig, beide
  * Ergebnisse (oder Fehler) landen unter derselben runId. Läuft parallel,
- * ein fehlschlagender Anbieter blockiert den anderen nicht.
+ * ein fehlschlagender Anbieter blockiert den anderen nicht. Faellige alte
+ * Picks werden vorher automatisch geschlossen.
  */
 export async function generateKiExperimentRun(userId: number): Promise<KiExperimentRun> {
+  await closeDuePicks(userId);
   const runId = randomUUID();
   await Promise.all([
     generateOnePick(userId, runId, "openai"),
@@ -315,17 +377,19 @@ export async function generateKiExperimentRun(userId: number): Promise<KiExperim
 }
 
 /**
- * Aktualisiert die aktuellen Kurse aller Picks einer runId (virtuelle
- * Wertentwicklung neu berechenbar). Picks ohne Ticker/Einstiegskurs werden
- * uebersprungen.
+ * Aktualisiert die aktuellen Kurse aller NOCH OFFENEN Picks einer runId
+ * (virtuelle Wertentwicklung neu berechenbar). Faellige Picks (>=30 Tage)
+ * werden dabei automatisch geschlossen statt nur aktualisiert.
  */
 export async function refreshKiExperimentPrices(userId: number, runId: string): Promise<KiExperimentRun> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  await closeDuePicks(userId);
+
   const run = await getRunById(userId, runId);
   for (const pick of run.picks) {
-    if (!pick.ticker) continue;
+    if (!pick.ticker || pick.status === "geschlossen") continue;
     const price = await fetchPriceForTicker(pick.ticker);
     if (!price) continue;
     await db
@@ -350,6 +414,10 @@ function rowToResult(row: typeof kiExperimentPicks.$inferSelect): KiExperimentPi
     entryDate: row.entryDate,
     currentPrice: row.currentPrice !== null ? Number(row.currentPrice) : null,
     lastPriceCheckAt: row.lastPriceCheckAt,
+    status: row.status as KiExperimentStatus,
+    closedAt: row.closedAt,
+    closePrice: row.closePrice !== null ? Number(row.closePrice) : null,
+    closeReturnPercent: row.closeReturnPercent !== null ? Number(row.closeReturnPercent) : null,
     errorMessage: row.errorMessage,
     createdAt: row.createdAt,
   };
@@ -416,4 +484,68 @@ export async function getKiExperimentHistory(userId: number, limit: number = 10)
     .slice(0, limit);
 
   return runs;
+}
+
+/**
+ * Bilanz ueber alle ABGESCHLOSSENEN Duelle (beide Picks eines Runs geschlossen
+ * mit gueltigem Endergebnis) — wer hat wie oft gewonnen, Durchschnittsrendite
+ * je Anbieter. Runs mit fehlendem/unentschiedenem Ergebnis zaehlen nicht mit.
+ */
+export async function getKiExperimentStats(userId: number): Promise<KiExperimentStats> {
+  const empty: KiExperimentStats = {
+    decidedRuns: 0,
+    openaiWins: 0,
+    claudeWins: 0,
+    ties: 0,
+    openaiAvgReturn: null,
+    claudeAvgReturn: null,
+  };
+
+  const db = await getDb();
+  if (!db) return empty;
+
+  const rows = await db
+    .select()
+    .from(kiExperimentPicks)
+    .where(and(eq(kiExperimentPicks.userId, userId), eq(kiExperimentPicks.status, "geschlossen")));
+
+  const byRun = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (row.closeReturnPercent === null) continue;
+    const list = byRun.get(row.runId) || [];
+    list.push(row);
+    byRun.set(row.runId, list);
+  }
+
+  let openaiWins = 0;
+  let claudeWins = 0;
+  let ties = 0;
+  const openaiReturns: number[] = [];
+  const claudeReturns: number[] = [];
+
+  for (const runRows of Array.from(byRun.values())) {
+    const openaiPick = runRows.find((r) => r.model === "openai");
+    const claudePick = runRows.find((r) => r.model === "claude");
+    if (!openaiPick || !claudePick || openaiPick.closeReturnPercent === null || claudePick.closeReturnPercent === null) continue;
+
+    const openaiReturn = Number(openaiPick.closeReturnPercent);
+    const claudeReturn = Number(claudePick.closeReturnPercent);
+    openaiReturns.push(openaiReturn);
+    claudeReturns.push(claudeReturn);
+
+    if (openaiReturn > claudeReturn) openaiWins++;
+    else if (claudeReturn > openaiReturn) claudeWins++;
+    else ties++;
+  }
+
+  const avg = (values: number[]) => (values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : null);
+
+  return {
+    decidedRuns: openaiReturns.length,
+    openaiWins,
+    claudeWins,
+    ties,
+    openaiAvgReturn: avg(openaiReturns),
+    claudeAvgReturn: avg(claudeReturns),
+  };
 }

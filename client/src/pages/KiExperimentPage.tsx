@@ -3,11 +3,12 @@ import Layout from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { Loader2, RefreshCw, Swords, Info, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, RefreshCw, Swords, Info, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Lock, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 
 type KiExperimentModel = "openai" | "claude";
+type KiExperimentStatus = "offen" | "geschlossen";
 
 type KiExperimentPick = {
   id: number;
@@ -22,6 +23,10 @@ type KiExperimentPick = {
   entryDate: string | null;
   currentPrice: number | null;
   lastPriceCheckAt: Date | string | null;
+  status: KiExperimentStatus;
+  closedAt: Date | string | null;
+  closePrice: number | null;
+  closeReturnPercent: number | null;
   errorMessage: string | null;
   createdAt: Date | string;
 };
@@ -30,6 +35,15 @@ type KiExperimentRun = {
   runId: string;
   createdAt: Date | string;
   picks: KiExperimentPick[];
+};
+
+type KiExperimentStats = {
+  decidedRuns: number;
+  openaiWins: number;
+  claudeWins: number;
+  ties: number;
+  openaiAvgReturn: number | null;
+  claudeAvgReturn: number | null;
 };
 
 const MODEL_LABEL: Record<KiExperimentModel, string> = {
@@ -43,14 +57,25 @@ function formatDate(date: Date | string | null): string {
   return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function currentValue(pick: KiExperimentPick): number | null {
-  if (!pick.entryPrice || !pick.currentPrice) return null;
-  return pick.virtualAmount * (pick.currentPrice / pick.entryPrice);
-}
-
+// Bei geschlossenen Picks zaehlt das eingefrorene Endergebnis, bei offenen der
+// live nachgezogene Kurs — beide laufen ueber dieselbe Anzeige-Logik.
 function returnPercent(pick: KiExperimentPick): number | null {
+  if (pick.status === "geschlossen") return pick.closeReturnPercent;
   if (!pick.entryPrice || !pick.currentPrice) return null;
   return ((pick.currentPrice - pick.entryPrice) / pick.entryPrice) * 100;
+}
+
+function currentValue(pick: KiExperimentPick): number | null {
+  const pct = returnPercent(pick);
+  if (pct === null) return null;
+  return pick.virtualAmount * (1 + pct / 100);
+}
+
+function daysHeld(pick: KiExperimentPick): number | null {
+  if (!pick.entryDate) return null;
+  const entry = new Date(pick.entryDate).getTime();
+  if (Number.isNaN(entry)) return null;
+  return Math.floor((Date.now() - entry) / (24 * 60 * 60 * 1000));
 }
 
 // ============================================================================
@@ -62,14 +87,27 @@ function PickCard({ pick }: { pick: KiExperimentPick }) {
   const value = currentValue(pick);
   const pct = returnPercent(pick);
   const isPositive = pct !== null && pct >= 0;
+  const isClosed = pick.status === "geschlossen";
+  const held = daysHeld(pick);
+  const displayPrice = isClosed ? pick.closePrice : pick.currentPrice;
 
   return (
     <Card className={`border-2 ${pct !== null ? (isPositive ? "border-green-500/30" : "border-red-500/30") : "border-border/40"}`}>
       <CardContent className="p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wide font-semibold text-primary bg-primary/10 px-2 py-1 rounded">
-            {MODEL_LABEL[pick.model]}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wide font-semibold text-primary bg-primary/10 px-2 py-1 rounded">
+              {MODEL_LABEL[pick.model]}
+            </span>
+            {isClosed ? (
+              <span className="flex items-center gap-1 text-xs uppercase tracking-wide font-semibold text-muted-foreground bg-muted/40 px-2 py-1 rounded">
+                <Lock className="h-3 w-3" />
+                Abgeschlossen
+              </span>
+            ) : held !== null ? (
+              <span className="text-xs text-muted-foreground">Tag {held}/30</span>
+            ) : null}
+          </div>
           {pct !== null && (
             <span className={`flex items-center gap-1 text-lg font-bold ${isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
               {isPositive ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
@@ -97,9 +135,11 @@ function PickCard({ pick }: { pick: KiExperimentPick }) {
               </div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground">Aktuell</div>
+              <div className="text-xs text-muted-foreground">
+                {isClosed ? `Schluss (${formatDate(pick.closedAt)})` : "Aktuell"}
+              </div>
               <div className="font-mono font-medium">
-                {pick.currentPrice ? `${pick.currentPrice.toFixed(2)} ${pick.entryCurrency}` : "—"}
+                {displayPrice ? `${displayPrice.toFixed(2)} ${pick.entryCurrency}` : "—"}
               </div>
             </div>
           </div>
@@ -156,14 +196,64 @@ function LeadBanner({ picks }: { picks: KiExperimentPick[] }) {
   const claudeValue = claude ? currentValue(claude) : null;
   if (openaiValue === null || claudeValue === null) return null;
 
+  const bothClosed = openai?.status === "geschlossen" && claude?.status === "geschlossen";
   const diff = Math.abs(openaiValue - claudeValue);
   const leader = openaiValue >= claudeValue ? "openai" : "claude";
+  const verb = bothClosed ? "hat gewonnen mit" : "liegt aktuell vorn mit";
 
   return (
     <Card className="bg-primary/5 border-primary/20">
       <CardContent className="p-4 sm:p-5 text-center">
-        <span className="font-semibold">{MODEL_LABEL[leader]}</span> liegt aktuell mit{" "}
-        <span className="font-bold">{diff.toLocaleString("de-DE", { maximumFractionDigits: 0 })} €</span> vorn.
+        <span className="font-semibold">{MODEL_LABEL[leader]}</span> {verb}{" "}
+        <span className="font-bold">{diff.toLocaleString("de-DE", { maximumFractionDigits: 0 })} €</span> Vorsprung.
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================================
+// Bilanz-Kachel — Trefferquote über alle abgeschlossenen Duelle
+// ============================================================================
+
+function StatsCard({ stats }: { stats: KiExperimentStats }) {
+  if (stats.decidedRuns === 0) return null;
+
+  return (
+    <Card className="border-2 border-primary/20">
+      <CardContent className="p-5 sm:p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Trophy className="h-5 w-5 text-primary" />
+          <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Bilanz · {stats.decidedRuns} abgeschlossene{stats.decidedRuns === 1 ? "s" : ""} Duell{stats.decidedRuns === 1 ? "" : "e"}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-4 sm:gap-6">
+          <div>
+            <div className="text-xs text-muted-foreground">ChatGPT</div>
+            <div className="text-2xl font-bold">{stats.openaiWins} Siege</div>
+            {stats.openaiAvgReturn !== null && (
+              <div className={`text-sm ${stats.openaiAvgReturn >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                Ø {stats.openaiAvgReturn >= 0 ? "+" : ""}
+                {stats.openaiAvgReturn.toFixed(1)}%
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Claude</div>
+            <div className="text-2xl font-bold">{stats.claudeWins} Siege</div>
+            {stats.claudeAvgReturn !== null && (
+              <div className={`text-sm ${stats.claudeAvgReturn >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                Ø {stats.claudeAvgReturn >= 0 ? "+" : ""}
+                {stats.claudeAvgReturn.toFixed(1)}%
+              </div>
+            )}
+          </div>
+        </div>
+        {stats.ties > 0 && (
+          <div className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/40">
+            {stats.ties} Unentschieden
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -232,6 +322,7 @@ export default function KiExperimentPage() {
 
   const { data: dbRun, isLoading: isLoadingLatest } = trpc.kiExperiment.getLatest.useQuery();
   const { data: history = [] } = trpc.kiExperiment.getHistory.useQuery({ limit: 30 });
+  const { data: stats } = trpc.kiExperiment.getStats.useQuery();
 
   const [activeRun, setActiveRun] = useState<KiExperimentRun | null>(null);
 
@@ -247,6 +338,7 @@ export default function KiExperimentPage() {
       setActiveRun(data as unknown as KiExperimentRun);
       utils.kiExperiment.getLatest.invalidate();
       utils.kiExperiment.getHistory.invalidate();
+      utils.kiExperiment.getStats.invalidate();
     },
     onError: (err) => {
       toast.error("Fehler beim Starten: " + err.message);
@@ -259,6 +351,7 @@ export default function KiExperimentPage() {
       setActiveRun(data as unknown as KiExperimentRun);
       utils.kiExperiment.getLatest.invalidate();
       utils.kiExperiment.getHistory.invalidate();
+      utils.kiExperiment.getStats.invalidate();
     },
     onError: (err) => {
       toast.error("Fehler beim Aktualisieren: " + err.message);
@@ -287,6 +380,9 @@ export default function KiExperimentPage() {
         <div className="bg-yellow-500/10 border-2 border-yellow-500/30 rounded-lg p-4 text-sm text-yellow-800 dark:text-yellow-300 font-medium text-center">
           ⚠️ Rein virtuell (5.000 € pro Pick) — keine Anlageberatung, kein echtes Geld, kein Bezug zu deinem echten Depot.
         </div>
+
+        {/* Bilanz ueber alle abgeschlossenen Duelle (30-Tage-Frist erreicht) */}
+        {stats && <StatsCard stats={stats as unknown as KiExperimentStats} />}
 
         {/* Aktions-Card */}
         <Card className={run ? "border-2 border-primary/30 shadow-lg" : "border-2 border-dashed border-border/60"}>
@@ -378,6 +474,13 @@ export default function KiExperimentPage() {
             <p>
               "Kurse aktualisieren" holt nur die aktuellen Kurse neu, ohne neue Picks zu erzeugen.
               ChatGPT und Claude haben je ein eigenes Kontingent von max. 20 Anfragen/Stunde.
+            </p>
+            <p>
+              Nach 30 Tagen wird ein Pick automatisch geschlossen (Endergebnis eingefroren, "Tag
+              X/30" zeigt den Fortschritt) — das passiert beim nächsten Klick auf "Experiment
+              starten" oder "Kurse aktualisieren", nicht als fester Zeitplan im Hintergrund. Erst
+              wenn beide Picks eines Durchlaufs geschlossen sind, fließt das Duell in die
+              Bilanz-Kachel oben ein (Trefferquote, Ø-Rendite je KI).
             </p>
             <p className="pt-3 text-xs italic border-t border-border/30">
               Rein virtuell, keine Kauf-/Verkaufsempfehlung, kein Bezug zu deinem echten Depot.

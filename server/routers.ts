@@ -71,7 +71,7 @@ import { DEFAULT_TARGET_ALLOCATIONS } from "@shared/strategy";
 import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningHistory } from "./tech-warning";
 import { fetchTechnicalData, researchThese } from "./einstiegsanalyse";
 import { generateMorningNote, getLatestMorningNote, getMorningNoteHistory } from "./morning-note";
-import { generateKiExperimentRun, getLatestKiExperimentRun, getKiExperimentHistory, refreshKiExperimentPrices } from "./ki-experiment";
+import { generateKiExperimentRun, getLatestKiExperimentRun, getKiExperimentHistory, refreshKiExperimentPrices, getKiExperimentStats } from "./ki-experiment";
 
 export const appRouter = router({
   system: systemRouter,
@@ -1756,6 +1756,11 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         return refreshKiExperimentPrices(ctx.user.id, input.runId);
       }),
+
+    // Bilanz über alle abgeschlossenen Duelle (Trefferquote, Ø-Rendite je Anbieter).
+    getStats: protectedProcedure.query(async ({ ctx }) => {
+      return getKiExperimentStats(ctx.user.id);
+    }),
   }),
 });
 

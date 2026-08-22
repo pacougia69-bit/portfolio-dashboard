@@ -222,6 +222,10 @@ async function runDatabaseMigration() {
           entryDate VARCHAR(10),
           currentPrice DECIMAL(18,4),
           lastPriceCheckAt TIMESTAMP NULL,
+          status ENUM('offen', 'geschlossen') NOT NULL DEFAULT 'offen',
+          closedAt TIMESTAMP NULL,
+          closePrice DECIMAL(18,4),
+          closeReturnPercent DECIMAL(8,2),
           errorMessage TEXT,
           createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
           INDEX ki_experiment_picks_user_run (userId, runId)
@@ -233,6 +237,37 @@ async function runDatabaseMigration() {
     }
   } catch (kepError: any) {
     console.error('⚠️  Error creating ki_experiment_picks table:', kepError?.message || kepError);
+  }
+
+  // === KI-Pick-Experiment: status/closedAt/closePrice/closeReturnPercent nachruesten
+  // (fuer Installationen, bei denen die Tabelle schon VOR dem Auto-Close-Feature existierte) ===
+  try {
+    console.log('🔍 Checking ki_experiment_picks status/close columns...');
+    const kepColConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      const [cols]: any = await kepColConn.query(`
+        SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ki_experiment_picks'
+      `);
+      const existing = new Set((cols as any[]).map((c) => c.COLUMN_NAME));
+      if (!existing.has('status')) {
+        await kepColConn.query(`ALTER TABLE ki_experiment_picks ADD COLUMN status ENUM('offen', 'geschlossen') NOT NULL DEFAULT 'offen'`);
+      }
+      if (!existing.has('closedAt')) {
+        await kepColConn.query(`ALTER TABLE ki_experiment_picks ADD COLUMN closedAt TIMESTAMP NULL`);
+      }
+      if (!existing.has('closePrice')) {
+        await kepColConn.query(`ALTER TABLE ki_experiment_picks ADD COLUMN closePrice DECIMAL(18,4)`);
+      }
+      if (!existing.has('closeReturnPercent')) {
+        await kepColConn.query(`ALTER TABLE ki_experiment_picks ADD COLUMN closeReturnPercent DECIMAL(8,2)`);
+      }
+      console.log('✅ ki_experiment_picks status/close-Spalten bereit');
+    } finally {
+      await kepColConn.end();
+    }
+  } catch (kepColError: any) {
+    console.error('⚠️  Error ensuring ki_experiment_picks status/close columns:', kepColError?.message || kepColError);
   }
 
   // === Innovationsbudget: Jahresziel + Nutzung-Tabellen sicherstellen ===
