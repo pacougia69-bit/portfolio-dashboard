@@ -204,12 +204,15 @@ async function generateClaudePick(): Promise<{ ticker: string; name: string; bod
   const data: any = await response.json();
   const blocks: any[] = Array.isArray(data.content) ? data.content : [];
   // Nur echte Text-Bloecke aneinanderhaengen (web_search_tool_result/server_tool_use
-  // ueberspringen) — die finale Modellantwort inkl. JSON-Block steckt in den
-  // "text"-Bloecken, ggf. auf mehrere aufgeteilt durch Zitat-Referenzen dazwischen.
+  // ueberspringen). Bei aktivem web_search-Tool zerlegt Claude die Antwort in
+  // mehrere zusammenhaengende Text-Chunks (je eigene citations[]-Zuordnung) —
+  // OHNE Trenner aneinanderhaengen, sonst reisst ein eingefuegtes "\n" mitten in
+  // den JSON-String und JSON.parse schlaegt fehl (live beobachtet: Fallback griff
+  // statt sauberem JSON, Ticker wurde per Regex geraten statt korrekt geparst).
   const raw = blocks
     .filter((b) => b.type === "text")
     .map((b) => b.text)
-    .join("\n");
+    .join("");
 
   if (!raw) {
     throw new Error("Claude-Antwort enthielt keinen Text-Block.");
