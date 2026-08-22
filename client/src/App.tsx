@@ -23,6 +23,7 @@ import RebalancingPage from "./pages/RebalancingPage";
 import TechFruehwarnsystemPage from "./pages/TechFruehwarnsystemPage";
 import EinstiegsanalysePage from "./pages/EinstiegsanalysePage";
 import MorningNotePage from "./pages/MorningNotePage";
+import KiExperimentPage from "./pages/KiExperimentPage";
 
 function Router() {
   return (
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/" component={DashboardPage} />
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/morning-note" component={MorningNotePage} />
+      <Route path="/ki-experiment" component={KiExperimentPage} />
       <Route path="/portfolio" component={PortfolioPage} />
       <Route path="/watchlist" component={WatchlistPage} />
       <Route path="/strategie" component={StrategiePage} />

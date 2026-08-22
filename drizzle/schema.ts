@@ -407,6 +407,32 @@ export type MorningNote = typeof morningNotes.$inferSelect;
 export type InsertMorningNote = typeof morningNotes.$inferInsert;
 
 /**
+ * KI-Pick-Experiment - zwei KIs (OpenAI/Claude) picken je eine Mid-Cap-Aktie mit
+ * hoechstem 30-Tage-Renditepotenzial, rein virtuell (5.000 EUR), kein Investmentrat.
+ * Ein "runId" gruppiert die zwei Picks (openai+claude) EINES Knopfdrucks.
+ */
+export const kiExperimentPicks = mysqlTable("ki_experiment_picks", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  runId: varchar("runId", { length: 36 }).notNull(),
+  model: mysqlEnum("model", ["openai", "claude"]).notNull(),
+  ticker: varchar("ticker", { length: 20 }),
+  name: varchar("name", { length: 255 }),
+  bodyMarkdown: text("bodyMarkdown"),
+  virtualAmount: decimal("virtualAmount", { precision: 18, scale: 2 }).notNull().default("5000.00"),
+  entryPrice: decimal("entryPrice", { precision: 18, scale: 4 }),
+  entryCurrency: varchar("entryCurrency", { length: 10 }),
+  entryDate: varchar("entryDate", { length: 10 }), // 'YYYY-MM-DD'
+  currentPrice: decimal("currentPrice", { precision: 18, scale: 4 }),
+  lastPriceCheckAt: timestamp("lastPriceCheckAt"),
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type KiExperimentPick = typeof kiExperimentPicks.$inferSelect;
+export type InsertKiExperimentPick = typeof kiExperimentPicks.$inferInsert;
+
+/**
  * Innovationsbudget - Jahresziel (manuell gepflegt, nicht automatisch aus Depotwert,
  * weil das Geld dafuer nicht immer aus dem eigenen Depot kommt)
  */

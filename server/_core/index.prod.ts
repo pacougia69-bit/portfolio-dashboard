@@ -202,6 +202,39 @@ async function runDatabaseMigration() {
     console.error('⚠️  Error creating morning_notes table:', mnError?.message || mnError);
   }
 
+  // === KI-Pick-Experiment: ki_experiment_picks Tabelle sicherstellen ===
+  try {
+    console.log('🔍 Checking ki_experiment_picks table...');
+    const kepConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await kepConn.query(`
+        CREATE TABLE IF NOT EXISTS ki_experiment_picks (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          runId VARCHAR(36) NOT NULL,
+          model ENUM('openai', 'claude') NOT NULL,
+          ticker VARCHAR(20),
+          \`name\` VARCHAR(255),
+          bodyMarkdown TEXT,
+          virtualAmount DECIMAL(18,2) NOT NULL DEFAULT 5000.00,
+          entryPrice DECIMAL(18,4),
+          entryCurrency VARCHAR(10),
+          entryDate VARCHAR(10),
+          currentPrice DECIMAL(18,4),
+          lastPriceCheckAt TIMESTAMP NULL,
+          errorMessage TEXT,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          INDEX ki_experiment_picks_user_run (userId, runId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ ki_experiment_picks table ready');
+    } finally {
+      await kepConn.end();
+    }
+  } catch (kepError: any) {
+    console.error('⚠️  Error creating ki_experiment_picks table:', kepError?.message || kepError);
+  }
+
   // === Innovationsbudget: Jahresziel + Nutzung-Tabellen sicherstellen ===
   try {
     console.log('🔍 Checking innovationsbudget_jahresziel table...');

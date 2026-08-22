@@ -71,6 +71,7 @@ import { DEFAULT_TARGET_ALLOCATIONS } from "@shared/strategy";
 import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningHistory } from "./tech-warning";
 import { fetchTechnicalData, researchThese } from "./einstiegsanalyse";
 import { generateMorningNote, getLatestMorningNote, getMorningNoteHistory } from "./morning-note";
+import { generateKiExperimentRun, getLatestKiExperimentRun, getKiExperimentHistory, refreshKiExperimentPrices } from "./ki-experiment";
 
 export const appRouter = router({
   system: systemRouter,
@@ -1726,6 +1727,34 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().min(1).max(50).default(10) }).optional())
       .query(async ({ ctx, input }) => {
         return getMorningNoteHistory(ctx.user.id, input?.limit ?? 10);
+      }),
+  }),
+
+  // KI-Pick-Experiment (OpenAI vs. Claude, je eine Mid-Cap-Aktie mit höchstem
+  // 30-Tage-Renditepotenzial, rein virtuell 5.000 € — kein Investmentrat)
+  kiExperiment: router({
+    // Startet einen neuen Durchlauf (beide KIs parallel). Dauert ca. 15-40 Sekunden.
+    generate: protectedProcedure.mutation(async ({ ctx }) => {
+      return generateKiExperimentRun(ctx.user.id);
+    }),
+
+    // Liest den zuletzt gestarteten Durchlauf. Liefert null, wenn noch keiner existiert.
+    getLatest: protectedProcedure.query(async ({ ctx }) => {
+      return getLatestKiExperimentRun(ctx.user.id);
+    }),
+
+    // Liest die letzten N Durchläufe (Default 10) für die Verlaufs-Leiste.
+    getHistory: protectedProcedure
+      .input(z.object({ limit: z.number().min(1).max(50).default(10) }).optional())
+      .query(async ({ ctx, input }) => {
+        return getKiExperimentHistory(ctx.user.id, input?.limit ?? 10);
+      }),
+
+    // Holt die aktuellen Kurse für einen Durchlauf neu (virtuelle Wertentwicklung).
+    refreshPrices: protectedProcedure
+      .input(z.object({ runId: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        return refreshKiExperimentPrices(ctx.user.id, input.runId);
       }),
   }),
 });
