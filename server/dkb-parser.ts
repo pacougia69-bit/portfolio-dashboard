@@ -28,20 +28,20 @@ const activeLabel = (wkn: string): string => {
 };
 
 const WKN_STRATEGY_MAP: Record<string, string> = {
-  // Depot-Struktur 2026 (aktive Bausteine)
+  // Depot-Struktur 2026 (alle 6 Bausteine aktiv, keine "Eingefroren"-Sonderrolle mehr seit 23.08.2026)
   'A3D7QX': activeLabel('A3D7QX'),
-  'A2H6ZT': activeLabel('A2H6ZT'),
   'A2DWBY': activeLabel('A2DWBY'),
-  // Eingefroren (Halten, kein aktiver Kauf)
-  'A2N6LC': 'Eingefroren',
-  'A3EB9T': 'Eingefroren',
-  'A40L9T': 'Eingefroren',
-  // Verkauft Juli 2026 (Mapping bleibt für alte Abrechnungen)
+  'A2N6LC': activeLabel('A2N6LC'),
+  'A3EB9T': activeLabel('A3EB9T'),
+  'A40L9T': activeLabel('A40L9T'),
+  'A2JMGE': activeLabel('A2JMGE'),
+  // Verkauft (Mapping bleibt für alte Abrechnungen)
   'A0RPWH': 'Verkauft 2026',
   'A111X9': 'Verkauft 2026',
   'A40KHS': 'Verkauft 2026',
   'A3D6N1': 'Verkauft 2026',
   'A113FD': 'Verkauft 2026',
+  'A2H6ZT': 'Verkauft 2026',
   // Sonstige Positionen
   'A0LGP4': 'Rest/Einzel',
 };

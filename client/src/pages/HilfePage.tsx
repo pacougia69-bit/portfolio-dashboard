@@ -218,7 +218,7 @@ const faqData: FAQItem[] = [
   {
     category: "strategie",
     question: "Was ist die Ziel-Allokation?",
-    answer: "Die Ziel-Allokation definiert, wie Ihr ETF-Portfolio idealerweise aufgeteilt sein sollte. Aktuell gilt die Depot-Struktur 2026 (Stand 08.07.2026): 34% All-World (A3D7QX), 22% Anleihen (A2H6ZT), 13% Small Caps (A2DWBY), 17% KI-Wette (A2N6LC), 9% Defence-Wette (A3EB9T), 5% KI-Infra-Wette (A40L9T). Die drei Wetten sind eingefroren — kein neues Geld. Das Rebalancing zeigt, wie Ihre aktuelle Verteilung davon abweicht."
+    answer: "Die Ziel-Allokation definiert, wie Ihr ETF-Portfolio idealerweise aufgeteilt sein sollte. Aktuell gilt die Depot-Struktur 2026 (Stand 23.08.2026): 37% Small Caps (A2DWBY), 22% All-World (A3D7QX), 19% KI-Wette (A2N6LC), 8% Defence-Wette (A3EB9T), 7% KI-Infra-Wette (A40L9T), 7% Digital Security (A2JMGE). Der Anleihen-Baustein (A2H6ZT) wurde verkauft und ist ersatzlos raus. Alle 6 Bausteine sind aktiv (kein 'Eingefroren' mehr) und bekommen regulär Sparplan-Geld — die drei Themen-Wetten (KI, Defence, KI-Infra) bleiben aber zusätzlich per Ampel und Kill-Kriterien überwacht. Das Rebalancing zeigt, wie Ihre aktuelle Verteilung davon abweicht."
   },
   {
     category: "strategie",

@@ -557,8 +557,9 @@ const WKN_DATABASE: Record<string, { ticker: string; name: string; type: string 
   'A113FD': { ticker: 'XDWH.DE', name: 'Xtrackers MSCI World Health Care UCITS ETF', type: 'ETF' },
   'A3D6N1': { ticker: 'CBUX.DE', name: 'iShares Global Infrastructure UCITS ETF', type: 'ETF' },
   'A40L9T': { ticker: 'AIFS.DE', name: 'iShares AI Infrastructure UCITS ETF', type: 'ETF' },
+  'A2JMGE': { ticker: 'L0CK.DE', name: 'iShares Digital Security UCITS ETF', type: 'ETF' },
 
-  // ETFs - Themen (eingefroren / nicht mehr aktiv besparen)
+  // ETFs - Themen (frueher "eingefroren" genannt, seit 23.08.2026 regulaer aktiv)
   'A0MW0M': { ticker: 'IQQH.DE', name: 'iShares Global Clean Energy UCITS ETF', type: 'ETF' },
   'A3D47K': { ticker: 'NUCL.DE', name: 'VanEck Uranium and Nuclear Technologies UCITS ETF', type: 'ETF' },
   'A3EB9T': { ticker: 'NATO.DE', name: 'HANetf Future of Defence UCITS ETF', type: 'ETF' },
