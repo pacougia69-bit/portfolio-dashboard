@@ -122,12 +122,26 @@ export default function StrategiePage() {
           // Alte Ziel-Allokationen (vor dem ETF-Umbau 06./08.07.2026) hatten Kategorien
           // wie "Welt-ETF"/"Tech-ETF" ohne WKN-Bezug und sind mit der aktuellen
           // 6-ETF-Struktur nicht mehr kompatibel. Erkennungsmerkmal: fehlende wkn.
-          const isCurrentFormat = Array.isArray(allocations) && allocations.length > 0 &&
+          const hasWkn = Array.isArray(allocations) && allocations.length > 0 &&
             allocations.every((a: any) => typeof a?.wkn === 'string' && a.wkn.length > 0);
+          // Depot-Umbau 23.08.2026 (A2H6ZT raus, A2JMGE rein): auch ein gespeicherter
+          // Datensatz MIT wkn kann inzwischen den falschen ETF-Satz haben, wenn
+          // shared/strategy.ts sich geaendert hat. Zusaetzlich den WKN-Satz vergleichen.
+          const savedWknSet = hasWkn
+            ? new Set(allocations.map((a: any) => a.wkn))
+            : new Set();
+          const defaultWknSet = new Set(DEFAULT_ALLOCATIONS.map((a) => a.wkn));
+          const wknSetMatches = savedWknSet.size === defaultWknSet.size &&
+            Array.from(defaultWknSet).every((wkn) => savedWknSet.has(wkn));
+          const isCurrentFormat = hasWkn && wknSetMatches;
           if (isCurrentFormat) {
             setTargetAllocations(allocations);
           } else if (Array.isArray(allocations) && allocations.length > 0) {
-            console.warn('Veraltete Ziel-Allokation erkannt (kein WKN-Bezug) - setze auf aktuelle Strategie zurueck');
+            console.warn(
+              hasWkn
+                ? 'Ziel-Allokation weicht von der aktuellen Depot-Struktur ab (anderer ETF-Satz) - setze auf aktuelle Strategie zurueck'
+                : 'Veraltete Ziel-Allokation erkannt (kein WKN-Bezug) - setze auf aktuelle Strategie zurueck'
+            );
             setTargetAllocations(DEFAULT_ALLOCATIONS);
             saveSettings.mutate({
               monthlyBudget: settings.monthlyBudget ? Number(settings.monthlyBudget) : monthlyBudget,
