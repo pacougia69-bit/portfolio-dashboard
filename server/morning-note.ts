@@ -132,15 +132,27 @@ async function fetchPriceContext(
   return priceMap;
 }
 
+// Rafael-Fund 23.08.2026 (Live-Test): Modell schrieb bei mehreren aehnlichen
+// Biotech-Positionen zweimal dieselbe Ueberschrift "Spero Therapeutics Inc.
+// (SPRO)" - der zweite Abschnitt-Text war tatsaechlich ueber Oruka. Die
+// Ueberschrift kam bisher aus dem freien bodyMarkdown-Text des Modells, war
+// also nie gegen die echten Positionsdaten geprueft. Fix: das Modell liefert
+// pro Position nur noch den reinen Fliesstext (bodyText), die Ueberschrift
+// (Name + Ticker) baut der Server danach deterministisch aus der echten
+// `positions`-Liste zusammen - das Modell kann eine Ueberschrift dadurch gar
+// nicht mehr falsch zuordnen.
 const JSON_FORMAT_INSTRUCTION = `WICHTIG: Antworte am Ende mit einem JSON-Block in genau diesem Format (zwischen \`\`\`json und \`\`\`):
 \`\`\`json
 {
   "headline": "Top-Meldung als kurze Schlagzeile",
-  "bodyMarkdown": "## Marktlage einfach erklärt\\n...\\n\\n## Top-Meldung\\n...\\n\\n## Positionen\\n...\\n\\n## Heute im Blick\\n...",
-  "positionsCovered": [{"ticker": "...", "name": "...", "hasNews": true}]
+  "marketContextMarkdown": "2-4 Sätze Marktlage-Erklärung (nur falls dir dafür Kontext mitgegeben wurde, sonst leerer String)",
+  "heuteImBlickText": "Termine/Earnings/Events heute mit Portfolio-Relevanz, sonst leerer String",
+  "positions": [
+    {"ticker": "TICKER GENAU WIE IN DER POSITIONSLISTE OBEN", "hasNews": true, "bodyText": "2-4 Sätze: was ist passiert UND was es typischerweise bedeutet (Einordnung ist Pflicht, siehe Systemprompt-Beispiel)"}
+  ]
 }
 \`\`\`
-(Den Abschnitt "Marktlage einfach erklärt" nur aufnehmen, wenn dir dafür Kontext mitgegeben wurde — sonst weglassen.)`;
+Für JEDE Position aus der Liste oben ein Objekt in "positions", auch wenn hasNews:false (dann bodyText weglassen oder leer lassen). Der Ticker muss exakt aus der Positionsliste übernommen werden — schreibe KEINEN eigenen Namen/Überschrift dazu, das übernimmt eine andere Stelle.`;
 
 async function callOpenAIForMorningNote(
   positions: Array<{ ticker: string; name: string; type: string }>,
@@ -172,14 +184,35 @@ async function callOpenAIForMorningNote(
   if (!parsed.headline || typeof parsed.headline !== "string") {
     throw new Error("Ungültige Antwort: headline fehlt.");
   }
-  if (!parsed.bodyMarkdown || typeof parsed.bodyMarkdown !== "string") {
-    throw new Error("Ungültige Antwort: bodyMarkdown fehlt.");
+  const rawPositions: Array<{ ticker?: string; hasNews?: boolean; bodyText?: string }> =
+    Array.isArray(parsed.positions) ? parsed.positions : [];
+
+  // Ueberschriften + Reihenfolge kommen NUR aus der echten `positions`-Liste,
+  // nie aus dem Modell-Output - das ist der eigentliche Fix.
+  const byTicker = new Map(rawPositions.map((p) => [p.ticker, p]));
+  const sections: string[] = [];
+  const positionsCovered: MorningNotePosition[] = [];
+  for (const p of positions) {
+    const match = byTicker.get(p.ticker);
+    const hasNews = !!match?.hasNews && !!match?.bodyText?.trim();
+    positionsCovered.push({ ticker: p.ticker, name: p.name, hasNews });
+    if (hasNews) {
+      sections.push(`### ${p.name} (${p.ticker})\n${match!.bodyText!.trim()}`);
+    }
   }
+
+  const bodyParts: string[] = [];
+  if (typeof parsed.marketContextMarkdown === "string" && parsed.marketContextMarkdown.trim()) {
+    bodyParts.push(`## Marktlage einfach erklärt\n${parsed.marketContextMarkdown.trim()}`);
+  }
+  bodyParts.push(`## Top-Meldung\n${String(parsed.headline)}`);
+  bodyParts.push(`## Positionen\n${sections.length > 0 ? sections.join("\n\n") : "Keine materiell relevanten News zu den ausgewählten Positionen gefunden."}`);
+  bodyParts.push(`## Heute im Blick\n${typeof parsed.heuteImBlickText === "string" && parsed.heuteImBlickText.trim() ? parsed.heuteImBlickText.trim() : "Keine spezifischen Termine oder Ereignisse für heute bekannt."}`);
 
   return {
     headline: String(parsed.headline),
-    bodyMarkdown: String(parsed.bodyMarkdown),
-    positionsCovered: Array.isArray(parsed.positionsCovered) ? parsed.positionsCovered : [],
+    bodyMarkdown: bodyParts.join("\n\n"),
+    positionsCovered,
   };
 }
 
