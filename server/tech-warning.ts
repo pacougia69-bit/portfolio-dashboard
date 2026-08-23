@@ -440,6 +440,46 @@ function buildSummary(overall: Signal, indicators: TechWarningIndicators): strin
 }
 
 /**
+ * Echte KI-Synthese statt reiner Zaehl-Ausgabe (buildSummary oben) — Rafael-
+ * Feedback 23.08.2026: die reine Verteilung ("3x gruen, 1x gelb, 1x rot") sagt
+ * ihm nichts, er will verstehen WAS das konkret bedeutet. Best-effort: schlaegt
+ * der Aufruf fehl (Rate-Limit, kein API-Key, Netzfehler), faellt der Aufrufer
+ * auf buildSummary() zurueck, blockiert also nie den Snapshot selbst.
+ * Keine Kauf-/Verkaufs-Einschaetzung — reine Einordnung des bereits feststehenden
+ * Signals, gleiche Leitplanke wie ueberall sonst im Dashboard.
+ */
+async function buildAISynthesis(overall: Signal, indicators: TechWarningIndicators): Promise<string> {
+  if (!openai) {
+    throw new Error("OpenAI-Client nicht initialisiert — OPENAI_API_KEY fehlt.");
+  }
+  checkOpenAIRateLimit();
+
+  const overallLabel = overall === "gruen" ? "GRÜN" : overall === "gelb" ? "GELB" : "ROT";
+  const indicatorLines = Object.values(indicators)
+    .map((ind) => `- ${ind.label}: ${ind.signal.toUpperCase()} — ${ind.value}${ind.reasoning ? ` (${ind.reasoning})` : ""}`)
+    .join("\n");
+
+  const system = `Du bist ein persönlicher Recherche-Assistent für einen Privatanleger ohne Finanz-Fachwissen. Die Ampel-Einstufung eines 5-Indikatoren-Frühwarnsystems für eine mögliche KI-Investitionsblase steht bereits fest — du erklärst nur, was sie konkret bedeutet. Sachlich, in Alltagssprache, ohne Fachbegriffe unerklärt zu lassen. Keine Kauf-/Verkaufs- oder Halte-Empfehlung — das ist an anderer Stelle im Dashboard geregelt (Aktien-Ampel), hier geht es nur um Einordnung.`;
+  const user = `Gesamt-Ampel: ${overallLabel}
+
+Die 5 Einzel-Indikatoren:
+${indicatorLines}
+
+Schreibe 3-4 Sätze: Welche Indikatoren treiben das Gesamtsignal (die "schlechtesten" zählen am meisten, die Ampel ist ein Worst-Case)? Was bedeutet das konkret für die aktuelle Marktlage? Was müsste als Nächstes passieren, damit sich die Ampel ändert? Keine neue Kauf-/Verkaufs-Einschätzung, nur Einordnung des bestehenden Signals.`;
+
+  const response = await openai.responses.create({
+    model: OPENAI_MODEL,
+    input: `${system}\n\n${user}`,
+  });
+
+  const text = (response.output_text || "").trim();
+  if (!text) {
+    throw new Error("Leere Antwort von OpenAI bei der Zusammenfassung.");
+  }
+  return text;
+}
+
+/**
  * Hauptfunktion: Holt parallel alle 5 Indikatoren, speichert Snapshot, gibt ihn zurück.
  */
 export async function fetchTechWarningSnapshot(userId: number): Promise<TechWarningSnapshot> {
@@ -460,7 +500,12 @@ export async function fetchTechWarningSnapshot(userId: number): Promise<TechWarn
   };
 
   const overallSignal = combineToOverallSignal(indicators);
-  const summary = buildSummary(overallSignal, indicators);
+  let summary = buildSummary(overallSignal, indicators);
+  try {
+    summary = await buildAISynthesis(overallSignal, indicators);
+  } catch (err: any) {
+    console.warn("[tech-warning] KI-Synthese fehlgeschlagen, falle auf Zaehl-Zusammenfassung zurueck:", err?.message || err);
+  }
 
   // Errors zusammensammeln (falls einzelne Indikatoren scheiterten)
   const errors = Object.values(indicators)
