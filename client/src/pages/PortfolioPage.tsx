@@ -21,7 +21,7 @@ import { useLocation } from 'wouter';
 import {
   Briefcase, Search, Plus, ArrowUpDown, ArrowUp, ArrowDown,
   Edit, Trash2, RefreshCw, FileJson, Upload, Loader2, TrafficCone, X, CirclePlus,
-  MessageSquare, Copy, Check, SearchCheck
+  MessageSquare, Copy, Check, SearchCheck, Banknote
 } from 'lucide-react';
 
 const formatCurrency = (value: number) => {
@@ -51,6 +51,10 @@ export default function PortfolioPage() {
   const [editingAsset, setEditingAsset] = useState<any>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [jsonInput, setJsonInput] = useState('');
+
+  // Verkaufen-Formular (vorausgefuellt aus der Position, statt alles per Hand einzutippen)
+  const [sellingAsset, setSellingAsset] = useState<any>(null);
+  const [sellForm, setSellForm] = useState({ date: '', quantity: '', price: '', fees: '0' });
   
   // Form state
   const [formData, setFormData] = useState({
@@ -119,6 +123,47 @@ export default function PortfolioPage() {
     },
     onError: (error) => toast.error(error.message),
   });
+
+  const sellPosition = trpc.transactions.addManual.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message);
+      setSellingAsset(null);
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const handleOpenSell = (asset: any) => {
+    setSellingAsset(asset);
+    setSellForm({
+      date: new Date().toISOString().split('T')[0],
+      quantity: formatAmount(asset.amount),
+      price: asset.currentPrice ? String(asset.currentPrice) : '',
+      fees: '0',
+    });
+  };
+
+  const handleSellSubmit = () => {
+    if (!sellingAsset) return;
+    const qty = parseGermanNumber(sellForm.quantity);
+    const price = parseGermanNumber(sellForm.price);
+    const fees = parseGermanNumber(sellForm.fees) || 0;
+    if (!qty || !price) {
+      toast.error('Bitte Stückzahl und Kurs eintragen');
+      return;
+    }
+    sellPosition.mutate({
+      date: sellForm.date,
+      type: 'Verkauf',
+      wkn: sellingAsset.wkn || undefined,
+      name: sellingAsset.name,
+      ticker: sellingAsset.ticker,
+      quantity: qty,
+      price: price,
+      fees: fees,
+      totalAmount: qty * price + fees,
+    });
+  };
 
   // Aktien-Ampel
   const [ampelTicker, setAmpelTicker] = useState('');
@@ -796,6 +841,78 @@ export default function PortfolioPage() {
                 </div>
               </DialogContent>
             </Dialog>
+
+            <Dialog open={!!sellingAsset} onOpenChange={(open) => { if (!open) setSellingAsset(null); }}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Verkaufen: {sellingAsset?.name}</DialogTitle>
+                  <DialogDescription>
+                    WKN/Ticker und Name sind aus der Position übernommen. Kurs und Stückzahl
+                    prüfen bzw. an den echten Verkauf anpassen, dann wird die Position
+                    korrekt reduziert und als Verkauf-Transaktion gespeichert.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Datum *</Label>
+                      <Input
+                        type="date"
+                        value={sellForm.date}
+                        onChange={(e) => setSellForm({ ...sellForm, date: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>Stückzahl *</Label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={sellForm.quantity}
+                        onChange={(e) => setSellForm({ ...sellForm, quantity: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Verkaufskurs (€) *</Label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={sellForm.price}
+                        onChange={(e) => setSellForm({ ...sellForm, price: e.target.value })}
+                        placeholder="echter Kurs aus der Abrechnung"
+                      />
+                    </div>
+                    <div>
+                      <Label>Gebühren (€)</Label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={sellForm.fees}
+                        onChange={(e) => setSellForm({ ...sellForm, fees: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  {sellForm.quantity && sellForm.price && (
+                    <p className="text-sm text-muted-foreground">
+                      Gesamtbetrag: {(parseGermanNumber(sellForm.quantity) * parseGermanNumber(sellForm.price) + (parseGermanNumber(sellForm.fees) || 0)).toFixed(2)} €
+                    </p>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setSellingAsset(null)}>
+                    Abbrechen
+                  </Button>
+                  <Button
+                    onClick={handleSellSubmit}
+                    disabled={!sellForm.quantity || !sellForm.price || sellPosition.isPending}
+                  >
+                    {sellPosition.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Banknote className="w-4 h-4 mr-1" />}
+                    Verkauf eintragen
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -934,6 +1051,15 @@ export default function PortfolioPage() {
                     </td>
                     <td className="p-2 sm:p-4">
                       <div className="flex items-center justify-end gap-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Verkaufen"
+                          onClick={() => handleOpenSell(asset)}
+                          className="h-8 w-8"
+                        >
+                          <Banknote className="w-3.5 h-3.5" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => handleEdit(asset)} className="h-8 w-8">
                           <Edit className="w-3.5 h-3.5" />
                         </Button>
