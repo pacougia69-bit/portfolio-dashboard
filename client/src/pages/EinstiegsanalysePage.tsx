@@ -22,6 +22,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from "recharts";
 import { trpc } from "@/lib/trpc";
 import { parseGermanNumber } from "@/lib/utils";
 import { toast } from "sonner";
@@ -149,6 +150,55 @@ function TechGauge({ kurs, sma50, sma200, rsi }: { kurs: number; sma50: number |
         <TechCard label="RSI (14)" value={rsi.toFixed(1)} tag={rsiTag.label} tagColor={rsiTag.color} />
       </div>
     </div>
+  );
+}
+
+// Preis-Chart mit SMA50/SMA200-Overlay, 200 Tage. Die letzten 5 Handelstage werden
+// farbig hinterlegt (grün/gelb/rot je nach Kurssprung-Filter-Ampel) — visualisiert das
+// ±8%-Fenster, statt es nur als Text im Vorfilter-Kasten zu zeigen.
+function PriceChart({
+  priceHistory,
+  kurssprungSignal,
+}: {
+  priceHistory: { date: string; close: number; sma50: number | null; sma200: number | null }[];
+  kurssprungSignal: Signal;
+}) {
+  if (priceHistory.length === 0) return null;
+  const data = priceHistory.map((p) => ({
+    date: new Date(p.date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }),
+    Kurs: p.close,
+    SMA50: p.sma50 ?? undefined,
+    SMA200: p.sma200 ?? undefined,
+  }));
+  const fensterFarbe = { GRUEN: "oklch(0.65 0.18 145)", GELB: "oklch(0.75 0.15 90)", ROT: "oklch(0.60 0.2 30)" }[kurssprungSignal];
+  const fensterStart = data[Math.max(0, data.length - 5)]?.date;
+  const fensterEnde = data[data.length - 1]?.date;
+
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <ComposedChart data={data} margin={{ left: -10 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.01 285)" />
+        <XAxis dataKey="date" stroke="oklch(0.5 0.01 285)" tick={{ fontSize: 11 }} minTickGap={30} />
+        <YAxis stroke="oklch(0.5 0.01 285)" width={60} domain={["auto", "auto"]} tick={{ fontSize: 11 }} />
+        <Tooltip
+          contentStyle={{ backgroundColor: "oklch(0.15 0.01 285)", border: "1px solid oklch(0.3 0.01 285)", borderRadius: "8px", fontSize: 12 }}
+          formatter={(value: number) => (value == null ? "–" : value.toFixed(2))}
+        />
+        {fensterStart && fensterEnde && (
+          <ReferenceArea
+            x1={fensterStart}
+            x2={fensterEnde}
+            fill={fensterFarbe}
+            fillOpacity={0.12}
+            ifOverflow="extendDomain"
+            label={{ value: "±8%-Fenster", position: "insideTopLeft", fontSize: 10, fill: fensterFarbe }}
+          />
+        )}
+        <Line type="monotone" dataKey="Kurs" stroke="oklch(0.75 0.15 195)" strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="SMA50" stroke="oklch(0.75 0.15 90)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+        <Line type="monotone" dataKey="SMA200" stroke="oklch(0.6 0.15 300)" strokeWidth={1.5} strokeDasharray="1 3" dot={false} />
+      </ComposedChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -697,6 +747,11 @@ EXIT-THESE: <ein Satz>`;
                 {/* K3 — Gauge im Stil der Standalone-HTML, automatisch aus geladenen Daten */}
                 <div className="space-y-1">
                   <Label>3. Technische Lage — automatisch aus RSI + SMA50/200</Label>
+                  {technicalData && technicalData.priceHistory.length > 0 && (
+                    <div className="pb-2">
+                      <PriceChart priceHistory={technicalData.priceHistory} kurssprungSignal={kurssprung.amp} />
+                    </div>
+                  )}
                   <TechGauge
                     kurs={technicalData?.currentPrice ?? 0}
                     sma50={technicalData?.sma50 ?? null}

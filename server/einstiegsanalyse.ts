@@ -25,6 +25,14 @@ export interface TechnicalData {
   kriterium3Signal: Signal;
   kriterium3Detail: string;
   kurssprungAusgeloest: boolean;
+  priceHistory: PricePoint[]; // 200 Tage, chronologisch (älteste zuerst), für den Kurs-Chart
+}
+
+export interface PricePoint {
+  date: string; // YYYY-MM-DD
+  close: number;
+  sma50: number | null;
+  sma200: number | null;
 }
 
 /**
@@ -46,6 +54,17 @@ function calculateRSI(closesNewestFirst: number[], period = 14): number | null {
   if (avgLoss === 0) return 100;
   const rs = avgGain / avgLoss;
   return 100 - 100 / (1 + rs);
+}
+
+/**
+ * Rollierender SMA an Index i von closesNewestFirst (index 0 = aktuellster Tag) —
+ * braucht `period` Werte ab i (also i+period-1 muss noch im Array liegen).
+ */
+function rollingSma(closesNewestFirst: number[], i: number, period: number): number | null {
+  if (i + period > closesNewestFirst.length) return null;
+  let sum = 0;
+  for (let j = i; j < i + period; j++) sum += closesNewestFirst[j];
+  return sum / period;
 }
 
 /**
@@ -82,8 +101,12 @@ export async function fetchTechnicalData(ticker: string): Promise<TechnicalData>
   const converted = convertTickerForTwelveData(ticker);
   const symbol = converted.exchange ? `${converted.symbol}:${converted.exchange}` : converted.symbol;
 
+  // outputsize=400 statt 200: kein Mehrpreis bei Twelve Data (Zeitreihen-Endpunkt kostet
+  // pro Aufruf, nicht pro zurückgegebenem Tag), aber nötig, damit die rollierende SMA200-
+  // Linie im Chart über den ganzen sichtbaren 200-Tage-Bereich berechnet werden kann statt
+  // nur für den aktuellsten Tag.
   const tsRes = await fetch(
-    `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=1day&outputsize=200&apikey=${apiKey}`
+    `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=1day&outputsize=400&apikey=${apiKey}`
   );
   const tsData = await tsRes.json();
 
@@ -93,9 +116,10 @@ export async function fetchTechnicalData(ticker: string): Promise<TechnicalData>
   }
 
   const closes: number[] = tsData.values.map((v: any) => parseFloat(v.close));
+  const dates: string[] = tsData.values.map((v: any) => String(v.datetime));
   const currentPriceOriginal = closes[0];
-  const sma50Original = closes.length >= 50 ? closes.slice(0, 50).reduce((a, b) => a + b, 0) / 50 : null;
-  const sma200Original = closes.length >= 200 ? closes.slice(0, 200).reduce((a, b) => a + b, 0) / 200 : null;
+  const sma50Original = rollingSma(closes, 0, 50);
+  const sma200Original = rollingSma(closes, 0, 200);
   const rsi14 = calculateRSI(closes, 14);
   const wochenperf = closes.length > 5 ? ((closes[0] - closes[5]) / closes[5]) * 100 : null;
   const kurssprungAusgeloest = wochenperf !== null && Math.abs(wochenperf) >= 8;
@@ -103,14 +127,25 @@ export async function fetchTechnicalData(ticker: string): Promise<TechnicalData>
   // Umrechnung nach EUR — nur USD wird automatisch umgerechnet (gleiches Prinzip wie
   // fetchLivePricesTwelveData in services.ts), andere Fremdwaehrungen bewusst nicht geraten.
   const currency: string = tsData.meta?.currency || "USD";
-  let currentPrice = currentPriceOriginal;
-  let sma50 = sma50Original;
-  let sma200 = sma200Original;
-  if (currency === "USD") {
-    const eurUsdRate = await getEurUsdRate(apiKey);
-    currentPrice = currentPriceOriginal / eurUsdRate;
-    sma50 = sma50Original !== null ? sma50Original / eurUsdRate : null;
-    sma200 = sma200Original !== null ? sma200Original / eurUsdRate : null;
+  const eurUsdRate = currency === "USD" ? await getEurUsdRate(apiKey) : 1;
+  const convert = (v: number | null) => (v === null ? null : currency === "USD" ? v / eurUsdRate : v);
+
+  const currentPrice = convert(currentPriceOriginal)!;
+  const sma50 = convert(sma50Original);
+  const sma200 = convert(sma200Original);
+
+  // priceHistory: sichtbare 200 Tage für den Chart, chronologisch (älteste zuerst).
+  // Rollierende SMA an jedem Tag mit den älteren, dahinterliegenden Werten berechnet
+  // (dafür der Puffer auf 400 Tage oben) statt nur ein einzelner statischer Wert.
+  const visibleDays = Math.min(200, closes.length);
+  const priceHistory: PricePoint[] = [];
+  for (let i = visibleDays - 1; i >= 0; i--) {
+    priceHistory.push({
+      date: dates[i],
+      close: convert(closes[i])!,
+      sma50: convert(rollingSma(closes, i, 50)),
+      sma200: convert(rollingSma(closes, i, 200)),
+    });
   }
 
   const { signal, detail } = berechneKriterium3(currentPrice, sma50, sma200, rsi14);
@@ -127,6 +162,7 @@ export async function fetchTechnicalData(ticker: string): Promise<TechnicalData>
     kriterium3Signal: signal,
     kriterium3Detail: detail,
     kurssprungAusgeloest,
+    priceHistory,
   };
 }
 
