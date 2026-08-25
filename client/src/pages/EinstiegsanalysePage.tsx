@@ -38,6 +38,7 @@ import {
   History,
   Plus,
   Trash2,
+  Pencil,
 } from "lucide-react";
 
 type Signal = "GRUEN" | "GELB" | "ROT";
@@ -488,6 +489,7 @@ EXIT-THESE: <ein Satz>`;
   // === Historie ===
   const { data: historie = [] } = trpc.einstiegsanalyse.list.useQuery();
   const [detailAnalyse, setDetailAnalyse] = useState<any | null>(null);
+  const [activeTab, setActiveTab] = useState("neu");
   const removeAnalyse = trpc.einstiegsanalyse.remove.useMutation({
     onSuccess: () => {
       toast.success("Eintrag gelöscht.");
@@ -496,6 +498,51 @@ EXIT-THESE: <ein Satz>`;
   });
 
   const ergebnisLabel = { KAUF_MOEGLICH: "Kauf möglich", ABGELEHNT: "Abgelehnt", COOLDOWN: "Cool-down" };
+
+  // Laedt eine gespeicherte Analyse zurueck ins Formular. Bewertung/Wachstum/Doppelung
+  // sind in der DB nur als kombinierter Detail-Text + Ampel-Signal gespeichert (keine
+  // rohen Select-Werte) — deshalb hier aus dem Signal zurueckgerechnet (die Formel ist
+  // eindeutig umkehrbar, siehe k1Signal/k2Signal oben) und der Freitext per Regex aus dem
+  // Detail-String extrahiert. Kurs/RSI/SMA (Kriterium 3) und Positionsgroesse/
+  // Gesamtvermoegen (nur der % Depotanteil ist gespeichert) koennen nicht rekonstruiert
+  // werden — dafuer der Hinweis-Toast.
+  const handleEdit = (a: any) => {
+    setTicker(a.ticker);
+    setWkn(a.wkn || "");
+    setName(a.name);
+    setPrefillDone(true);
+
+    setGrund((a.kurssprungGrund as any) || "");
+    setSpezifisch((a.kurssprungSpezifisch as any) || "");
+    setVorlauf((a.kurssprungVorlauf as any) || "");
+
+    const bewertungMap: Record<Signal, "guenstig" | "neutral" | "teuer"> = { GRUEN: "guenstig", GELB: "neutral", ROT: "teuer" };
+    setBewertung(bewertungMap[a.kriterium1Signal as Signal]);
+    const kgvMatch = /KGV\s+([^\s·]+)/.exec(a.kriterium1Detail || "");
+    setKgv(kgvMatch && kgvMatch[1] !== "–" ? kgvMatch[1] : "");
+    const notiz1Match = /·\s*(.+)$/.exec(a.kriterium1Detail || "");
+    setBewertungNotiz(notiz1Match ? notiz1Match[1] : "");
+
+    const wachstumMap: Record<Signal, "beschleunigt" | "stabil" | "verlangsamt"> = { GRUEN: "beschleunigt", GELB: "stabil", ROT: "verlangsamt" };
+    const wachstumWert = wachstumMap[a.kriterium2Signal as Signal];
+    setWachstum(wachstumWert);
+    setWachstumNotiz(a.kriterium2Detail && a.kriterium2Detail !== wachstumWert ? a.kriterium2Detail : "");
+
+    const doppelungMatch = /Doppelung:\s*(keine|teilweise|relevant)/.exec(a.kriterium4Detail || "");
+    setDoppelung((doppelungMatch?.[1] as any) || "");
+    const notiz4Match = /—\s*(.+)$/.exec(a.kriterium4Detail || "");
+    setDoppelungNotiz(notiz4Match ? notiz4Match[1] : "");
+    setPositionsgroesse("");
+    setGesamtvermoegen("");
+
+    setThese(a.these || "");
+    setExitThese(a.exitThese || "");
+    fetchTechnicalData.reset();
+
+    setDetailAnalyse(null);
+    setActiveTab("neu");
+    toast.info("Analyse zum Bearbeiten geladen — Kurs/RSI/SMA neu laden und Positionsgröße/Gesamtvermögen erneut eintragen.");
+  };
 
   return (
     <Layout>
@@ -510,7 +557,7 @@ EXIT-THESE: <ein Satz>`;
           </p>
         </div>
 
-        <Tabs defaultValue="neu" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="neu">Neue Analyse</TabsTrigger>
             <TabsTrigger value="historie">
@@ -853,6 +900,9 @@ EXIT-THESE: <ein Satz>`;
                   <div className="pt-2 border-t border-border/40 font-semibold">
                     Ergebnis: {ergebnisLabel[detailAnalyse.ergebnis as keyof typeof ergebnisLabel]}
                   </div>
+                  <Button variant="outline" className="w-full" onClick={() => handleEdit(detailAnalyse)}>
+                    <Pencil className="h-4 w-4 mr-1.5" /> Bearbeiten
+                  </Button>
                 </div>
               </>
             )}
