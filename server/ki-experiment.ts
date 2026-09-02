@@ -79,8 +79,12 @@ function buildSystemPrompt(): string {
   return "Agiere als erfahrener Investmentbanker und Aktienanalyst mit Fokus auf Mid-Cap-Werte. Du antwortest AUSSCHLIESSLICH mit einem einzigen validen JSON-Objekt — kein Text, keine Markdown-Überschriften, keine Einleitung, keine Erklärung davor oder danach. Der komplette Investment-Case gehört als Markdown-formatierter String in das Feld \"bodyMarkdown\" des JSON-Objekts, nirgendwo sonst.";
 }
 
-function buildUserPrompt(): string {
-  return `Suche dir eigenständig eine Mid-Cap-Aktie aus (Marktkapitalisierung ca. 2-10 Mrd. USD/EUR), bei der du auf Basis aktueller Kennzahlen, Nachrichtenlage, Kursverlauf und Marktumfeld das höchste Renditepotenzial für die nächsten 30 Tage siehst. Nutze aktuelle, recherchierte Daten (keine erfundenen Schätzungen).
+function buildUserPrompt(excludeTickers: string[] = []): string {
+  const exclusionNote = excludeTickers.length > 0
+    ? `\n\nWICHTIG: In den letzten Durchläufen wurden bereits folgende Ticker gepickt: ${excludeTickers.join(", ")}. Wähle diesmal bewusst eine ANDERE Aktie — keinen dieser Ticker erneut, auch wenn er dir weiterhin vielversprechend erscheint.`
+    : "";
+
+  return `Suche dir eigenständig eine Mid-Cap-Aktie aus (Marktkapitalisierung ca. 2-10 Mrd. USD/EUR), bei der du auf Basis aktueller Kennzahlen, Nachrichtenlage, Kursverlauf und Marktumfeld das höchste Renditepotenzial für die nächsten 30 Tage siehst. Nutze aktuelle, recherchierte Daten (keine erfundenen Schätzungen).${exclusionNote}
 
 Antworte mit GENAU diesem JSON-Objekt, sonst nichts:
 {
@@ -165,13 +169,13 @@ function extractJsonBlock(raw: string): { ticker: string; name: string; bodyMark
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 
-async function generateOpenAIPick(): Promise<{ ticker: string; name: string; bodyMarkdown: string }> {
+async function generateOpenAIPick(excludeTickers: string[] = []): Promise<{ ticker: string; name: string; bodyMarkdown: string }> {
   if (!openai) {
     throw new Error("OpenAI-Client nicht initialisiert — OPENAI_API_KEY fehlt.");
   }
   checkOpenAIRateLimit();
 
-  const fullPrompt = `${buildSystemPrompt()}\n\n${buildUserPrompt()}`;
+  const fullPrompt = `${buildSystemPrompt()}\n\n${buildUserPrompt(excludeTickers)}`;
   const response = await openai.responses.create({
     model: OPENAI_MODEL,
     input: fullPrompt,
@@ -189,7 +193,7 @@ async function generateOpenAIPick(): Promise<{ ticker: string; name: string; bod
 
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 
-async function generateClaudePick(): Promise<{ ticker: string; name: string; bodyMarkdown: string }> {
+async function generateClaudePick(excludeTickers: string[] = []): Promise<{ ticker: string; name: string; bodyMarkdown: string }> {
   if (!anthropicApiKey) {
     throw new Error("Claude-Client nicht initialisiert — ANTHROPIC_API_KEY fehlt (in Railway ergänzen).");
   }
@@ -206,7 +210,7 @@ async function generateClaudePick(): Promise<{ ticker: string; name: string; bod
       model: CLAUDE_MODEL,
       max_tokens: 8192,
       system: buildSystemPrompt(),
-      messages: [{ role: "user", content: buildUserPrompt() }],
+      messages: [{ role: "user", content: buildUserPrompt(excludeTickers) }],
       tools: [{ type: "web_search_20250305", name: "web_search" }],
     }),
   });
@@ -276,6 +280,31 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Letzte (bis zu 5) verschiedene Ticker, die dieses Modell fuer diesen User
+ * bereits gepickt hat — wird dem Prompt als Ausschlussliste mitgegeben, damit
+ * das Modell nicht bei jedem Lauf denselben "offensichtlichsten" Kandidaten
+ * wiederholt (live beobachtet: GPT-4o pickte 5x hintereinander MGNI).
+ */
+async function getRecentTickers(userId: number, model: KiExperimentModel, limit = 5): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const rows = await db
+    .select({ ticker: kiExperimentPicks.ticker })
+    .from(kiExperimentPicks)
+    .where(and(eq(kiExperimentPicks.userId, userId), eq(kiExperimentPicks.model, model)))
+    .orderBy(desc(kiExperimentPicks.createdAt))
+    .limit(20);
+
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (row.ticker) seen.add(row.ticker);
+    if (seen.size >= limit) break;
+  }
+  return Array.from(seen);
+}
+
 async function generateOnePick(
   userId: number,
   runId: string,
@@ -285,7 +314,8 @@ async function generateOnePick(
   if (!db) throw new Error("Database not available");
 
   try {
-    const pick = model === "openai" ? await generateOpenAIPick() : await generateClaudePick();
+    const excludeTickers = await getRecentTickers(userId, model);
+    const pick = model === "openai" ? await generateOpenAIPick(excludeTickers) : await generateClaudePick(excludeTickers);
     const price = await fetchPriceForTicker(pick.ticker);
 
     await db.insert(kiExperimentPicks).values({
