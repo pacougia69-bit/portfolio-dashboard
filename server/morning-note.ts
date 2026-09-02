@@ -77,7 +77,7 @@ function buildMarketContext(
   return `\n\nZusätzlicher Kontext — aktueller Stand des Tech-Frühwarnsystems (Gesamt-Ampel: ${snapshot.overallSignal.toUpperCase()}):
 ${indicatorLines || snapshot.summary || ""}
 
-Schreibe daraus als ERSTEN Abschnitt "## Marktlage einfach erklärt" — 2-4 Sätze in einfacher Alltagssprache, was dieser Stand ganz konkret bedeutet, ohne unerklärte Fachbegriffe. Das ist eine Übersetzung des bestehenden Signals, keine neue Kauf/Verkauf-Einschätzung.`;
+Fülle daraus das JSON-Feld "marketContextMarkdown" (siehe Format-Anweisung unten) — 2-4 Sätze in einfacher Alltagssprache, was dieser Stand ganz konkret bedeutet, ohne unerklärte Fachbegriffe. Das ist eine Übersetzung des bestehenden Signals, keine neue Kauf/Verkauf-Einschätzung. WICHTIG: das gehört NUR in dieses JSON-Feld, nicht als eigener Markdown-Abschnitt vor oder außerhalb des JSON-Blocks.`;
 }
 
 function buildUserPrompt(
@@ -141,7 +141,7 @@ async function fetchPriceContext(
 // (Name + Ticker) baut der Server danach deterministisch aus der echten
 // `positions`-Liste zusammen - das Modell kann eine Ueberschrift dadurch gar
 // nicht mehr falsch zuordnen.
-const JSON_FORMAT_INSTRUCTION = `WICHTIG: Antworte am Ende mit einem JSON-Block in genau diesem Format (zwischen \`\`\`json und \`\`\`):
+const JSON_FORMAT_INSTRUCTION = `WICHTIG: Deine GESAMTE Antwort besteht AUSSCHLIESSLICH aus einem einzigen JSON-Block — kein Fließtext, keine Markdown-Überschrift, keine Erklärung davor oder danach, auch nicht für die Marktlage-Erklärung (die gehört ins Feld "marketContextMarkdown" unten). Format (zwischen \`\`\`json und \`\`\`):
 \`\`\`json
 {
   "headline": "Top-Meldung als kurze Schlagzeile",
@@ -153,6 +153,40 @@ const JSON_FORMAT_INSTRUCTION = `WICHTIG: Antworte am Ende mit einem JSON-Block 
 }
 \`\`\`
 Für JEDE Position aus der Liste oben ein Objekt in "positions", auch wenn hasNews:false (dann bodyText weglassen oder leer lassen). Der Ticker muss exakt aus der Positionsliste übernommen werden — schreibe KEINEN eigenen Namen/Überschrift dazu, das übernimmt eine andere Stelle.`;
+
+/**
+ * Bevorzugt: ```json-Fence wie angewiesen. Fallback: erstes { bis letztes }
+ * im rohen Text (falls das Modell die Fence vergisst, aber sonst valides JSON
+ * liefert). Wirft erst, wenn beides scheitert — gleiches Prinzip wie
+ * extractJsonBlock in ki-experiment.ts (Rafael-Fund 02.09.2026: bei "alle
+ * auswählen" schrieb das Modell reinen Markdown-Text statt JSON, weil
+ * buildMarketContext widersprüchlich eine rohe Markdown-Überschrift verlangte
+ * — das ist jetzt behoben, dieser Fallback fängt trotzdem verbleibende Fälle ab).
+ */
+function extractMorningNoteJson(raw: string): any {
+  const trimmed = raw.trim();
+
+  const fenced = trimmed.match(/```json\s*([\s\S]*?)\s*```/);
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      // faellt durch zum Bare-JSON-Versuch unten
+    }
+  }
+
+  const braceStart = trimmed.indexOf("{");
+  const braceEnd = trimmed.lastIndexOf("}");
+  if (braceStart !== -1 && braceEnd > braceStart) {
+    try {
+      return JSON.parse(trimmed.slice(braceStart, braceEnd + 1));
+    } catch {
+      // faellt durch zum Fehler unten
+    }
+  }
+
+  throw new Error(`Keine JSON-Antwort gefunden. Erste 300 Zeichen: ${raw.slice(0, 300)}`);
+}
 
 async function callOpenAIForMorningNote(
   positions: Array<{ ticker: string; name: string; type: string }>,
@@ -171,16 +205,11 @@ async function callOpenAIForMorningNote(
     model: OPENAI_MODEL,
     input: fullPrompt,
     tools: [{ type: "web_search_preview" }],
+    max_output_tokens: 8192,
   });
 
   const raw = response.output_text || "";
-
-  const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
-  if (!jsonMatch) {
-    throw new Error(`Keine JSON-Antwort gefunden. Erste 300 Zeichen: ${raw.slice(0, 300)}`);
-  }
-
-  const parsed = JSON.parse(jsonMatch[1]);
+  const parsed = extractMorningNoteJson(raw);
   if (!parsed.headline || typeof parsed.headline !== "string") {
     throw new Error("Ungültige Antwort: headline fehlt.");
   }
