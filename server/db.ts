@@ -841,6 +841,14 @@ export async function updatePortfolioFromTransaction(
       newInvestedCapital = oldInvestedCapital + totalAmountEur;
     }
 
+    if (transactionType === 'Verkauf' && newQuantity === 0) {
+      // Komplettverkauf - Position ist vollstaendig aufgeloest, Karteileiche entfernen
+      await db.delete(portfolioPositions)
+        .where(eq(portfolioPositions.id, existingPosition.id));
+
+      return { updated: true, deleted: true, positionId: existingPosition.id };
+    }
+
     const newAvgPrice = newQuantity > 0 ? newInvestedCapital / newQuantity : 0;
 
     const updateFields: Record<string, unknown> = {
