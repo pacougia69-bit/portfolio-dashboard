@@ -1510,6 +1510,25 @@ export async function getMusterdepotSettings(userId: number) {
   return { startkapital: MUSTERDEPOT_DEFAULT_STARTKAPITAL, cashBalance: MUSTERDEPOT_DEFAULT_STARTKAPITAL };
 }
 
+/**
+ * Passt nur den virtuellen Cash-Betrag an (z.B. mehr Spielgeld nachlegen oder
+ * korrigieren) -- im Unterschied zu resetMusterdepot bleiben Positionen und
+ * Transaktionshistorie unberuehrt.
+ */
+export async function setMusterdepotCashBalance(userId: number, cashBalance: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await getMusterdepotSettings(userId); // stellt sicher, dass die Zeile existiert
+
+  const { musterdepotSettings } = await import('../drizzle/schema');
+  await db.update(musterdepotSettings)
+    .set({ cashBalance: String(cashBalance) })
+    .where(eq(musterdepotSettings.userId, userId));
+
+  return { cashBalance };
+}
+
 /** Setzt das Musterdepot komplett zurueck: neues Startkapital, alle Positionen/Transaktionen geloescht. */
 export async function resetMusterdepot(userId: number, startkapital: number) {
   const db = await getDb();

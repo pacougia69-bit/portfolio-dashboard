@@ -65,6 +65,7 @@ import {
   addInnovationsbudgetNutzung,
   removeInnovationsbudgetNutzung,
   getMusterdepotSettings,
+  setMusterdepotCashBalance,
   resetMusterdepot,
   getMusterdepotPositions,
   getMusterdepotTransactions,
@@ -458,6 +459,14 @@ export const appRouter = router({
         .input(z.object({ startkapital: z.number().positive() }))
         .mutation(async ({ ctx, input }) => {
           return resetMusterdepot(ctx.user.id, input.startkapital);
+        }),
+
+      // Nur das Cash anpassen (z.B. Spielgeld nachlegen/korrigieren) - Positionen
+      // und Transaktionshistorie bleiben im Unterschied zu reset() unberuehrt.
+      setCash: protectedProcedure
+        .input(z.object({ cashBalance: z.number().min(0) }))
+        .mutation(async ({ ctx, input }) => {
+          return setMusterdepotCashBalance(ctx.user.id, input.cashBalance);
         }),
     }),
 

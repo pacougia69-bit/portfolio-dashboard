@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { parseGermanNumber } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Gamepad2, Plus, RefreshCw, Loader2, Banknote, Search, RotateCcw, Wallet, TrendingUp } from 'lucide-react';
+import { Gamepad2, Plus, RefreshCw, Loader2, Banknote, Search, RotateCcw, Wallet, TrendingUp, Pencil } from 'lucide-react';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('de-DE', {
@@ -58,6 +58,9 @@ export default function MusterdepotPage() {
   const [sellForm, setSellForm] = useState({ quantity: '', price: '' });
   const [buyForm, setBuyForm] = useState(EMPTY_BUY_FORM);
   const [isLookingUpHebel, setIsLookingUpHebel] = useState(false);
+  const [isLookingUpTicker, setIsLookingUpTicker] = useState(false);
+  const [isCashDialogOpen, setIsCashDialogOpen] = useState(false);
+  const [cashInput, setCashInput] = useState('');
 
   const refetchAll = () => {
     refetchSettings();
@@ -133,6 +136,47 @@ export default function MusterdepotPage() {
     setIsLookingUpHebel(true);
     lookupHebel.mutate({ wkn: buyForm.wkn });
   };
+
+  // Gleicher WKN-Lookup wie im echten Portfolio (trpc.lookup.byWKN) - fuer
+  // Aktie/ETF/Krypto, wo man meist die WKN statt des Tickers zur Hand hat.
+  const lookupByWkn = trpc.lookup.byWKN.useMutation({
+    onSuccess: (result) => {
+      if (result.success && result.data) {
+        setBuyForm((prev) => ({
+          ...prev,
+          ticker: result.data!.ticker,
+          name: result.data!.name,
+          price: result.data!.currentPrice.toFixed(2),
+        }));
+        toast.success(`Daten für ${result.data.name} geladen`);
+      } else {
+        toast.error(result.error || 'Keine Daten gefunden');
+      }
+      setIsLookingUpTicker(false);
+    },
+    onError: (error) => {
+      toast.error(`Fehler: ${error.message}`);
+      setIsLookingUpTicker(false);
+    },
+  });
+
+  const handleTickerWknLookup = () => {
+    if (!buyForm.wkn || buyForm.wkn.length < 5) {
+      toast.error('Bitte eine gültige WKN eingeben (min. 5 Zeichen)');
+      return;
+    }
+    setIsLookingUpTicker(true);
+    lookupByWkn.mutate({ wkn: buyForm.wkn });
+  };
+
+  const setCashMutation = trpc.musterdepot.settings.setCash.useMutation({
+    onSuccess: () => {
+      toast.success('Cash-Betrag aktualisiert');
+      setIsCashDialogOpen(false);
+      refetchAll();
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   const handleBuySubmit = () => {
     const amount = parseGermanNumber(buyForm.amount);
@@ -217,6 +261,51 @@ export default function MusterdepotPage() {
               <RefreshCw className={`w-4 h-4 sm:mr-2 ${refreshPrices.isPending ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Kurse aktualisieren</span>
             </Button>
+
+            <Dialog
+              open={isCashDialogOpen}
+              onOpenChange={(open) => {
+                setIsCashDialogOpen(open);
+                if (open) setCashInput(String(cashBalance));
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="text-xs sm:text-sm">
+                  <Pencil className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Cash bearbeiten</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Virtuelles Cash bearbeiten</DialogTitle>
+                  <DialogDescription>
+                    Ändert nur den Cash-Betrag — Positionen und Transaktionshistorie bleiben unverändert.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-2">
+                  <Label>Cash-Betrag (€)</Label>
+                  <Input value={cashInput} onChange={(e) => setCashInput(e.target.value)} placeholder="10000" className="mt-1" />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsCashDialogOpen(false)}>
+                    Abbrechen
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      const value = parseGermanNumber(cashInput);
+                      if (value === null || value === undefined || value < 0) {
+                        toast.error('Bitte gültigen Betrag eintragen');
+                        return;
+                      }
+                      setCashMutation.mutate({ cashBalance: value });
+                    }}
+                    disabled={setCashMutation.isPending}
+                  >
+                    Speichern
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
               <DialogTrigger asChild>
@@ -356,20 +445,39 @@ export default function MusterdepotPage() {
                       </div>
                     </>
                   ) : (
-                    <div className="grid grid-cols-2 gap-4">
+                    <>
                       <div>
-                        <Label>Ticker *</Label>
-                        <Input
-                          value={buyForm.ticker}
-                          onChange={(e) => setBuyForm({ ...buyForm, ticker: e.target.value.toUpperCase() })}
-                          placeholder="AAPL"
-                        />
+                        <Label>WKN (automatische Suche)</Label>
+                        <div className="flex gap-2 mt-1">
+                          <Input
+                            value={buyForm.wkn}
+                            onChange={(e) => setBuyForm({ ...buyForm, wkn: e.target.value.toUpperCase() })}
+                            placeholder="z.B. 865985 oder A3D7QX"
+                            className="flex-1"
+                          />
+                          <Button type="button" variant="secondary" onClick={handleTickerWknLookup} disabled={isLookingUpTicker || !buyForm.wkn}>
+                            {isLookingUpTicker ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Laedt Ticker, Name und aktuellen Kurs automatisch.
+                        </p>
                       </div>
-                      <div>
-                        <Label>Name</Label>
-                        <Input value={buyForm.name} onChange={(e) => setBuyForm({ ...buyForm, name: e.target.value })} placeholder="Apple Inc." />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Ticker *</Label>
+                          <Input
+                            value={buyForm.ticker}
+                            onChange={(e) => setBuyForm({ ...buyForm, ticker: e.target.value.toUpperCase() })}
+                            placeholder="AAPL"
+                          />
+                        </div>
+                        <div>
+                          <Label>Name</Label>
+                          <Input value={buyForm.name} onChange={(e) => setBuyForm({ ...buyForm, name: e.target.value })} placeholder="Apple Inc." />
+                        </div>
                       </div>
-                    </div>
+                    </>
                   )}
 
                   <div className="grid grid-cols-2 gap-4">
