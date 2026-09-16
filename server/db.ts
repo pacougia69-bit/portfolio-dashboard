@@ -1483,3 +1483,256 @@ export async function removeInnovationsbudgetNutzung(userId: number, id: number)
 
   return { success: true };
 }
+
+// Musterdepot (Spielgeld) functions -- komplett getrennt von portfolioPositions/transactions.
+const MUSTERDEPOT_DEFAULT_STARTKAPITAL = 10000;
+
+export async function getMusterdepotSettings(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { musterdepotSettings } = await import('../drizzle/schema');
+  const existing = await db.select().from(musterdepotSettings)
+    .where(eq(musterdepotSettings.userId, userId)).limit(1);
+
+  if (existing.length > 0) {
+    return {
+      startkapital: Number(existing[0].startkapital),
+      cashBalance: Number(existing[0].cashBalance),
+    };
+  }
+
+  await db.insert(musterdepotSettings).values({
+    userId,
+    startkapital: String(MUSTERDEPOT_DEFAULT_STARTKAPITAL),
+    cashBalance: String(MUSTERDEPOT_DEFAULT_STARTKAPITAL),
+  });
+  return { startkapital: MUSTERDEPOT_DEFAULT_STARTKAPITAL, cashBalance: MUSTERDEPOT_DEFAULT_STARTKAPITAL };
+}
+
+/** Setzt das Musterdepot komplett zurueck: neues Startkapital, alle Positionen/Transaktionen geloescht. */
+export async function resetMusterdepot(userId: number, startkapital: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { musterdepotSettings, musterdepotPositions, musterdepotTransactions } = await import('../drizzle/schema');
+
+  await db.delete(musterdepotPositions).where(eq(musterdepotPositions.userId, userId));
+  await db.delete(musterdepotTransactions).where(eq(musterdepotTransactions.userId, userId));
+
+  const existing = await db.select({ id: musterdepotSettings.id }).from(musterdepotSettings)
+    .where(eq(musterdepotSettings.userId, userId)).limit(1);
+  if (existing.length > 0) {
+    await db.update(musterdepotSettings)
+      .set({ startkapital: String(startkapital), cashBalance: String(startkapital) })
+      .where(eq(musterdepotSettings.userId, userId));
+  } else {
+    await db.insert(musterdepotSettings).values({
+      userId,
+      startkapital: String(startkapital),
+      cashBalance: String(startkapital),
+    });
+  }
+
+  return { startkapital, cashBalance: startkapital };
+}
+
+export async function getMusterdepotPositions(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { musterdepotPositions } = await import('../drizzle/schema');
+  const result = await db.select().from(musterdepotPositions).where(eq(musterdepotPositions.userId, userId));
+  return result.map(p => ({
+    ...p,
+    gearing: p.gearing ? Number(p.gearing) : null,
+    koThreshold: p.koThreshold ? Number(p.koThreshold) : null,
+    koPufferPct: p.koPufferPct ? Number(p.koPufferPct) : null,
+    amount: Number(p.amount),
+    buyPrice: Number(p.buyPrice),
+    currentPrice: p.currentPrice ? Number(p.currentPrice) : null,
+  }));
+}
+
+export async function getMusterdepotTransactions(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { musterdepotTransactions } = await import('../drizzle/schema');
+  const result = await db.select().from(musterdepotTransactions)
+    .where(eq(musterdepotTransactions.userId, userId))
+    .orderBy(desc(musterdepotTransactions.date));
+
+  return result.map(t => ({
+    ...t,
+    quantity: Number(t.quantity),
+    price: Number(t.price),
+    totalAmount: Number(t.totalAmount),
+  }));
+}
+
+export interface BuyMusterdepotInput {
+  wkn?: string;
+  ticker: string;
+  name: string;
+  type: "Aktie" | "ETF" | "Krypto" | "Hebelprodukt";
+  issuer?: string;
+  direction?: "CALL" | "PUT";
+  gearing?: number;
+  koThreshold?: number;
+  koPufferPct?: number;
+  amount: number;
+  price: number;
+}
+
+/**
+ * Bucht einen virtuellen Kauf: deckt den Einsatz vom cashBalance, legt eine
+ * neue Position an oder erhoeht eine bestehende (gleiche WKN bei Hebelprodukten,
+ * sonst gleicher Ticker) mit mengengewichtetem Durchschnittspreis, protokolliert
+ * die Transaktion. Wirft, wenn das virtuelle Cash nicht reicht -- kein Ueberziehen
+ * des Musterdepots.
+ */
+export async function buyMusterdepotPosition(userId: number, input: BuyMusterdepotInput) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { musterdepotPositions, musterdepotTransactions } = await import('../drizzle/schema');
+
+  const settings = await getMusterdepotSettings(userId);
+  const totalCost = input.amount * input.price;
+  if (totalCost > settings.cashBalance) {
+    throw new Error(
+      `Nicht genug virtuelles Cash: Einsatz ${totalCost.toFixed(2)}€, verfuegbar ${settings.cashBalance.toFixed(2)}€`
+    );
+  }
+
+  const matchCondition = input.wkn
+    ? and(eq(musterdepotPositions.userId, userId), eq(musterdepotPositions.wkn, input.wkn))
+    : and(eq(musterdepotPositions.userId, userId), eq(musterdepotPositions.ticker, input.ticker), eq(musterdepotPositions.type, input.type));
+
+  const existing = await db.select().from(musterdepotPositions).where(matchCondition).limit(1);
+
+  if (existing.length > 0) {
+    const pos = existing[0];
+    const oldAmount = Number(pos.amount);
+    const oldBuyPrice = Number(pos.buyPrice);
+    const newAmount = oldAmount + input.amount;
+    const newBuyPrice = (oldAmount * oldBuyPrice + input.amount * input.price) / newAmount;
+
+    await db.update(musterdepotPositions)
+      .set({ amount: String(newAmount), buyPrice: String(newBuyPrice) })
+      .where(eq(musterdepotPositions.id, pos.id));
+  } else {
+    await db.insert(musterdepotPositions).values({
+      userId,
+      wkn: input.wkn,
+      ticker: input.ticker,
+      name: input.name,
+      type: input.type,
+      issuer: input.issuer,
+      direction: input.direction,
+      gearing: input.gearing !== undefined ? String(input.gearing) : null,
+      koThreshold: input.koThreshold !== undefined ? String(input.koThreshold) : null,
+      koPufferPct: input.koPufferPct !== undefined ? String(input.koPufferPct) : null,
+      amount: String(input.amount),
+      buyPrice: String(input.price),
+      currentPrice: String(input.price),
+    });
+  }
+
+  const { musterdepotSettings } = await import('../drizzle/schema');
+  const newCashBalance = settings.cashBalance - totalCost;
+  await db.update(musterdepotSettings)
+    .set({ cashBalance: String(newCashBalance) })
+    .where(eq(musterdepotSettings.userId, userId));
+
+  await db.insert(musterdepotTransactions).values({
+    userId,
+    date: new Date(),
+    type: "Kauf",
+    wkn: input.wkn,
+    ticker: input.ticker,
+    name: input.name,
+    quantity: String(input.amount),
+    price: String(input.price),
+    totalAmount: String(totalCost),
+  });
+
+  return { success: true, cashBalance: newCashBalance };
+}
+
+/**
+ * Bucht einen virtuellen Verkauf: schreibt den Erloes dem cashBalance gut,
+ * reduziert die Position (oder loescht sie bei Komplettverkauf), protokolliert
+ * die Transaktion. buyPrice (Durchschnittskurs) bleibt beim Teilverkauf unveraendert.
+ */
+export async function sellMusterdepotPosition(
+  userId: number, positionId: number, quantity: number, price: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { musterdepotPositions, musterdepotSettings, musterdepotTransactions } = await import('../drizzle/schema');
+
+  const existing = await db.select().from(musterdepotPositions)
+    .where(and(eq(musterdepotPositions.id, positionId), eq(musterdepotPositions.userId, userId))).limit(1);
+  if (existing.length === 0) throw new Error("Position nicht gefunden");
+
+  const pos = existing[0];
+  const currentAmount = Number(pos.amount);
+  if (quantity > currentAmount) {
+    throw new Error(`Nur ${currentAmount} Stueck vorhanden, ${quantity} angefragt`);
+  }
+
+  const proceeds = quantity * price;
+  const remaining = currentAmount - quantity;
+
+  if (remaining <= 0) {
+    await db.delete(musterdepotPositions).where(eq(musterdepotPositions.id, positionId));
+  } else {
+    await db.update(musterdepotPositions)
+      .set({ amount: String(remaining) })
+      .where(eq(musterdepotPositions.id, positionId));
+  }
+
+  const settings = await getMusterdepotSettings(userId);
+  const newCashBalance = settings.cashBalance + proceeds;
+  await db.update(musterdepotSettings)
+    .set({ cashBalance: String(newCashBalance) })
+    .where(eq(musterdepotSettings.userId, userId));
+
+  await db.insert(musterdepotTransactions).values({
+    userId,
+    date: new Date(),
+    type: "Verkauf",
+    positionId: remaining <= 0 ? null : positionId,
+    wkn: pos.wkn,
+    ticker: pos.ticker,
+    name: pos.name,
+    quantity: String(quantity),
+    price: String(price),
+    totalAmount: String(proceeds),
+  });
+
+  return { success: true, cashBalance: newCashBalance };
+}
+
+export async function updateMusterdepotPositionPrice(
+  userId: number, id: number,
+  data: { currentPrice: number; koPufferPct?: number; koThreshold?: number; gearing?: number }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { musterdepotPositions } = await import('../drizzle/schema');
+  const updateData: Record<string, unknown> = { currentPrice: String(data.currentPrice) };
+  if (data.koPufferPct !== undefined) updateData.koPufferPct = String(data.koPufferPct);
+  if (data.koThreshold !== undefined) updateData.koThreshold = String(data.koThreshold);
+  if (data.gearing !== undefined) updateData.gearing = String(data.gearing);
+
+  await db.update(musterdepotPositions)
+    .set(updateData)
+    .where(and(eq(musterdepotPositions.id, id), eq(musterdepotPositions.userId, userId)));
+
+  return { success: true };
+}

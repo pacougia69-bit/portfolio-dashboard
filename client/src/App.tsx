@@ -11,6 +11,7 @@ import { trpc } from "@/lib/trpc";
 // Pages - all accessible without authentication
 import DashboardPage from "./pages/DashboardPage";
 import PortfolioPage from "./pages/PortfolioPage";
+import MusterdepotPage from "./pages/MusterdepotPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import StrategiePage from "./pages/StrategiePage";
 import DividendenPage from "./pages/DividendenPage";
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/morning-note" component={MorningNotePage} />
       <Route path="/ki-experiment" component={KiExperimentPage} />
       <Route path="/portfolio" component={PortfolioPage} />
+      <Route path="/musterdepot" component={MusterdepotPage} />
       <Route path="/watchlist" component={WatchlistPage} />
       <Route path="/strategie" component={StrategiePage} />
       <Route path="/dividenden" component={DividendenPage} />

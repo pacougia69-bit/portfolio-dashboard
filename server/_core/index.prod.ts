@@ -409,6 +409,93 @@ async function runDatabaseMigration() {
     console.error('⚠️  Error fixing UNIQUE constraint:', uqError?.message || uqError);
   }
 
+  // === Musterdepot (Spielgeld): Settings/Positionen/Transaktionen sicherstellen ===
+  try {
+    console.log('🔍 Checking musterdepot_settings table...');
+    const mdsConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await mdsConn.query(`
+        CREATE TABLE IF NOT EXISTS musterdepot_settings (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          startkapital DECIMAL(18,2) NOT NULL DEFAULT 10000.00,
+          cashBalance DECIMAL(18,2) NOT NULL DEFAULT 10000.00,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY musterdepot_settings_userId_unique (userId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ musterdepot_settings table ready');
+    } finally {
+      await mdsConn.end();
+    }
+  } catch (mdsError: any) {
+    console.error('⚠️  Error creating musterdepot_settings table:', mdsError?.message || mdsError);
+  }
+
+  try {
+    console.log('🔍 Checking musterdepot_positions table...');
+    const mdpConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await mdpConn.query(`
+        CREATE TABLE IF NOT EXISTS musterdepot_positions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          wkn VARCHAR(20),
+          ticker VARCHAR(20) NOT NULL,
+          \`name\` VARCHAR(255) NOT NULL,
+          type ENUM('Aktie','ETF','Krypto','Hebelprodukt') NOT NULL,
+          issuer VARCHAR(100),
+          direction ENUM('CALL','PUT'),
+          gearing DECIMAL(10,2),
+          koThreshold DECIMAL(18,4),
+          koPufferPct DECIMAL(10,2),
+          amount DECIMAL(18,8) NOT NULL,
+          buyPrice DECIMAL(18,4) NOT NULL,
+          currentPrice DECIMAL(18,4),
+          notes TEXT,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+          INDEX musterdepot_positions_userId (userId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ musterdepot_positions table ready');
+    } finally {
+      await mdpConn.end();
+    }
+  } catch (mdpError: any) {
+    console.error('⚠️  Error creating musterdepot_positions table:', mdpError?.message || mdpError);
+  }
+
+  try {
+    console.log('🔍 Checking musterdepot_transactions table...');
+    const mdtConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await mdtConn.query(`
+        CREATE TABLE IF NOT EXISTS musterdepot_transactions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          positionId INT,
+          date TIMESTAMP NOT NULL,
+          type ENUM('Kauf','Verkauf') NOT NULL,
+          wkn VARCHAR(20),
+          ticker VARCHAR(20) NOT NULL,
+          \`name\` VARCHAR(255) NOT NULL,
+          quantity DECIMAL(18,8) NOT NULL,
+          price DECIMAL(18,4) NOT NULL,
+          totalAmount DECIMAL(18,4) NOT NULL,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          INDEX musterdepot_transactions_userId (userId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ musterdepot_transactions table ready');
+    } finally {
+      await mdtConn.end();
+    }
+  } catch (mdtError: any) {
+    console.error('⚠️  Error creating musterdepot_transactions table:', mdtError?.message || mdtError);
+  }
+
   try {
     console.log('🔄 Starting database migration...');
 

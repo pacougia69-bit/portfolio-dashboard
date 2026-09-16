@@ -28,6 +28,7 @@ import {
   SearchCheck,
   Sunrise,
   Swords,
+  Gamepad2,
 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ const navItems = [
   { path: '/morning-note', label: 'Morning Note', icon: Sunrise },
   { path: '/ki-experiment', label: 'KI-Pick-Experiment', icon: Swords },
   { path: '/portfolio', label: 'Portfolio', icon: Briefcase },
+  { path: '/musterdepot', label: 'Musterdepot', icon: Gamepad2 },
   { path: '/watchlist', label: 'Watchlist', icon: Eye },
   { path: '/strategie', label: 'Strategie', icon: Target },
   { path: '/rebalancing', label: 'Rebalancing', icon: Scale },

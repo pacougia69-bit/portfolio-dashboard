@@ -472,3 +472,69 @@ export const innovationsbudgetNutzung = mysqlTable("innovationsbudget_nutzung", 
 export type InnovationsbudgetNutzung = typeof innovationsbudgetNutzung.$inferSelect;
 export type InsertInnovationsbudgetNutzung = typeof innovationsbudgetNutzung.$inferInsert;
 
+/**
+ * Musterdepot (Spielgeld) - komplett getrennt vom echten Depot (portfolioPositions).
+ * Kein Bezug zu Steuer-Logik oder DKB-Import, reine Simulation.
+ */
+export const musterdepotSettings = mysqlTable("musterdepot_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  startkapital: decimal("startkapital", { precision: 18, scale: 2 }).notNull().default("10000.00"),
+  cashBalance: decimal("cashBalance", { precision: 18, scale: 2 }).notNull().default("10000.00"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MusterdepotSettings = typeof musterdepotSettings.$inferSelect;
+export type InsertMusterdepotSettings = typeof musterdepotSettings.$inferInsert;
+
+/**
+ * Musterdepot-Positionen. type "Hebelprodukt" (Knock-Out/Optionsschein) hat WKN-
+ * basierte Zusatzfelder (issuer/direction/gearing/koThreshold) statt Ticker-Kurs --
+ * Kurs kommt dann ueber den onvista-Scraper (server/onvista-scraper.ts), nicht ueber
+ * Twelve Data/Yahoo.
+ */
+export const musterdepotPositions = mysqlTable("musterdepot_positions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  wkn: varchar("wkn", { length: 20 }),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: mysqlEnum("type", ["Aktie", "ETF", "Krypto", "Hebelprodukt"]).notNull(),
+  issuer: varchar("issuer", { length: 100 }),
+  direction: mysqlEnum("direction", ["CALL", "PUT"]),
+  gearing: decimal("gearing", { precision: 10, scale: 2 }),
+  koThreshold: decimal("koThreshold", { precision: 18, scale: 4 }),
+  koPufferPct: decimal("koPufferPct", { precision: 10, scale: 2 }),
+  amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
+  buyPrice: decimal("buyPrice", { precision: 18, scale: 4 }).notNull(),
+  currentPrice: decimal("currentPrice", { precision: 18, scale: 4 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MusterdepotPosition = typeof musterdepotPositions.$inferSelect;
+export type InsertMusterdepotPosition = typeof musterdepotPositions.$inferInsert;
+
+/**
+ * Musterdepot-Transaktionen (Kauf/Verkauf-Historie, manuell statt aus DKB-Import).
+ */
+export const musterdepotTransactions = mysqlTable("musterdepot_transactions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  positionId: int("positionId"),
+  date: timestamp("date").notNull(),
+  type: mysqlEnum("type", ["Kauf", "Verkauf"]).notNull(),
+  wkn: varchar("wkn", { length: 20 }),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
+  price: decimal("price", { precision: 18, scale: 4 }).notNull(),
+  totalAmount: decimal("totalAmount", { precision: 18, scale: 4 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MusterdepotTransaction = typeof musterdepotTransactions.$inferSelect;
+export type InsertMusterdepotTransaction = typeof musterdepotTransactions.$inferInsert;
+

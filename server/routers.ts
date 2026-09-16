@@ -64,8 +64,16 @@ import {
   setInnovationsbudgetZiel,
   addInnovationsbudgetNutzung,
   removeInnovationsbudgetNutzung,
+  getMusterdepotSettings,
+  resetMusterdepot,
+  getMusterdepotPositions,
+  getMusterdepotTransactions,
+  buyMusterdepotPosition,
+  sellMusterdepotPosition,
+  updateMusterdepotPositionPrice,
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker, lookupByName } from "./services";
+import { fetchOnvistaProductDetail } from "./onvista-scraper";
 import { getEurUsdRate } from "./currency";
 import { DEFAULT_TARGET_ALLOCATIONS } from "@shared/strategy";
 import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningHistory } from "./tech-warning";
@@ -436,6 +444,121 @@ export const appRouter = router({
     
     hasApiKey: protectedProcedure.query(async () => {
       return { hasKey: !!process.env.TWELVE_DATA_API_KEY };
+    }),
+  }),
+
+  // Musterdepot (Spielgeld) - komplett getrennt vom echten Depot, keine Steuer-/DKB-Logik
+  musterdepot: router({
+    settings: router({
+      get: protectedProcedure.query(async ({ ctx }) => {
+        return getMusterdepotSettings(ctx.user.id);
+      }),
+
+      reset: protectedProcedure
+        .input(z.object({ startkapital: z.number().positive() }))
+        .mutation(async ({ ctx, input }) => {
+          return resetMusterdepot(ctx.user.id, input.startkapital);
+        }),
+    }),
+
+    positions: router({
+      list: protectedProcedure.query(async ({ ctx }) => {
+        return getMusterdepotPositions(ctx.user.id);
+      }),
+
+      buy: protectedProcedure
+        .input(z.object({
+          wkn: z.string().optional(),
+          ticker: z.string(),
+          name: z.string(),
+          type: z.enum(["Aktie", "ETF", "Krypto", "Hebelprodukt"]),
+          issuer: z.string().optional(),
+          direction: z.enum(["CALL", "PUT"]).optional(),
+          gearing: z.number().optional(),
+          koThreshold: z.number().optional(),
+          koPufferPct: z.number().optional(),
+          amount: z.number().positive(),
+          price: z.number().positive(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          return buyMusterdepotPosition(ctx.user.id, input);
+        }),
+
+      sell: protectedProcedure
+        .input(z.object({
+          positionId: z.number(),
+          quantity: z.number().positive(),
+          price: z.number().positive(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          return sellMusterdepotPosition(ctx.user.id, input.positionId, input.quantity, input.price);
+        }),
+    }),
+
+    transactions: router({
+      list: protectedProcedure.query(async ({ ctx }) => {
+        return getMusterdepotTransactions(ctx.user.id);
+      }),
+    }),
+
+    // Fuer das Kauf-Formular: Hebelprodukt-Kenndaten per WKN vorab abrufen
+    // (Ask-Kurs, Hebel, K.O.-Puffer) - onvista hat keinen Ticker fuer diese Produkte.
+    lookupHebel: protectedProcedure
+      .input(z.object({ wkn: z.string() }))
+      .mutation(async ({ input }) => {
+        const detail = await fetchOnvistaProductDetail(input.wkn);
+        if (!detail) throw new Error("WKN nicht gefunden oder onvista-Seite nicht erreichbar");
+        return detail;
+      }),
+
+    // Kurse per Klick aktualisieren (kein Cron) - Aktie/ETF/Krypto ueber Yahoo Finance
+    // (gleiche Quelle wie das echte Depot), Hebelprodukt per WKN ueber den onvista-Scraper.
+    refreshPrices: protectedProcedure.mutation(async ({ ctx }) => {
+      const positions = await getMusterdepotPositions(ctx.user.id);
+      let updatedCount = 0;
+      let failedCount = 0;
+
+      const tickerPositions = positions.filter(p => p.type !== "Hebelprodukt");
+      if (tickerPositions.length > 0) {
+        const tickers = Array.from(new Set(tickerPositions.map(p => p.ticker)));
+        const prices = await fetchLivePrices(tickers);
+        const eurUsdRate = await getEurUsdRate();
+
+        for (const pos of tickerPositions) {
+          const priceData = prices.find(p => p.ticker === pos.ticker);
+          if (!priceData) {
+            failedCount++;
+            continue;
+          }
+          let priceInEur = priceData.price;
+          if (priceData.currency === 'USD') {
+            priceInEur = priceData.price / eurUsdRate;
+          } else if (priceData.currency !== 'EUR') {
+            failedCount++;
+            continue;
+          }
+          await updateMusterdepotPositionPrice(ctx.user.id, pos.id, { currentPrice: priceInEur });
+          updatedCount++;
+        }
+      }
+
+      const hebelPositions = positions.filter(p => p.type === "Hebelprodukt" && p.wkn);
+      for (const pos of hebelPositions) {
+        const detail = await fetchOnvistaProductDetail(pos.wkn!);
+        if (!detail || detail.bid === null) {
+          failedCount++;
+          continue;
+        }
+        await updateMusterdepotPositionPrice(ctx.user.id, pos.id, {
+          currentPrice: detail.bid,
+          koPufferPct: detail.koPufferPct ?? undefined,
+          koThreshold: detail.koThreshold ?? undefined,
+          gearing: detail.gearing ?? undefined,
+        });
+        updatedCount++;
+      }
+
+      return { updatedCount, failedCount };
     }),
   }),
 
