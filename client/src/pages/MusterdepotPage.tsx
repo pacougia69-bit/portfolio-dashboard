@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { parseGermanNumber } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Gamepad2, Plus, RefreshCw, Loader2, Banknote, Search, RotateCcw, Wallet, TrendingUp, Pencil } from 'lucide-react';
+import { Gamepad2, Plus, RefreshCw, Loader2, Banknote, Search, RotateCcw, Wallet, TrendingUp, Pencil, ArrowRightLeft } from 'lucide-react';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('de-DE', {
@@ -47,6 +47,21 @@ const EMPTY_BUY_FORM = {
   price: '',
 };
 
+// Gleiche Felder wie EMPTY_BUY_FORM, zusaetzlich der aktuelle Kurs - fuers
+// Bearbeiten einer bereits angelegten Position (keine Cash-Buchung).
+const EMPTY_EDIT_FORM = {
+  ...EMPTY_BUY_FORM,
+  currentPrice: '',
+};
+
+// Fuers Uebertragen einer Musterdepot-Position ins echte Portfolio -
+// Stueckzahl/Kaufpreis muss der echte Kauf sein, nicht die virtuellen Werte.
+const EMPTY_TRANSFER_FORM = {
+  amount: '',
+  buyPrice: '',
+  category: '',
+};
+
 export default function MusterdepotPage() {
   const { data: settings, refetch: refetchSettings } = trpc.musterdepot.settings.get.useQuery();
   const { data: positions = [], isLoading, refetch: refetchPositions } = trpc.musterdepot.positions.list.useQuery();
@@ -61,6 +76,14 @@ export default function MusterdepotPage() {
   const [isLookingUpTicker, setIsLookingUpTicker] = useState(false);
   const [isCashDialogOpen, setIsCashDialogOpen] = useState(false);
   const [cashInput, setCashInput] = useState('');
+
+  // Bearbeiten einer bereits angelegten Position
+  const [editingPosition, setEditingPosition] = useState<any>(null);
+  const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM);
+
+  // Uebertragen einer Musterdepot-Position ins echte Portfolio
+  const [transferringPosition, setTransferringPosition] = useState<any>(null);
+  const [transferForm, setTransferForm] = useState(EMPTY_TRANSFER_FORM);
 
   const refetchAll = () => {
     refetchSettings();
@@ -82,6 +105,28 @@ export default function MusterdepotPage() {
       toast.success('Verkauf gebucht');
       setSellingPosition(null);
       refetchAll();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const updateMutation = trpc.musterdepot.positions.update.useMutation({
+    onSuccess: () => {
+      toast.success('Position aktualisiert');
+      setEditingPosition(null);
+      setEditForm(EMPTY_EDIT_FORM);
+      refetchAll();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  // Kopiert eine Musterdepot-Position ins echte Portfolio (trpc.portfolio.create) -
+  // WKN/Name/Typ/Kenndaten kommen 1:1 rueber, Stueckzahl/Kaufpreis traegt Rafael
+  // als echten Kauf ein. Die Musterdepot-Position selbst bleibt unangetastet.
+  const transferMutation = trpc.portfolio.create.useMutation({
+    onSuccess: () => {
+      toast.success('Ins echte Portfolio übernommen');
+      setTransferringPosition(null);
+      setTransferForm(EMPTY_TRANSFER_FORM);
     },
     onError: (error) => toast.error(error.message),
   });
@@ -225,6 +270,91 @@ export default function MusterdepotPage() {
       return;
     }
     sellMutation.mutate({ positionId: sellingPosition.id, quantity, price });
+  };
+
+  const handleOpenEdit = (pos: any) => {
+    setEditingPosition(pos);
+    setEditForm({
+      type: pos.type,
+      wkn: pos.wkn || '',
+      ticker: pos.ticker,
+      name: pos.name,
+      issuer: pos.issuer || '',
+      direction: pos.direction || 'CALL',
+      gearing: pos.gearing !== null && pos.gearing !== undefined ? String(pos.gearing) : '',
+      koThreshold: pos.koThreshold !== null && pos.koThreshold !== undefined ? String(pos.koThreshold) : '',
+      koPufferPct: pos.koPufferPct !== null && pos.koPufferPct !== undefined ? String(pos.koPufferPct) : '',
+      amount: formatAmount(pos.amount),
+      price: String(pos.buyPrice),
+      currentPrice: pos.currentPrice !== null && pos.currentPrice !== undefined ? String(pos.currentPrice) : '',
+    });
+  };
+
+  const handleEditSubmit = () => {
+    if (!editingPosition) return;
+    const amount = parseGermanNumber(editForm.amount);
+    const buyPrice = parseGermanNumber(editForm.price);
+    if (!amount || !buyPrice) {
+      toast.error('Bitte Stückzahl und Kaufpreis eintragen');
+      return;
+    }
+    if (editForm.type === 'Hebelprodukt' && !editForm.wkn) {
+      toast.error('Hebelprodukte brauchen eine WKN');
+      return;
+    }
+    if (editForm.type !== 'Hebelprodukt' && !editForm.ticker) {
+      toast.error('Bitte Ticker eintragen');
+      return;
+    }
+    updateMutation.mutate({
+      id: editingPosition.id,
+      wkn: editForm.wkn || undefined,
+      ticker: editForm.type === 'Hebelprodukt' ? editForm.wkn : editForm.ticker,
+      name: editForm.name || editForm.ticker || editForm.wkn,
+      type: editForm.type,
+      issuer: editForm.type === 'Hebelprodukt' ? (editForm.issuer || undefined) : undefined,
+      direction: editForm.type === 'Hebelprodukt' ? editForm.direction : undefined,
+      gearing: editForm.gearing ? parseGermanNumber(editForm.gearing) ?? undefined : undefined,
+      koThreshold: editForm.koThreshold ? parseGermanNumber(editForm.koThreshold) ?? undefined : undefined,
+      koPufferPct: editForm.koPufferPct ? parseGermanNumber(editForm.koPufferPct) ?? undefined : undefined,
+      amount,
+      buyPrice,
+      currentPrice: editForm.currentPrice ? parseGermanNumber(editForm.currentPrice) ?? undefined : undefined,
+    });
+  };
+
+  const handleOpenTransfer = (pos: any) => {
+    setTransferringPosition(pos);
+    setTransferForm({
+      amount: formatAmount(pos.amount),
+      buyPrice: String(pos.currentPrice ?? pos.buyPrice),
+      category: '',
+    });
+  };
+
+  const handleTransferSubmit = () => {
+    if (!transferringPosition) return;
+    const amount = parseGermanNumber(transferForm.amount);
+    const buyPrice = parseGermanNumber(transferForm.buyPrice);
+    if (!amount || !buyPrice) {
+      toast.error('Bitte Stückzahl und echten Kaufpreis eintragen');
+      return;
+    }
+    const pos = transferringPosition;
+    transferMutation.mutate({
+      wkn: pos.wkn || undefined,
+      ticker: pos.type === 'Hebelprodukt' ? (pos.wkn || pos.ticker) : pos.ticker,
+      name: pos.name,
+      type: pos.type,
+      category: transferForm.category || undefined,
+      amount,
+      buyPrice,
+      issuer: pos.type === 'Hebelprodukt' ? pos.issuer || undefined : undefined,
+      direction: pos.type === 'Hebelprodukt' ? pos.direction || undefined : undefined,
+      gearing: pos.type === 'Hebelprodukt' ? pos.gearing ?? undefined : undefined,
+      koThreshold: pos.type === 'Hebelprodukt' ? pos.koThreshold ?? undefined : undefined,
+      koPufferPct: pos.type === 'Hebelprodukt' ? pos.koPufferPct ?? undefined : undefined,
+    });
   };
 
   const positionsValue = useMemo(
@@ -599,6 +729,12 @@ export default function MusterdepotPage() {
                       </td>
                       <td className="p-2 sm:p-4">
                         <div className="flex items-center justify-end gap-0.5">
+                          <Button variant="ghost" size="icon" title="Bearbeiten" onClick={() => handleOpenEdit(pos)} className="h-8 w-8">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Ins echte Portfolio übernehmen" onClick={() => handleOpenTransfer(pos)} className="h-8 w-8">
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                          </Button>
                           <Button variant="ghost" size="icon" title="Verkaufen" onClick={() => handleOpenSell(pos)} className="h-8 w-8">
                             <Banknote className="w-3.5 h-3.5" />
                           </Button>
@@ -644,6 +780,160 @@ export default function MusterdepotPage() {
             <Button onClick={handleSellSubmit} disabled={sellMutation.isPending}>
               {sellMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Verkaufen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bearbeiten-Dialog - reine Korrektur einer bereits angelegten Position,
+          keine Cash-Buchung */}
+      <Dialog open={!!editingPosition} onOpenChange={(open) => !open && setEditingPosition(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Bearbeiten: {editingPosition?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div>
+              <Label>Typ</Label>
+              <Select value={editForm.type} onValueChange={(v: any) => setEditForm({ ...editForm, type: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Aktie">Aktie</SelectItem>
+                  <SelectItem value="ETF">ETF</SelectItem>
+                  <SelectItem value="Krypto">Krypto</SelectItem>
+                  <SelectItem value="Hebelprodukt">Hebelprodukt (Knock-Out)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {editForm.type === 'Hebelprodukt' ? (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>WKN *</Label>
+                    <Input value={editForm.wkn} onChange={(e) => setEditForm({ ...editForm, wkn: e.target.value.toUpperCase() })} />
+                  </div>
+                  <div>
+                    <Label>Emittent</Label>
+                    <Input value={editForm.issuer} onChange={(e) => setEditForm({ ...editForm, issuer: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <Label>Name</Label>
+                  <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label>Richtung</Label>
+                    <Select value={editForm.direction} onValueChange={(v: any) => setEditForm({ ...editForm, direction: v })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CALL">CALL</SelectItem>
+                        <SelectItem value="PUT">PUT</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Hebel</Label>
+                    <Input value={editForm.gearing} onChange={(e) => setEditForm({ ...editForm, gearing: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>K.O.-Puffer %</Label>
+                    <Input value={editForm.koPufferPct} onChange={(e) => setEditForm({ ...editForm, koPufferPct: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <Label>K.O.-Schwelle</Label>
+                  <Input value={editForm.koThreshold} onChange={(e) => setEditForm({ ...editForm, koThreshold: e.target.value })} />
+                </div>
+              </>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Ticker *</Label>
+                  <Input value={editForm.ticker} onChange={(e) => setEditForm({ ...editForm, ticker: e.target.value.toUpperCase() })} />
+                </div>
+                <div>
+                  <Label>Name</Label>
+                  <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label>Stückzahl *</Label>
+                <Input value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} />
+              </div>
+              <div>
+                <Label>Kaufpreis (€) *</Label>
+                <Input value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+              </div>
+              <div>
+                <Label>Aktueller Kurs (€)</Label>
+                <Input value={editForm.currentPrice} onChange={(e) => setEditForm({ ...editForm, currentPrice: e.target.value })} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingPosition(null)}>
+              Abbrechen
+            </Button>
+            <Button onClick={handleEditSubmit} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Uebertragen-Dialog - kopiert die Position ins echte Portfolio, aendert
+          nichts am Musterdepot */}
+      <Dialog open={!!transferringPosition} onOpenChange={(open) => !open && setTransferringPosition(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Ins echte Portfolio: {transferringPosition?.name}</DialogTitle>
+            <DialogDescription>
+              WKN/Name/Typ{transferringPosition?.type === 'Hebelprodukt' ? '/Emittent/Richtung/Hebel/K.O.-Puffer' : ''} werden
+              übernommen. Trag hier die echte Stückzahl und deinen echten Kaufpreis ein. Die Musterdepot-Position bleibt unverändert.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Stückzahl *</Label>
+                <Input value={transferForm.amount} onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })} />
+              </div>
+              <div>
+                <Label>Echter Kaufpreis (€) *</Label>
+                <Input value={transferForm.buyPrice} onChange={(e) => setTransferForm({ ...transferForm, buyPrice: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label>Säule / Kategorie (optional)</Label>
+              <Select value={transferForm.category} onValueChange={(value) => setTransferForm({ ...transferForm, category: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Säule wählen..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="A">A - Renten-Basis</SelectItem>
+                  <SelectItem value="B">B - Krypto</SelectItem>
+                  <SelectItem value="C">C - Zocker/Verkauf</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferringPosition(null)}>
+              Abbrechen
+            </Button>
+            <Button onClick={handleTransferSubmit} disabled={transferMutation.isPending}>
+              {transferMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Übernehmen
             </Button>
           </DialogFooter>
         </DialogContent>

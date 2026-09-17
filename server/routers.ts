@@ -72,6 +72,7 @@ import {
   buyMusterdepotPosition,
   sellMusterdepotPosition,
   updateMusterdepotPositionPrice,
+  updateMusterdepotPosition,
 } from "./db";
 import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateRecommendation, lookupByWKN, lookupByTicker, lookupByName } from "./services";
 import { fetchOnvistaProductDetail } from "./onvista-scraper";
@@ -580,6 +581,30 @@ export const appRouter = router({
         }))
         .mutation(async ({ ctx, input }) => {
           return sellMusterdepotPosition(ctx.user.id, input.positionId, input.quantity, input.price);
+        }),
+
+      // Direkte Bearbeitung einer bereits angelegten Position (WKN/Name/Typ/
+      // Kenndaten/Anzahl/Kaufpreis/Kurs) - anders als buy/sell keine Cash-
+      // Buchung, reine Korrektur.
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          wkn: z.string().optional(),
+          ticker: z.string().optional(),
+          name: z.string().optional(),
+          type: z.enum(["Aktie", "ETF", "Krypto", "Hebelprodukt"]).optional(),
+          issuer: z.string().optional(),
+          direction: z.enum(["CALL", "PUT"]).optional(),
+          gearing: z.number().optional(),
+          koThreshold: z.number().optional(),
+          koPufferPct: z.number().optional(),
+          amount: z.number().positive().optional(),
+          buyPrice: z.number().positive().optional(),
+          currentPrice: z.number().positive().optional(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          const { id, ...data } = input;
+          return updateMusterdepotPosition(ctx.user.id, id, data);
         }),
     }),
 

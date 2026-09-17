@@ -1744,6 +1744,47 @@ export async function sellMusterdepotPosition(
   return { success: true, cashBalance: newCashBalance };
 }
 
+/**
+ * Direkte Bearbeitung einer Musterdepot-Position (WKN/Name/Typ/Kenndaten/
+ * Anzahl/Kaufpreis/Kurs) - im Unterschied zu buy/sell keine Cash-Buchung
+ * und kein Transaktions-Eintrag, reine Korrektur einer bereits angelegten
+ * Position. Gleiches Prinzip wie updatePortfolioPosition im echten Depot.
+ */
+export async function updateMusterdepotPosition(
+  userId: number, id: number,
+  data: {
+    wkn?: string; ticker?: string; name?: string;
+    type?: "Aktie" | "ETF" | "Krypto" | "Hebelprodukt";
+    issuer?: string; direction?: "CALL" | "PUT";
+    gearing?: number; koThreshold?: number; koPufferPct?: number;
+    amount?: number; buyPrice?: number; currentPrice?: number;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { musterdepotPositions } = await import('../drizzle/schema');
+  const updateData: Record<string, unknown> = {};
+  if (data.wkn !== undefined) updateData.wkn = data.wkn;
+  if (data.ticker !== undefined) updateData.ticker = data.ticker;
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.type !== undefined) updateData.type = data.type;
+  if (data.issuer !== undefined) updateData.issuer = data.issuer;
+  if (data.direction !== undefined) updateData.direction = data.direction;
+  if (data.gearing !== undefined) updateData.gearing = String(data.gearing);
+  if (data.koThreshold !== undefined) updateData.koThreshold = String(data.koThreshold);
+  if (data.koPufferPct !== undefined) updateData.koPufferPct = String(data.koPufferPct);
+  if (data.amount !== undefined) updateData.amount = String(data.amount);
+  if (data.buyPrice !== undefined) updateData.buyPrice = String(data.buyPrice);
+  if (data.currentPrice !== undefined) updateData.currentPrice = String(data.currentPrice);
+
+  await db.update(musterdepotPositions)
+    .set(updateData)
+    .where(and(eq(musterdepotPositions.id, id), eq(musterdepotPositions.userId, userId)));
+
+  return { success: true };
+}
+
 export async function updateMusterdepotPositionPrice(
   userId: number, id: number,
   data: { currentPrice: number; koPufferPct?: number; koThreshold?: number; gearing?: number }
