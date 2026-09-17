@@ -61,7 +61,7 @@ export default function PortfolioPage() {
     wkn: '',
     ticker: '',
     name: '',
-    type: 'Aktie' as const,
+    type: 'Aktie' as 'Aktie' | 'ETF' | 'Krypto' | 'Anleihe' | 'Fonds' | 'Hebelprodukt',
     category: '',
     amount: '',
     buyPrice: '',
@@ -69,6 +69,12 @@ export default function PortfolioPage() {
     status: 'Halten' as const,
     notes: '',
     autoUpdate: true,
+    // Hebelprodukt-Zusatzfelder
+    issuer: '',
+    direction: 'CALL' as 'CALL' | 'PUT',
+    gearing: '',
+    koThreshold: '',
+    koPufferPct: '',
   });
   
   // Fetch portfolio data
@@ -344,6 +350,11 @@ export default function PortfolioPage() {
       status: 'Halten',
       notes: '',
       autoUpdate: true,
+      issuer: '',
+      direction: 'CALL',
+      gearing: '',
+      koThreshold: '',
+      koPufferPct: '',
     });
   };
   
@@ -379,6 +390,39 @@ export default function PortfolioPage() {
     }
     setIsLookingUp(true);
     lookupByWKN.mutate({ wkn: formData.wkn });
+  };
+
+  // Hebelprodukt-Lookup (Knock-Out/Optionsschein) per WKN ueber onvista - gleiche
+  // Quelle wie im Musterdepot, onvista hat keinen Ticker fuer diese Produkte.
+  const [isLookingUpHebel, setIsLookingUpHebel] = useState(false);
+  const lookupHebel = trpc.portfolio.lookupHebel.useMutation({
+    onSuccess: (detail) => {
+      setFormData(prev => ({
+        ...prev,
+        name: detail.name,
+        issuer: detail.issuer,
+        direction: detail.direction,
+        gearing: detail.gearing !== null ? String(detail.gearing) : '',
+        koThreshold: detail.koThreshold !== null ? String(detail.koThreshold) : '',
+        koPufferPct: detail.koPufferPct !== null ? String(detail.koPufferPct) : '',
+        currentPrice: detail.bid !== null ? String(detail.bid) : prev.currentPrice,
+      }));
+      toast.success(`${detail.name} geladen${detail.bid !== null ? ` (Bid ${detail.bid}€)` : ''}`);
+      setIsLookingUpHebel(false);
+    },
+    onError: (error) => {
+      toast.error(error.message);
+      setIsLookingUpHebel(false);
+    },
+  });
+
+  const handleHebelLookup = () => {
+    if (!formData.wkn) {
+      toast.error('Bitte WKN eingeben');
+      return;
+    }
+    setIsLookingUpHebel(true);
+    lookupHebel.mutate({ wkn: formData.wkn });
   };
   
   // Format amount - show integers without decimals
@@ -473,9 +517,15 @@ export default function PortfolioPage() {
   };
   
   const handleSubmit = () => {
+    if (formData.type === 'Hebelprodukt' && !formData.wkn) {
+      toast.error('Hebelprodukte brauchen eine WKN');
+      return;
+    }
     const data = {
       wkn: formData.wkn || undefined,
-      ticker: formData.ticker,
+      // Hebelprodukte haben bei onvista keinen Ticker - WKN uebernimmt die Rolle,
+      // gleiches Prinzip wie im Musterdepot.
+      ticker: formData.type === 'Hebelprodukt' ? formData.wkn : formData.ticker,
       name: formData.name,
       type: formData.type,
       category: formData.category || undefined,
@@ -485,8 +535,13 @@ export default function PortfolioPage() {
       status: formData.status,
       notes: formData.notes || undefined,
       autoUpdate: formData.autoUpdate,
+      issuer: formData.type === 'Hebelprodukt' ? (formData.issuer || undefined) : undefined,
+      direction: formData.type === 'Hebelprodukt' ? formData.direction : undefined,
+      gearing: formData.type === 'Hebelprodukt' && formData.gearing ? parseGermanNumber(formData.gearing) : undefined,
+      koThreshold: formData.type === 'Hebelprodukt' && formData.koThreshold ? parseGermanNumber(formData.koThreshold) : undefined,
+      koPufferPct: formData.type === 'Hebelprodukt' && formData.koPufferPct ? parseGermanNumber(formData.koPufferPct) : undefined,
     };
-    
+
     if (editingAsset) {
       updatePosition.mutate({ id: editingAsset.id, ...data });
     } else {
@@ -508,6 +563,11 @@ export default function PortfolioPage() {
       status: asset.status || 'Halten',
       notes: asset.notes || '',
       autoUpdate: asset.autoUpdate !== false, // Default true
+      issuer: asset.issuer || '',
+      direction: asset.direction || 'CALL',
+      gearing: asset.gearing ? String(asset.gearing) : '',
+      koThreshold: asset.koThreshold ? String(asset.koThreshold) : '',
+      koPufferPct: asset.koPufferPct ? String(asset.koPufferPct) : '',
     });
   };
   
@@ -672,23 +732,41 @@ export default function PortfolioPage() {
                   <DialogTitle>{editingAsset ? 'Position bearbeiten' : 'Neue Position'}</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                  {/* WKN Lookup Row */}
                   <div>
-                    <Label>WKN (automatische Suche)</Label>
+                    <Label>Typ *</Label>
+                    <Select value={formData.type} onValueChange={(v: any) => setFormData({ ...formData, type: v })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Aktie">Aktie</SelectItem>
+                        <SelectItem value="ETF">ETF</SelectItem>
+                        <SelectItem value="Krypto">Krypto</SelectItem>
+                        <SelectItem value="Anleihe">Anleihe</SelectItem>
+                        <SelectItem value="Fonds">Fonds</SelectItem>
+                        <SelectItem value="Hebelprodukt">Hebelprodukt (Knock-Out)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* WKN Lookup Row - bei Hebelprodukt gegen onvista (WKN ist Pflicht),
+                      sonst gegen Yahoo (WKN optional) */}
+                  <div>
+                    <Label>WKN {formData.type === 'Hebelprodukt' ? '* (lädt Kenndaten automatisch)' : '(automatische Suche)'}</Label>
                     <div className="flex gap-2 mt-1">
                       <Input
                         value={formData.wkn}
                         onChange={(e) => setFormData({ ...formData, wkn: e.target.value.toUpperCase() })}
-                        placeholder="z.B. 865985 oder A3D7QX"
+                        placeholder={formData.type === 'Hebelprodukt' ? 'z.B. BY3405' : 'z.B. 865985 oder A3D7QX'}
                         className="flex-1"
                       />
-                      <Button 
-                        type="button" 
-                        variant="secondary" 
-                        onClick={handleWKNLookup}
-                        disabled={isLookingUp || !formData.wkn}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={formData.type === 'Hebelprodukt' ? handleHebelLookup : handleWKNLookup}
+                        disabled={formData.type === 'Hebelprodukt' ? (isLookingUpHebel || !formData.wkn) : (isLookingUp || !formData.wkn)}
                       >
-                        {isLookingUp ? (
+                        {(formData.type === 'Hebelprodukt' ? isLookingUpHebel : isLookingUp) ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
                           <Search className="w-4 h-4" />
@@ -696,59 +774,82 @@ export default function PortfolioPage() {
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Geben Sie die WKN ein und klicken Sie auf Suchen, um Name, Ticker und Kurs automatisch zu laden
+                      {formData.type === 'Hebelprodukt'
+                        ? 'Geben Sie die WKN ein und klicken Sie auf Suchen, um Name, Emittent, Richtung, Hebel, K.O.-Puffer und Kurs von onvista zu laden'
+                        : 'Geben Sie die WKN ein und klicken Sie auf Suchen, um Name, Ticker und Kurs automatisch zu laden'}
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Ticker *</Label>
-                      <Input
-                        value={formData.ticker}
-                        onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
-                        placeholder="AAPL"
-                      />
+
+                  {formData.type === 'Hebelprodukt' ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Name *</Label>
+                          <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                        </div>
+                        <div>
+                          <Label>Emittent</Label>
+                          <Input value={formData.issuer} onChange={(e) => setFormData({ ...formData, issuer: e.target.value })} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <Label>Richtung</Label>
+                          <Select value={formData.direction} onValueChange={(v: any) => setFormData({ ...formData, direction: v })}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CALL">CALL</SelectItem>
+                              <SelectItem value="PUT">PUT</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Hebel</Label>
+                          <Input value={formData.gearing} onChange={(e) => setFormData({ ...formData, gearing: e.target.value })} placeholder="5.2" />
+                        </div>
+                        <div>
+                          <Label>K.O.-Puffer %</Label>
+                          <Input value={formData.koPufferPct} onChange={(e) => setFormData({ ...formData, koPufferPct: e.target.value })} placeholder="19.1" />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Ticker *</Label>
+                        <Input
+                          value={formData.ticker}
+                          onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
+                          placeholder="AAPL"
+                        />
+                      </div>
+                      <div>
+                        <Label>Name *</Label>
+                        <Input
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          placeholder="Apple Inc."
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <Label>Name *</Label>
-                      <Input
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Apple Inc."
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Typ *</Label>
-                      <Select value={formData.type} onValueChange={(v: any) => setFormData({ ...formData, type: v })}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Aktie">Aktie</SelectItem>
-                          <SelectItem value="ETF">ETF</SelectItem>
-                          <SelectItem value="Krypto">Krypto</SelectItem>
-                          <SelectItem value="Anleihe">Anleihe</SelectItem>
-                          <SelectItem value="Fonds">Fonds</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Säule / Kategorie</Label>
-                      <Select
-                        value={formData.category}
-                        onValueChange={(value) => setFormData({ ...formData, category: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Säule wählen..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="A">A - Renten-Basis</SelectItem>
-                          <SelectItem value="B">B - Krypto</SelectItem>
-                          <SelectItem value="C">C - Zocker/Verkauf</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  )}
+                  <div>
+                    <Label>Säule / Kategorie</Label>
+                    <Select
+                      value={formData.category}
+                      onValueChange={(value) => setFormData({ ...formData, category: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Säule wählen..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A">A - Renten-Basis</SelectItem>
+                        <SelectItem value="B">B - Krypto</SelectItem>
+                        <SelectItem value="C">C - Zocker/Verkauf</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -834,7 +935,10 @@ export default function PortfolioPage() {
                   </Button>
                   <Button
                     onClick={handleSubmit}
-                    disabled={!formData.ticker || !formData.name || !formData.amount || !formData.buyPrice}
+                    disabled={
+                      (formData.type === 'Hebelprodukt' ? !formData.wkn : !formData.ticker) ||
+                      !formData.name || !formData.amount || !formData.buyPrice
+                    }
                   >
                     {editingAsset ? 'Speichern' : 'Hinzufügen'}
                   </Button>
@@ -943,6 +1047,7 @@ export default function PortfolioPage() {
                   <SelectItem value="Krypto">Krypto</SelectItem>
                   <SelectItem value="Anleihe">Anleihe</SelectItem>
                   <SelectItem value="Fonds">Fonds</SelectItem>
+                  <SelectItem value="Hebelprodukt">Hebelprodukt</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -1024,7 +1129,14 @@ export default function PortfolioPage() {
                       {asset.wkn || '-'}
                     </td>
                     <td className="p-2 sm:p-4">
-                      <Badge variant="outline" className="text-xs">{asset.type}</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {asset.type === 'Hebelprodukt'
+                          ? `${asset.direction ?? ''} ${asset.gearing ? asset.gearing.toFixed(1) + 'x' : ''}`.trim() || 'Hebelprodukt'
+                          : asset.type}
+                      </Badge>
+                      {asset.type === 'Hebelprodukt' && asset.koPufferPct !== null && asset.koPufferPct !== undefined && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">K.O.-Puffer {asset.koPufferPct.toFixed(1)}%</p>
+                      )}
                     </td>
                     <td className="p-2 sm:p-4 text-muted-foreground text-xs hidden lg:table-cell">{asset.category || '-'}</td>
                     <td className="p-2 sm:p-4 text-right font-mono text-xs sm:text-sm">{formatAmount(asset.amount)}</td>

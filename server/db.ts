@@ -119,6 +119,9 @@ export async function getPortfolioPositions(userId: number) {
     amount: Number(p.amount),
     buyPrice: Number(p.buyPrice),
     currentPrice: p.currentPrice ? Number(p.currentPrice) : null,
+    gearing: p.gearing ? Number(p.gearing) : null,
+    koThreshold: p.koThreshold ? Number(p.koThreshold) : null,
+    koPufferPct: p.koPufferPct ? Number(p.koPufferPct) : null,
   }));
 }
 
@@ -153,7 +156,12 @@ export async function updatePortfolioPosition(userId: number, id: number, data: 
   if (data.status !== undefined) updateData.status = data.status;
   if (data.notes !== undefined) updateData.notes = data.notes;
   if (data.autoUpdate !== undefined) updateData.autoUpdate = data.autoUpdate;
-  
+  if (data.issuer !== undefined) updateData.issuer = data.issuer;
+  if (data.direction !== undefined) updateData.direction = data.direction;
+  if (data.gearing !== undefined) updateData.gearing = String(data.gearing);
+  if (data.koThreshold !== undefined) updateData.koThreshold = String(data.koThreshold);
+  if (data.koPufferPct !== undefined) updateData.koPufferPct = String(data.koPufferPct);
+
   await db.update(portfolioPositions)
     .set(updateData)
     .where(and(eq(portfolioPositions.id, id), eq(portfolioPositions.userId, userId)));

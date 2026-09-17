@@ -343,6 +343,45 @@ async function runDatabaseMigration() {
     console.error('⚠️  Error ensuring retirement columns:', retError?.message || retError);
   }
 
+  // === Portfolio-Positionen: Typ "Hebelprodukt" + WKN-basierte Zusatzfelder
+  // (issuer/direction/gearing/koThreshold/koPufferPct) nachruesten. Gleiches
+  // Prinzip wie musterdepot_positions, aber fuer das echte Depot. ===
+  try {
+    console.log('🔍 Checking portfolio_positions Hebelprodukt-Spalten...');
+    const ppConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await ppConn.query(`
+        ALTER TABLE portfolio_positions
+        MODIFY COLUMN type ENUM('Aktie','ETF','Krypto','Anleihe','Fonds','Hebelprodukt') NOT NULL
+      `);
+      const [cols]: any = await ppConn.query(`
+        SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'portfolio_positions'
+      `);
+      const existing = new Set((cols as any[]).map((c) => c.COLUMN_NAME));
+      if (!existing.has('issuer')) {
+        await ppConn.query(`ALTER TABLE portfolio_positions ADD COLUMN issuer VARCHAR(100)`);
+      }
+      if (!existing.has('direction')) {
+        await ppConn.query(`ALTER TABLE portfolio_positions ADD COLUMN direction ENUM('CALL','PUT')`);
+      }
+      if (!existing.has('gearing')) {
+        await ppConn.query(`ALTER TABLE portfolio_positions ADD COLUMN gearing DECIMAL(10,2)`);
+      }
+      if (!existing.has('koThreshold')) {
+        await ppConn.query(`ALTER TABLE portfolio_positions ADD COLUMN koThreshold DECIMAL(18,4)`);
+      }
+      if (!existing.has('koPufferPct')) {
+        await ppConn.query(`ALTER TABLE portfolio_positions ADD COLUMN koPufferPct DECIMAL(10,2)`);
+      }
+      console.log('✅ portfolio_positions Hebelprodukt-Spalten bereit');
+    } finally {
+      await ppConn.end();
+    }
+  } catch (ppError: any) {
+    console.error('⚠️  Error ensuring portfolio_positions Hebelprodukt columns:', ppError?.message || ppError);
+  }
+
   // === Fix UNIQUE constraint: remove global unique, add per-user composite ===
   // Sparplan-PDFs teilen sich dieselbe Auftragsnummer, Duplikat-Prüfung läuft jetzt per User im Code
   try {

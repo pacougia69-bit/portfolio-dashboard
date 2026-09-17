@@ -78,7 +78,7 @@ const faqData: FAQItem[] = [
   {
     category: "portfolio",
     question: "Welche Wertpapiertypen werden unterstützt?",
-    answer: "Der Portfolio Manager unterstützt Aktien, ETFs, Kryptowährungen, Anleihen und Fonds. Jeder Typ wird in der Allokation separat ausgewiesen."
+    answer: "Der Portfolio Manager unterstützt Aktien, ETFs, Kryptowährungen, Anleihen, Fonds und Hebelprodukte (Knock-Outs/Optionsscheine). Jeder Typ wird in der Allokation separat ausgewiesen. Bei Hebelprodukten reicht die WKN – Name, Emittent, Richtung, Hebel und K.O.-Puffer werden per Knopfdruck von onvista geladen, der Kurs läuft ebenfalls über onvista statt über Yahoo/Twelve Data."
   },
   {
     category: "portfolio",

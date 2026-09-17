@@ -104,7 +104,7 @@ const user = await getUserByOpenId("google_123456");
 | `wkn` | `varchar(20)` | Wertpapierkennnummer | Optional |
 | `ticker` | `varchar(20)` | Ticker-Symbol | NOT NULL |
 | `name` | `varchar(255)` | Wertpapier-Name | NOT NULL |
-| `type` | `enum` | Typ: Aktie, ETF, Krypto, Anleihe, Fonds | NOT NULL |
+| `type` | `enum` | Typ: Aktie, ETF, Krypto, Anleihe, Fonds, Hebelprodukt | NOT NULL |
 | `category` | `varchar(50)` | Kategorie (z.B. "Tech", "Clean Energy") | Optional |
 | `amount` | `decimal(18,8)` | Anzahl Stücke/Anteile | NOT NULL, Precision: 8 Dezimalstellen |
 | `buyPrice` | `decimal(18,4)` | Durchschnittlicher Einkaufspreis | NOT NULL |
@@ -112,8 +112,18 @@ const user = await getUserByOpenId("google_123456");
 | `status` | `enum` | Status: Kaufen, Halten, Verkaufen | DEFAULT 'Halten' |
 | `autoUpdate` | `boolean` | Automatische Kurs-Updates? | DEFAULT true |
 | `notes` | `text` | Persönliche Notizen | Optional |
+| `issuer` | `varchar(100)` | Emittent (nur type="Hebelprodukt") | Optional |
+| `direction` | `enum` | Richtung: CALL, PUT (nur type="Hebelprodukt") | Optional |
+| `gearing` | `decimal(10,2)` | Hebel (nur type="Hebelprodukt") | Optional |
+| `koThreshold` | `decimal(18,4)` | K.O.-Schwelle (nur type="Hebelprodukt") | Optional |
+| `koPufferPct` | `decimal(10,2)` | K.O.-Puffer in % (nur type="Hebelprodukt") | Optional |
 | `createdAt` | `timestamp` | Erstellungsdatum | DEFAULT NOW() |
 | `updatedAt` | `timestamp` | Letzte Änderung | ON UPDATE NOW() |
+
+**Hebelprodukt (17.09.2026):** bei `type = "Hebelprodukt"` steht in `ticker` die WKN
+(onvista kennt keinen Ticker für Knock-Outs/Optionsscheine), Kurs kommt per
+WKN-Scraper von onvista (`server/onvista-scraper.ts`) statt über Yahoo/Twelve Data
+— gleiches Prinzip wie bei `musterdepot_positions` weiter unten.
 
 ### Wichtige Details
 

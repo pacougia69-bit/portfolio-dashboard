@@ -82,6 +82,30 @@ import { fetchTechnicalData, researchThese } from "./einstiegsanalyse";
 import { generateMorningNote, getLatestMorningNote, getMorningNoteHistory } from "./morning-note";
 import { generateKiExperimentRun, getLatestKiExperimentRun, getKiExperimentHistory, refreshKiExperimentPrices, getKiExperimentStats } from "./ki-experiment";
 
+// Aktualisiert alle echten Hebelprodukt-Positionen (type === "Hebelprodukt") eines
+// Users per onvista-Scraper (WKN-basiert, kein Ticker) - genutzt von prices.fetch
+// und prices.fetchTwelveData, gleiches Prinzip wie musterdepot.refreshPrices.
+async function refreshHebelPortfolioPrices(userId: number, positions: Awaited<ReturnType<typeof getPortfolioPositions>>) {
+  let updated = 0;
+  let failed = 0;
+  const hebelPositions = positions.filter(p => p.type === "Hebelprodukt" && p.wkn && p.autoUpdate !== false);
+  for (const pos of hebelPositions) {
+    const detail = await fetchOnvistaProductDetail(pos.wkn!);
+    if (!detail || detail.bid === null) {
+      failed++;
+      continue;
+    }
+    await updatePortfolioPosition(userId, pos.id, {
+      currentPrice: String(detail.bid),
+      koPufferPct: detail.koPufferPct !== null ? String(detail.koPufferPct) : undefined,
+      koThreshold: detail.koThreshold !== null ? String(detail.koThreshold) : undefined,
+      gearing: detail.gearing !== null ? String(detail.gearing) : undefined,
+    });
+    updated++;
+  }
+  return { updated, failed };
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -104,7 +128,7 @@ export const appRouter = router({
         wkn: z.string().optional(),
         ticker: z.string(),
         name: z.string(),
-        type: z.enum(["Aktie", "ETF", "Krypto", "Anleihe", "Fonds"]),
+        type: z.enum(["Aktie", "ETF", "Krypto", "Anleihe", "Fonds", "Hebelprodukt"]),
         category: z.string().optional(),
         amount: z.number(),
         buyPrice: z.number(),
@@ -112,24 +136,33 @@ export const appRouter = router({
         status: z.enum(["Kaufen", "Halten", "Verkaufen"]).optional(),
         notes: z.string().optional(),
         autoUpdate: z.boolean().optional(),
+        issuer: z.string().optional(),
+        direction: z.enum(["CALL", "PUT"]).optional(),
+        gearing: z.number().optional(),
+        koThreshold: z.number().optional(),
+        koPufferPct: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        const { gearing, koThreshold, koPufferPct, ...rest } = input;
         return createPortfolioPosition(ctx.user.id, {
-          ...input,
+          ...rest,
           amount: String(input.amount),
           buyPrice: String(input.buyPrice),
           currentPrice: input.currentPrice !== undefined ? String(input.currentPrice) : null,
           autoUpdate: input.autoUpdate !== false, // Default true
+          gearing: gearing !== undefined ? String(gearing) : undefined,
+          koThreshold: koThreshold !== undefined ? String(koThreshold) : undefined,
+          koPufferPct: koPufferPct !== undefined ? String(koPufferPct) : undefined,
         });
       }),
-    
+
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
         wkn: z.string().optional(),
         ticker: z.string().optional(),
         name: z.string().optional(),
-        type: z.enum(["Aktie", "ETF", "Krypto", "Anleihe", "Fonds"]).optional(),
+        type: z.enum(["Aktie", "ETF", "Krypto", "Anleihe", "Fonds", "Hebelprodukt"]).optional(),
         category: z.string().optional(),
         amount: z.number().optional(),
         buyPrice: z.number().optional(),
@@ -137,24 +170,32 @@ export const appRouter = router({
         status: z.enum(["Kaufen", "Halten", "Verkaufen"]).optional(),
         notes: z.string().optional(),
         autoUpdate: z.boolean().optional(),
+        issuer: z.string().optional(),
+        direction: z.enum(["CALL", "PUT"]).optional(),
+        gearing: z.number().optional(),
+        koThreshold: z.number().optional(),
+        koPufferPct: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const { id, amount, buyPrice, currentPrice, autoUpdate, ...rest } = input;
+        const { id, amount, buyPrice, currentPrice, autoUpdate, gearing, koThreshold, koPufferPct, ...rest } = input;
         return updatePortfolioPosition(ctx.user.id, id, {
           ...rest,
           amount: amount !== undefined ? String(amount) : undefined,
           buyPrice: buyPrice !== undefined ? String(buyPrice) : undefined,
           currentPrice: currentPrice !== undefined ? String(currentPrice) : undefined,
           autoUpdate: autoUpdate,
+          gearing: gearing !== undefined ? String(gearing) : undefined,
+          koThreshold: koThreshold !== undefined ? String(koThreshold) : undefined,
+          koPufferPct: koPufferPct !== undefined ? String(koPufferPct) : undefined,
         });
       }),
-    
+
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
         return deletePortfolioPosition(ctx.user.id, input.id);
       }),
-    
+
     import: protectedProcedure
       .input(z.object({
         portfolio: z.array(z.any()),
@@ -163,10 +204,21 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         return importPortfolioData(ctx.user.id, input.portfolio, input.watchlist || []);
       }),
-    
+
     export: protectedProcedure.query(async ({ ctx }) => {
       return exportPortfolioData(ctx.user.id);
     }),
+
+    // Fuer das Kauf-/Bearbeiten-Formular: Hebelprodukt-Kenndaten per WKN vorab
+    // abrufen (Ask-Kurs, Hebel, K.O.-Puffer) - gleiche Quelle wie im Musterdepot,
+    // onvista hat keinen Ticker fuer diese Produkte.
+    lookupHebel: protectedProcedure
+      .input(z.object({ wkn: z.string() }))
+      .mutation(async ({ input }) => {
+        const detail = await fetchOnvistaProductDetail(input.wkn);
+        if (!detail) throw new Error("WKN nicht gefunden oder onvista-Seite nicht erreichbar");
+        return detail;
+      }),
   }),
 
   // Watchlist Management
@@ -329,13 +381,17 @@ export const appRouter = router({
     fetch: protectedProcedure
       .input(z.object({ tickers: z.array(z.string()) }))
       .mutation(async ({ ctx, input }) => {
-        const prices = await fetchLivePrices(input.tickers);
+        // Positionen vorab laden, um Hebelprodukte (WKN statt echtem Ticker) aus
+        // der Yahoo-Abfrage rauszuhalten - die wuerde dafuer eh nichts finden.
+        const positions = await getPortfolioPositions(ctx.user.id);
+        const hebelWkns = new Set(positions.filter(p => p.type === "Hebelprodukt" && p.wkn).map(p => p.wkn as string));
+        const tickerInputs = input.tickers.filter(t => !hebelWkns.has(t));
+
+        const prices = await fetchLivePrices(tickerInputs);
 
         // Get dynamic EUR/USD rate for conversion
         const eurUsdRate = await getEurUsdRate();
 
-        // Update portfolio positions with new prices (nur wenn autoUpdate = true)
-        const positions = await getPortfolioPositions(ctx.user.id);
         let updatedCount = 0;
         let skippedCount = 0;
 
@@ -366,6 +422,11 @@ export const appRouter = router({
           }
         }
 
+        // Hebelprodukte (WKN-basiert) per onvista-Scraper statt Yahoo.
+        const hebelResult = await refreshHebelPortfolioPrices(ctx.user.id, positions);
+        updatedCount += hebelResult.updated;
+        skippedCount += hebelResult.failed;
+
         return { prices, updatedCount, skippedCount };
       }),
 
@@ -376,10 +437,15 @@ export const appRouter = router({
         if (!apiKey) {
           throw new Error("Twelve Data API Key nicht konfiguriert. Bitte in den Einstellungen hinterlegen.");
         }
-        const { results: twelveDataPrices, skippedAsProxy } = await fetchLivePricesTwelveData(input.tickers, apiKey);
 
-        // Update portfolio positions with new prices (nur wenn autoUpdate = true)
+        // Positionen vorab laden, um Hebelprodukte (WKN statt echtem Ticker) aus
+        // der Twelve-Data-Abfrage rauszuhalten - die wuerde dafuer eh nichts finden.
         const positions = await getPortfolioPositions(ctx.user.id);
+        const hebelWkns = new Set(positions.filter(p => p.type === "Hebelprodukt" && p.wkn).map(p => p.wkn as string));
+        const tickerInputs = input.tickers.filter(t => !hebelWkns.has(t));
+
+        const { results: twelveDataPrices, skippedAsProxy } = await fetchLivePricesTwelveData(tickerInputs, apiKey);
+
         let updatedCount = 0;
         let skippedCount = 0;
 
@@ -429,6 +495,10 @@ export const appRouter = router({
           }
         }
 
+        // Hebelprodukte laufen NICHT hier mit (diese Mutation wird vom Dashboard
+        // in mehreren Häppchen nacheinander aufgerufen - onvista-Scraping soll
+        // nur einmal pro Sammelaktualisierung laufen, siehe prices.refreshHebel).
+
         return {
           prices: twelveDataPrices,
           updatedCount,
@@ -436,7 +506,16 @@ export const appRouter = router({
           proxyFallbackCount,
         };
       }),
-    
+
+    // Hebelprodukte (WKN-basiert) per onvista-Scraper - separat vom Ticker-Refresh,
+    // damit die Dashboard-Häppchen-Schleife (fetchTwelveData) sie nicht mehrfach
+    // hintereinander abfragt. Wird einmal am Ende einer Sammelaktualisierung
+    // aufgerufen (Dashboard) bzw. direkt mit prices.fetch (Portfolio-Seite).
+    refreshHebel: protectedProcedure.mutation(async ({ ctx }) => {
+      const positions = await getPortfolioPositions(ctx.user.id);
+      return refreshHebelPortfolioPrices(ctx.user.id, positions);
+    }),
+
     getCached: protectedProcedure
       .input(z.object({ tickers: z.array(z.string()) }))
       .query(async ({ input }) => {

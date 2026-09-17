@@ -150,7 +150,11 @@ export default function DashboardPage() {
   // Fetch live prices mutation (Twelve Data) - wird in Häppchen aufgerufen,
   // siehe handleRefreshPrices. Erfolgsmeldung kommt erst dort, gesammelt.
   const fetchPricesTwelveData = trpc.prices.fetchTwelveData.useMutation();
-  
+
+  // Hebelprodukte (WKN-basiert, onvista) - laeuft separat, einmal am Ende der
+  // Häppchen-Schleife statt in jedem Häppchen mit.
+  const refreshHebelPrices = trpc.prices.refreshHebel.useMutation();
+
   // Fallback: Yahoo Finance
   const fetchPricesYahoo = trpc.prices.fetch.useMutation({
     onSuccess: (data) => {
@@ -400,8 +404,19 @@ export default function DashboardPage() {
       }
     }
 
+    // Hebelprodukte einmalig danach (nicht pro Häppchen) per onvista-Scraper
+    let hebelUpdated = 0;
+    try {
+      const hebelResult = await refreshHebelPrices.mutateAsync();
+      hebelUpdated = hebelResult.updated;
+      if (hebelResult.failed > 0) hadError = true;
+    } catch (error) {
+      hadError = true;
+      console.error('Fehler beim Hebelprodukt-Kurs-Update:', error);
+    }
+
     setBulkRefreshProgress(null);
-    const parts = [`${totalUpdated} Kurse aktualisiert`];
+    const parts = [`${totalUpdated + hebelUpdated} Kurse aktualisiert`];
     if (totalProxyFallback > 0) parts.push(`${totalProxyFallback} davon über Yahoo`);
     if (totalSkipped > 0) parts.push(`${totalSkipped} übersprungen`);
     if (hadError) parts.push('einzelne Häppchen fehlgeschlagen - erneut versuchen');
@@ -409,7 +424,7 @@ export default function DashboardPage() {
     refetchPortfolio();
   };
 
-  const isRefreshing = fetchPricesTwelveData.isPending || fetchPricesYahoo.isPending || bulkRefreshProgress !== null;
+  const isRefreshing = fetchPricesTwelveData.isPending || fetchPricesYahoo.isPending || refreshHebelPrices.isPending || bulkRefreshProgress !== null;
 
   const isLoading = portfolioLoading || dividendsLoading;
 

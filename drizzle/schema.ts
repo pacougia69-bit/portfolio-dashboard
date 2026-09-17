@@ -28,7 +28,7 @@ export const portfolioPositions = mysqlTable("portfolio_positions", {
   wkn: varchar("wkn", { length: 20 }),
   ticker: varchar("ticker", { length: 20 }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
-  type: mysqlEnum("type", ["Aktie", "ETF", "Krypto", "Anleihe", "Fonds"]).notNull(),
+  type: mysqlEnum("type", ["Aktie", "ETF", "Krypto", "Anleihe", "Fonds", "Hebelprodukt"]).notNull(),
   category: varchar("category", { length: 50 }),
   amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
   buyPrice: decimal("buyPrice", { precision: 18, scale: 4 }).notNull(),
@@ -36,6 +36,14 @@ export const portfolioPositions = mysqlTable("portfolio_positions", {
   status: mysqlEnum("status", ["Kaufen", "Halten", "Verkaufen"]).default("Halten"),
   autoUpdate: boolean("autoUpdate").default(true),
   notes: text("notes"),
+  // Hebelprodukt-Zusatzfelder (type === "Hebelprodukt") -- WKN-basiert, Kurs kommt
+  // ueber den onvista-Scraper statt Twelve Data/Yahoo, gleiches Prinzip wie bei
+  // musterdepotPositions weiter unten.
+  issuer: varchar("issuer", { length: 100 }),
+  direction: mysqlEnum("direction", ["CALL", "PUT"]),
+  gearing: decimal("gearing", { precision: 10, scale: 2 }),
+  koThreshold: decimal("koThreshold", { precision: 18, scale: 4 }),
+  koPufferPct: decimal("koPufferPct", { precision: 10, scale: 2 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
