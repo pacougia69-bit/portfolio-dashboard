@@ -154,3 +154,57 @@ export function describeLastChecked(finishedAt: Date | string | null, now: Date 
   const when = days <= 0 ? 'heute' : days === 1 ? 'gestern' : `vor ${days} Tagen`;
   return { text: `Wächter zuletzt geprüft ${when} (${dateText})`, stale: days >= WAECHTER_STALE_DAYS };
 }
+
+// Wie oft der Browser fehlgeschlagene (limitbedingte) Positionen nach einer Pause erneut versucht.
+export const WAECHTER_MAX_RETRY_ROUNDS = 2;
+
+/** Teilt eine Liste in Haeppchen fester Groesse. */
+export function chunkArray<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+export type FetchErrorKind = 'limit' | 'daily' | 'plan' | 'other';
+
+/**
+ * Ordnet eine Fehlermeldung von Twelve Data ein und liefert einen deutschen Text.
+ * Reihenfolge ist wichtig: die Minuten-Limit-Meldung enthaelt ebenfalls "upgrading",
+ * darum wird Limit vor Plan geprueft.
+ */
+export function classifyTwelveDataError(
+  code: unknown,
+  message: unknown,
+  symbol: string,
+): { kind: FetchErrorKind; text: string; retryable: boolean } {
+  const msg = String(message ?? '');
+  if (/for the day/i.test(msg)) {
+    return { kind: 'daily', retryable: false, text: 'Tageskontingent des Kursanbieters aufgebraucht – morgen wieder möglich' };
+  }
+  if (Number(code) === 429 || /run out of API credits/i.test(msg)) {
+    return { kind: 'limit', retryable: true, text: 'Kursabruf-Limit erreicht (8 pro Minute) – bitte Wächter später erneut starten' };
+  }
+  if (/available starting with|Grow or Venture plan/i.test(msg)) {
+    return { kind: 'plan', retryable: false, text: 'Im Gratis-Plan des Kursanbieters nicht abrufbar (Xetra-Wert)' };
+  }
+  return { kind: 'other', retryable: false, text: `Ticker "${symbol}": ${(msg || String(code ?? '') || 'Keine Daten').slice(0, 140)}` };
+}
+
+/**
+ * Liest die Antwort von Yahoo Finance (v8/finance/chart, interval=1d) und liefert die
+ * Schlusskurse mit dem NEUESTEN zuerst (max. 200). Lücken (null) werden entfernt.
+ */
+export function parseYahooCloses(data: any): { closes: number[] } | { error: string } {
+  const result = data?.chart?.result?.[0];
+  if (!result) {
+    const desc = data?.chart?.error?.description;
+    return { error: `Yahoo: ${desc ? String(desc).slice(0, 140) : 'Keine Daten'}` };
+  }
+  const raw: unknown = result?.indicators?.quote?.[0]?.close;
+  const closes = (Array.isArray(raw) ? raw : [])
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+    .reverse()
+    .slice(0, 200);
+  if (closes.length === 0) return { error: 'Yahoo: Keine Kursdaten' };
+  return { closes };
+}

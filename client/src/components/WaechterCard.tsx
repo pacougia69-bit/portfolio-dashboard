@@ -15,6 +15,8 @@ import { Loader2, ShieldCheck, Copy, SearchCheck, X } from 'lucide-react';
 import {
   WAECHTER_CHUNK_SIZE,
   WAECHTER_CHUNK_DELAY_MS,
+  WAECHTER_MAX_RETRY_ROUNDS,
+  chunkArray,
   type TrendSignal,
   type WaechterResultRow,
 } from '@shared/waechter';
@@ -42,12 +44,6 @@ const changeText = (r: WaechterResultRow) => {
   }
 };
 
-const chunkArray = <T,>(items: T[], size: number): T[][] => {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-};
-
 // Pause in 1-Sekunden-Schritten, damit "Abbrechen" sofort greift.
 const sleepUnlessCancelled = async (ms: number, cancelled: () => boolean) => {
   for (let waited = 0; waited < ms && !cancelled(); waited += 1000) {
@@ -62,7 +58,7 @@ export default function WaechterCard() {
   const finishRun = trpc.waechter.finishRun.useMutation();
 
   const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [startInfo, setStartInfo] = useState<{ skipped: { name: string; reason: string }[]; mutedCount: number } | null>(null);
   const [promptRow, setPromptRow] = useState<WaechterResultRow | null>(null);
   const cancelRef = useRef(false);
@@ -78,20 +74,46 @@ export default function WaechterCard() {
         toast.info('Keine Positionen zu prüfen (alle stummgeschaltet oder ohne Ticker).');
         return;
       }
-      const chunks = chunkArray(start.positions.map((p) => p.id), WAECHTER_CHUNK_SIZE);
-      for (let i = 0; i < chunks.length; i++) {
-        if (cancelRef.current) break;
-        setProgress({ done: i, total: chunks.length });
-        try {
-          await checkChunk.mutateAsync({ runId: start.runId, positionIds: chunks[i] });
-        } catch (e: any) {
-          toast.error(`Häppchen ${i + 1} fehlgeschlagen: ${e?.message ?? 'Fehler'}`);
+      // Ein Häppchen = bis zu 8 verschiedene Kurs-Abrufe (Positionen mit gleichem Ticker teilen sich einen).
+      // Gibt die Positionen zurück, die wegen des Minuten-Limits fehlschlugen und nachgeholt werden sollen.
+      const processGroups = async (
+        groupList: { positionIds: number[] }[],
+        label: string,
+      ): Promise<Set<number>> => {
+        const retryIds = new Set<number>();
+        const chunks = chunkArray(groupList, WAECHTER_CHUNK_SIZE);
+        for (let i = 0; i < chunks.length; i++) {
+          if (cancelRef.current) break;
+          setProgress({ label, done: i, total: chunks.length });
+          const ids = chunks[i].flatMap((g) => g.positionIds);
+          try {
+            const res = await checkChunk.mutateAsync({ runId: start.runId, positionIds: ids });
+            res.retryPositionIds.forEach((id) => retryIds.add(id));
+          } catch (e: any) {
+            toast.error(`Häppchen ${i + 1} fehlgeschlagen: ${e?.message ?? 'Fehler'}`);
+            ids.forEach((id) => retryIds.add(id));
+          }
+          if (i < chunks.length - 1) await sleepUnlessCancelled(WAECHTER_CHUNK_DELAY_MS, () => cancelRef.current);
         }
-        if (i < chunks.length - 1) await sleepUnlessCancelled(WAECHTER_CHUNK_DELAY_MS, () => cancelRef.current);
+        return retryIds;
+      };
+
+      let pending = await processGroups(start.groups, 'Prüfung');
+      for (let round = 1; round <= WAECHTER_MAX_RETRY_ROUNDS && pending.size > 0 && !cancelRef.current; round++) {
+        const label = `Nachholen ${round}/${WAECHTER_MAX_RETRY_ROUNDS}`;
+        setProgress({ label: `${label} (Pause)`, done: 0, total: 1 });
+        await sleepUnlessCancelled(WAECHTER_CHUNK_DELAY_MS, () => cancelRef.current);
+        if (cancelRef.current) break;
+        const retryGroups = start.groups.filter((g) => g.positionIds.some((id) => pending.has(id)));
+        pending = await processGroups(retryGroups, label);
       }
+
       if (cancelRef.current) {
         toast.warning('Prüfung abgebrochen – dieser Lauf zählt nicht als "zuletzt geprüft".');
         return;
+      }
+      if (pending.size > 0) {
+        toast.warning(`${pending.size} Position(en) konnten nicht geprüft werden – siehe "Ohne Daten".`);
       }
       await finishRun.mutateAsync({ runId: start.runId });
       await latest.refetch();
@@ -148,13 +170,13 @@ export default function WaechterCard() {
             )}
             <Button size="sm" onClick={handleStart} disabled={running}>
               {running ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <ShieldCheck className="w-4 h-4 mr-1" />}
-              {progress ? `Häppchen ${progress.done + 1}/${progress.total} …` : 'Wächter starten'}
+              {progress ? `${progress.label}: Häppchen ${Math.min(progress.done + 1, progress.total)}/${progress.total} …` : 'Wächter starten'}
             </Button>
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
           Prüft den Trend aller Positionen (Kurs gegen SMA 50 und SMA 200, gleitende Durchschnitte). Er bewegt kein Geld und gibt
-          keine Kauf- oder Verkaufsanweisung. Ein Volllauf dauert wegen des Kursabruf-Limits ca. 5 Minuten – Fenster offen lassen.
+          keine Kauf- oder Verkaufsanweisung. Ein Volllauf dauert wegen des Kursabruf-Limits ca. 5 Minuten – Fenster offen lassen. Fehlgeschlagene Abrufe holt er nach einer Pause selbst nach.
           Positionen schaltest du mit dem Augen-Symbol in der Tabelle unten stumm.
         </p>
         {running && progress && (

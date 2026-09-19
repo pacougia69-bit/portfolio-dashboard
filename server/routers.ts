@@ -2001,11 +2001,12 @@ export const appRouter = router({
       .input(
         z.object({
           runId: z.number().int(),
-          positionIds: z.array(z.number().int()).min(1).max(WAECHTER_CHUNK_SIZE),
+          // Bis zu 8 verschiedene Kurs-Abrufe pro Häppchen; mehrere Positionen können sich einen Abruf teilen
+          positionIds: z.array(z.number().int()).min(1).max(WAECHTER_CHUNK_SIZE * 4),
         }),
       )
       .mutation(async ({ ctx, input }) => {
-        return { results: await checkWaechterChunk(ctx.user.id, input.runId, input.positionIds) };
+        return checkWaechterChunk(ctx.user.id, input.runId, input.positionIds);
       }),
 
     finishRun: protectedProcedure

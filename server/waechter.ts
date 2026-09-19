@@ -8,10 +8,13 @@ import { getDb } from "./db";
 import { portfolioPositions, waechterLaeufe, waechterErgebnisse } from "../drizzle/schema";
 import { convertTickerForTwelveData, isTrendProxyTicker } from "./services";
 import {
+  WAECHTER_CHUNK_SIZE,
+  classifyTwelveDataError,
   computeTrendSignal,
   decideCheckable,
   detectChange,
   getActionHint,
+  parseYahooCloses,
   type TrendSignal,
   type WaechterResultRow,
 } from "@shared/waechter";
@@ -59,18 +62,29 @@ function toResultRow(r: ErgebnisFelder): WaechterResultRow {
   };
 }
 
-/** Legt einen neuen Lauf an und sagt, welche Positionen geprueft werden. */
+/** Schluessel, unter dem Twelve Data den Kurs abruft: gleicher Schluessel = gleicher Abruf (spart Kontingent). */
+function symbolKey(ticker: string): string {
+  const c = convertTickerForTwelveData(ticker);
+  return c.exchange ? `${c.symbol}:${c.exchange}` : c.symbol;
+}
+
+/** Legt einen neuen Lauf an und sagt, welche Positionen geprueft werden. Positionen mit gleichem Kurs-Abruf bilden eine Gruppe. */
 export async function startWaechterRun(userId: number) {
   const db = await requireDb();
   const positions = await db.select().from(portfolioPositions).where(eq(portfolioPositions.userId, userId));
 
   const toCheck: { id: number; ticker: string; name: string }[] = [];
+  const groupMap = new Map<string, { key: string; ticker: string; positionIds: number[] }>();
   const skipped: { name: string; reason: string }[] = [];
   let mutedCount = 0;
   for (const p of positions) {
     const d = decideCheckable({ type: p.type, ticker: p.ticker, waechterMuted: p.waechterMuted });
     if (d.checkable) {
       toCheck.push({ id: p.id, ticker: p.ticker, name: p.name });
+      const key = symbolKey(p.ticker);
+      const group = groupMap.get(key);
+      if (group) group.positionIds.push(p.id);
+      else groupMap.set(key, { key, ticker: p.ticker, positionIds: [p.id] });
     } else if (d.reason === "stumm") {
       mutedCount++;
     } else {
@@ -82,20 +96,48 @@ export async function startWaechterRun(userId: number) {
   }
 
   const result = await db.insert(waechterLaeufe).values({ userId });
-  return { runId: Number(result[0].insertId), positions: toCheck, skipped, mutedCount };
+  return {
+    runId: Number(result[0].insertId),
+    positions: toCheck,
+    groups: Array.from(groupMap.values()),
+    skipped,
+    mutedCount,
+  };
 }
 
-async function fetchCloses(ticker: string, apiKey: string): Promise<{ closes: number[] } | { error: string }> {
-  const converted = convertTickerForTwelveData(ticker);
-  const symbol = converted.exchange ? `${converted.symbol}:${converted.exchange}` : converted.symbol;
+type FetchResult = { closes: number[] } | { error: string; retryable: boolean };
+
+async function fetchCloses(ticker: string, apiKey: string): Promise<FetchResult> {
+  const symbol = symbolKey(ticker);
   const res = await fetch(
     `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=1day&outputsize=200&apikey=${apiKey}`,
   );
   const data: any = await res.json();
   if (data.code || data.status === "error" || !data.values?.length) {
-    return { error: `Ticker "${symbol}": ${String(data.message || data.code || "Keine Daten").slice(0, 140)}` };
+    const e = classifyTwelveDataError(data.code, data.message, symbol);
+    return { error: e.text, retryable: e.retryable };
   }
   return { closes: data.values.map((v: any) => parseFloat(v.close)) };
+}
+
+/**
+ * Ausweichquelle: Yahoo Finance mit dem ECHTEN Ticker der Position (z. B. RHM.DE).
+ * Wird nur benutzt, wenn Twelve Data den Wert nicht liefern kann (Xetra-Werte im Gratis-Plan,
+ * Tageslimit, unbekanntes Symbol). Inoffizielle Schnittstelle, deshalb nur als Notlösung.
+ */
+async function fetchYahooCloses(ticker: string): Promise<{ closes: number[] } | { error: string }> {
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1y`,
+      {
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    return parseYahooCloses(await res.json());
+  } catch (err: any) {
+    return { error: `Yahoo: ${String(err?.message ?? err).slice(0, 100)}` };
+  }
 }
 
 async function getPreviousSignals(db: Db, userId: number, positionIds: number[]): Promise<Map<number, TrendSignal>> {
@@ -113,8 +155,17 @@ async function getPreviousSignals(db: Db, userId: number, positionIds: number[])
   return new Map(rows.map((r) => [r.positionId, r.signal as TrendSignal]));
 }
 
-/** Prueft ein Haeppchen (max. 8 Positionen) und speichert die Ergebnisse. */
-export async function checkWaechterChunk(userId: number, runId: number, positionIds: number[]): Promise<WaechterResultRow[]> {
+/**
+ * Prueft ein Haeppchen und speichert die Ergebnisse. Positionen mit gleichem Kurs-Abruf
+ * (z. B. zwei Positionen mit demselben ETF-Ticker) kosten nur EINEN Abruf. Ein bereits
+ * gespeichertes Ergebnis derselben Position im selben Lauf wird ersetzt (Nachholen).
+ * retryPositionIds = Positionen, die wegen des Minuten-Limits fehlschlugen und sich lohnen, es erneut zu versuchen.
+ */
+export async function checkWaechterChunk(
+  userId: number,
+  runId: number,
+  positionIds: number[],
+): Promise<{ results: WaechterResultRow[]; retryPositionIds: number[] }> {
   const db = await requireDb();
   const run = await getOwnRun(db, userId, runId);
   if (run.finishedAt) throw new Error("Dieser Lauf ist bereits abgeschlossen.");
@@ -125,18 +176,46 @@ export async function checkWaechterChunk(userId: number, runId: number, position
     .select()
     .from(portfolioPositions)
     .where(and(eq(portfolioPositions.userId, userId), inArray(portfolioPositions.id, positionIds)));
-  const prev = await getPreviousSignals(db, userId, positionIds);
 
-  const rows: WaechterResultRow[] = [];
+  const byKey = new Map<string, typeof positions>();
   for (const p of positions) {
     if (!decideCheckable({ type: p.type, ticker: p.ticker, waechterMuted: p.waechterMuted }).checkable) continue;
+    const key = symbolKey(p.ticker);
+    const list = byKey.get(key);
+    if (list) list.push(p);
+    else byKey.set(key, [p]);
+  }
+  if (byKey.size > WAECHTER_CHUNK_SIZE) {
+    throw new Error(`Zu viele verschiedene Kursabrufe in einem Häppchen (${byKey.size}, erlaubt ${WAECHTER_CHUNK_SIZE}).`);
+  }
+
+  const prev = await getPreviousSignals(db, userId, positionIds);
+  const rows: WaechterResultRow[] = [];
+  const retryPositionIds: number[] = [];
+
+  for (const group of Array.from(byKey.values())) {
     let trend;
+    let retryable = false;
+    let usedYahoo = false;
     try {
-      const fetched = await fetchCloses(p.ticker, apiKey);
-      trend =
-        "closes" in fetched
-          ? computeTrendSignal(fetched.closes)
-          : { signal: "KEINE_DATEN" as const, detail: fetched.error, price: null, sma50: null, sma200: null };
+      const fetched = await fetchCloses(group[0].ticker, apiKey);
+      if ("closes" in fetched) {
+        trend = computeTrendSignal(fetched.closes);
+      } else if (fetched.retryable) {
+        // Minuten-Limit: wird vom Browser nach einer Pause nachgeholt, nicht bei Yahoo gesucht
+        trend = { signal: "KEINE_DATEN" as const, detail: fetched.error, price: null, sma50: null, sma200: null };
+        retryable = true;
+      } else {
+        // Twelve Data kann den Wert nicht liefern (Gratis-Plan, Tageslimit, unbekannt) -> Yahoo mit echtem Ticker
+        const yahoo = await fetchYahooCloses(group[0].ticker);
+        if ("closes" in yahoo) {
+          const y = computeTrendSignal(yahoo.closes);
+          trend = { ...y, detail: `${y.detail} · Quelle: Yahoo Finance` };
+          usedYahoo = true;
+        } else {
+          trend = { signal: "KEINE_DATEN" as const, detail: `${fetched.error} · ${yahoo.error}`, price: null, sma50: null, sma200: null };
+        }
+      }
     } catch (err: any) {
       trend = {
         signal: "KEINE_DATEN" as const,
@@ -145,26 +224,35 @@ export async function checkWaechterChunk(userId: number, runId: number, position
         sma50: null,
         sma200: null,
       };
+      retryable = true;
     }
-    const values = {
-      runId,
-      userId,
-      positionId: p.id,
-      ticker: p.ticker,
-      name: p.name,
-      wkn: p.wkn ?? null,
-      signal: trend.signal,
-      signalDetail: trend.detail.slice(0, 255),
-      price: trend.price !== null ? String(trend.price) : null,
-      sma50: trend.sma50 !== null ? String(trend.sma50) : null,
-      sma200: trend.sma200 !== null ? String(trend.sma200) : null,
-      prevSignal: prev.get(p.id) ?? null,
-      isProxy: isTrendProxyTicker(p.ticker),
-    };
-    await db.insert(waechterErgebnisse).values(values);
-    rows.push(toResultRow(values));
+
+    for (const p of group) {
+      const values = {
+        runId,
+        userId,
+        positionId: p.id,
+        ticker: p.ticker,
+        name: p.name,
+        wkn: p.wkn ?? null,
+        signal: trend.signal,
+        signalDetail: trend.detail.slice(0, 255),
+        price: trend.price !== null ? String(trend.price) : null,
+        sma50: trend.sma50 !== null ? String(trend.sma50) : null,
+        sma200: trend.sma200 !== null ? String(trend.sma200) : null,
+        prevSignal: prev.get(p.id) ?? null,
+        // Yahoo liefert den echten Kurs der Position, dann ist es keine Näherung
+        isProxy: usedYahoo ? false : isTrendProxyTicker(p.ticker),
+      };
+      await db
+        .delete(waechterErgebnisse)
+        .where(and(eq(waechterErgebnisse.runId, runId), eq(waechterErgebnisse.positionId, p.id)));
+      await db.insert(waechterErgebnisse).values(values);
+      rows.push(toResultRow(values));
+      if (retryable) retryPositionIds.push(p.id);
+    }
   }
-  return rows;
+  return { results: rows, retryPositionIds };
 }
 
 /** Schliesst den Lauf ab. Erst danach zaehlt er als "zuletzt geprueft". */

@@ -95,7 +95,7 @@ const faqData: FAQItem[] = [
   {
     category: "ampel",
     question: "Was ist die Aktien-Ampel?",
-    answer: "Die Aktien-Ampel zeigt den Trend Ihrer Wertpapiere anhand der gleitenden Durchschnitte SMA 50 und SMA 200. GRÜN = Aufwärtstrend (SMA 50 über SMA 200), GELB = Seitwärtstrend (SMA 50 und SMA 200 nah beieinander), ROT = Abwärtstrend (SMA 50 unter SMA 200)."
+    answer: "Die Aktien-Ampel zeigt den Trend Ihrer Wertpapiere, indem sie den aktuellen KURS mit den gleitenden Durchschnitten SMA 50 (Durchschnitt der letzten 50 Tage) und SMA 200 (Durchschnitt der letzten 200 Tage) vergleicht. GRÜN = Kurs liegt über beiden Durchschnitten (Aufwärtstrend), ROT = Kurs liegt unter beiden (Abwärtstrend), GELB = dazwischen (Kurs über dem einen, unter dem anderen: Korrektur oder Erholung). Im Detailtext steht zusätzlich, ob ein 'Golden Cross' (Goldenes Kreuz: SMA 50 liegt über SMA 200) oder ein 'Death Cross' (Todeskreuz: SMA 50 liegt unter SMA 200) vorliegt."
   },
   {
     category: "ampel",
@@ -126,7 +126,7 @@ const faqData: FAQItem[] = [
   {
     category: "ampel",
     question: "Was ist der Wächter?",
-    answer: "Der Wächter ist ein Knopf auf der Portfolio-Seite (Karte über der Aktien-Ampel). Er prüft auf Knopfdruck den Trend aller deiner Positionen (Kurs gegen SMA 50 und SMA 200, das sind gleitende Durchschnitte) und zeigt, was sich seit dem letzten Lauf geändert hat. Er bewegt kein Geld und gibt keine Kauf- oder Verkaufsanweisung – nur Handlungsstufen wie 'Beobachten' oder 'Kein neues Geld – selbst prüfen'. Ein Volllauf dauert wegen des Kursabruf-Limits ca. 5 Minuten, das Fenster bitte offen lassen. Auf der Startseite steht 'Wächter zuletzt geprüft vor N Tagen' – nach 7 Tagen wird die Zeile orange als stille Erinnerung."
+    answer: "Der Wächter ist ein Knopf auf der Portfolio-Seite (Karte über der Aktien-Ampel). Er prüft auf Knopfdruck den Trend aller deiner Positionen (Kurs gegen SMA 50 und SMA 200, das sind gleitende Durchschnitte) und zeigt, was sich seit dem letzten Lauf geändert hat. Er bewegt kein Geld und gibt keine Kauf- oder Verkaufsanweisung – nur Handlungsstufen wie 'Beobachten' oder 'Kein neues Geld – selbst prüfen'. Ein Volllauf dauert wegen des Kursabruf-Limits ca. 5 Minuten, das Fenster bitte offen lassen. Positionen, die wegen des Limits (8 Abrufe pro Minute) fehlschlagen, holt der Wächter nach einer Pause automatisch nach (bis zu zweimal). Positionen mit demselben Ticker kosten nur einen Abruf. Deutsche Xetra-Werte (z. B. Rheinmetall) kann der Kursanbieter Twelve Data im Gratis-Plan nicht liefern – dafür holt der Wächter den Kurs als Ausweichquelle bei Yahoo Finance (im Ergebnis steht dann 'Quelle: Yahoo Finance'). Findet auch Yahoo nichts, steht die Position unter 'Ohne Daten'. Auf der Startseite steht 'Wächter zuletzt geprüft vor N Tagen' – nach 7 Tagen wird die Zeile orange als stille Erinnerung."
   },
   {
     category: "ampel",

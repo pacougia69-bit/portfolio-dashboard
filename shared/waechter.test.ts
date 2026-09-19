@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyTrend, simpleMovingAverage, computeTrendSignal, detectChange,
   isThemenwette, isKiWette, getActionHint, decideCheckable, describeLastChecked,
-  THEMENWETTEN_WKNS, KI_WETTEN_WKNS,
+  THEMENWETTEN_WKNS, KI_WETTEN_WKNS, classifyTwelveDataError, chunkArray, WAECHTER_MAX_RETRY_ROUNDS, parseYahooCloses,
 } from './waechter';
 import { DEFAULT_TARGET_ALLOCATIONS } from './strategy';
 
@@ -148,5 +148,76 @@ describe('describeLastChecked', () => {
   });
   it('ab 7 Tagen orange', () => {
     expect(describeLastChecked('2026-09-12T11:00:00Z', now).stale).toBe(true);
+  });
+});
+
+describe('classifyTwelveDataError', () => {
+  it('Minuten-Limit ist nachholbar und hat einen deutschen Text', () => {
+    const r = classifyTwelveDataError(
+      429,
+      'You have run out of API credits for the current minute. 10 API credits were used, with the current limit being 8. Wait for the next minute or consider upgrading',
+      'VT',
+    );
+    expect(r.kind).toBe('limit');
+    expect(r.retryable).toBe(true);
+    expect(r.text).toBe('Kursabruf-Limit erreicht (8 pro Minute) – bitte Wächter später erneut starten');
+  });
+  it('Tageslimit ist nicht nachholbar', () => {
+    const r = classifyTwelveDataError(429, 'You have run out of API credits for the day. Upgrade your plan', 'NVDA');
+    expect(r.kind).toBe('daily');
+    expect(r.retryable).toBe(false);
+    expect(r.text).toContain('Tageskontingent');
+  });
+  it('Gratis-Plan-Grenze (Xetra-Wert) ist nicht nachholbar', () => {
+    const r = classifyTwelveDataError(
+      403,
+      'This symbol is available starting with the Grow or Venture plan. Consider upgrading now at https://twelvedata.com/pricing',
+      'RHM:XETR',
+    );
+    expect(r.kind).toBe('plan');
+    expect(r.retryable).toBe(false);
+    expect(r.text).toBe('Im Gratis-Plan des Kursanbieters nicht abrufbar (Xetra-Wert)');
+  });
+  it('sonstige Fehler zeigen Symbol und Meldung, nicht nachholbar', () => {
+    const r = classifyTwelveDataError(400, 'symbol not found', 'XYZ');
+    expect(r).toEqual({ kind: 'other', retryable: false, text: 'Ticker "XYZ": symbol not found' });
+  });
+  it('fehlende Meldung ergibt "Keine Daten"', () => {
+    expect(classifyTwelveDataError(undefined, undefined, 'ABC').text).toBe('Ticker "ABC": Keine Daten');
+  });
+});
+
+describe('chunkArray', () => {
+  it('teilt in Häppchen', () => {
+    expect(chunkArray([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  });
+  it('leere Liste ergibt keine Häppchen', () => {
+    expect(chunkArray([], 3)).toEqual([]);
+  });
+  it('Nachhol-Runden sind begrenzt', () => {
+    expect(WAECHTER_MAX_RETRY_ROUNDS).toBe(2);
+  });
+});
+
+describe('parseYahooCloses', () => {
+  const chart = (close: (number | null)[]) => ({ chart: { result: [{ indicators: { quote: [{ close }] } }], error: null } });
+
+  it('dreht die Reihe auf "neuester zuerst" und entfernt Lücken', () => {
+    expect(parseYahooCloses(chart([1, 2, null, 4]))).toEqual({ closes: [4, 2, 1] });
+  });
+  it('kappt auf die neuesten 200 Kurse', () => {
+    const r = parseYahooCloses(chart(Array.from({ length: 250 }, (_, i) => i + 1)));
+    expect('closes' in r && r.closes.length).toBe(200);
+    expect('closes' in r && r.closes[0]).toBe(250);
+  });
+  it('meldet Yahoo-Fehler auf Deutsch mit der Originalmeldung', () => {
+    const r = parseYahooCloses({ chart: { result: null, error: { code: 'Not Found', description: 'No data found, symbol may be delisted' } } });
+    expect(r).toEqual({ error: 'Yahoo: No data found, symbol may be delisted' });
+  });
+  it('leere Kursliste ist ein Fehler', () => {
+    expect(parseYahooCloses(chart([null, null]))).toEqual({ error: 'Yahoo: Keine Kursdaten' });
+  });
+  it('kaputte Antwort ist ein Fehler', () => {
+    expect(parseYahooCloses(null)).toEqual({ error: 'Yahoo: Keine Daten' });
   });
 });
