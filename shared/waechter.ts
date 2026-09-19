@@ -39,6 +39,14 @@ export interface WaechterResultRow {
   change: ChangeDirection;
   isProxy: boolean;
   actionHint: string;
+  // Fuer den KI-Text: Art der Position, Waehrung des Kurses, Name des US-Vergleichswerts (nur bei Naeherung),
+  // gespeicherte Einstiegs-These aus der Einstiegsanalyse (falls vorhanden)
+  positionType: string | null;
+  currency: string | null;
+  proxySymbol: string | null;
+  entryThesis: { these: string; exitThese: string; analysedAt: string } | null;
+  // Wann Rafael den KI-Text zu dieser Position (in diesem Lauf) kopiert hat; null = noch nicht
+  promptCopiedAt: string | null;
 }
 
 /** Kernregel der Ampel: Kurs gegen SMA 50 und SMA 200. Texte 1:1 wie bisher im Router. */
@@ -143,14 +151,53 @@ export function decideCheckable(p: { type: string; ticker: string | null; waecht
   return { checkable: true };
 }
 
+/** Datum als TT.MM.JJJJ in deutscher Zeit. */
+export function formatDateDe(d: Date | string): string {
+  return new Date(d).toLocaleDateString('de-DE', {
+    day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Berlin',
+  });
+}
+
+/** Datum und Uhrzeit kurz, deutsche Zeit: "19.09., 14:32". */
+export function formatDateTimeDe(d: Date | string): string {
+  return new Date(d).toLocaleString('de-DE', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin',
+  });
+}
+
+/**
+ * Namen der uebrigen Positionen fuer den KI-Text (nur Namen, keine Betraege).
+ * Die aktuelle Position wird weggelassen - auch wenn sie unter zwei Namen im Depot steht (gleicher Ticker).
+ */
+export function otherPositionNames(
+  all: { name: string; ticker: string }[],
+  current: { name: string; ticker: string },
+): string[] {
+  const names = new Set<string>();
+  for (const p of all) {
+    const name = p.name.trim();
+    if (!name) continue;
+    if (p.ticker.trim().toUpperCase() === current.ticker.trim().toUpperCase()) continue;
+    if (name === current.name.trim()) continue;
+    names.add(name);
+  }
+  return Array.from(names).sort((a, b) => a.localeCompare(b, 'de'));
+}
+
+/** Welche Fragen passen zur Position? ETF/Fonds/Anleihe, Krypto oder Einzelwert (Aktie). Unbekannt = wie bisher (Fonds). */
+export function positionKind(type: string | null | undefined): 'fonds' | 'krypto' | 'einzelwert' {
+  if (type === null || type === undefined) return 'fonds';
+  if (type === 'ETF' || type === 'Fonds' || type === 'Anleihe') return 'fonds';
+  if (type === 'Krypto') return 'krypto';
+  return 'einzelwert';
+}
+
 /** Text der Startseiten-Zeile. Orange (stale) ab WAECHTER_STALE_DAYS Tagen oder wenn noch nie gestartet. */
 export function describeLastChecked(finishedAt: Date | string | null, now: Date = new Date()): { text: string; stale: boolean } {
   if (!finishedAt) return { text: 'Wächter noch nie gestartet', stale: true };
   const then = new Date(finishedAt);
   const days = Math.floor((now.getTime() - then.getTime()) / 86_400_000);
-  const dateText = then.toLocaleDateString('de-DE', {
-    day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Berlin',
-  });
+  const dateText = formatDateDe(then);
   const when = days <= 0 ? 'heute' : days === 1 ? 'gestern' : `vor ${days} Tagen`;
   return { text: `Wächter zuletzt geprüft ${when} (${dateText})`, stale: days >= WAECHTER_STALE_DAYS };
 }
@@ -194,7 +241,7 @@ export function classifyTwelveDataError(
  * Liest die Antwort von Yahoo Finance (v8/finance/chart, interval=1d) und liefert die
  * Schlusskurse mit dem NEUESTEN zuerst (max. 200). Lücken (null) werden entfernt.
  */
-export function parseYahooCloses(data: any): { closes: number[] } | { error: string } {
+export function parseYahooCloses(data: any): { closes: number[]; currency: string | null } | { error: string } {
   const result = data?.chart?.result?.[0];
   if (!result) {
     const desc = data?.chart?.error?.description;
@@ -206,5 +253,6 @@ export function parseYahooCloses(data: any): { closes: number[] } | { error: str
     .reverse()
     .slice(0, 200);
   if (closes.length === 0) return { error: 'Yahoo: Keine Kursdaten' };
-  return { closes };
+  const currency = typeof result?.meta?.currency === 'string' ? result.meta.currency : null;
+  return { closes, currency };
 }

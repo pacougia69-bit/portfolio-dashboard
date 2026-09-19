@@ -2,10 +2,16 @@
  * Waechter: Trend-Pruefung auf Knopfdruck (nur lesen, bewegt kein Geld).
  * Der Client ruft startRun -> checkChunk (mehrfach, mit Pause) -> finishRun auf,
  * damit keine einzelne Server-Anfrage lange laeuft (Twelve-Data-Limit 8/Minute).
+ *
+ * Kursquellen:
+ *  - ETFs/Werte mit US-Zwilling (isTrendProxyTicker): ZUERST Yahoo Finance mit dem echten Ticker
+ *    (echter Kurs, kein Twelve-Data-Kontingent). Nur wenn Yahoo nichts hat, der US-Zwilling bei Twelve Data (Naeherung).
+ *  - alle anderen: Twelve Data; kann es den Wert nicht liefern (Gratis-Plan, Tageslimit, unbekannt), Yahoo als Ausweichquelle.
+ *  - Minuten-Limit von Twelve Data wird vom Browser nach einer Pause nachgeholt.
  */
 import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { getDb } from "./db";
-import { portfolioPositions, waechterLaeufe, waechterErgebnisse } from "../drizzle/schema";
+import { portfolioPositions, waechterLaeufe, waechterErgebnisse, einstiegsanalysen } from "../drizzle/schema";
 import { convertTickerForTwelveData, isTrendProxyTicker } from "./services";
 import {
   WAECHTER_CHUNK_SIZE,
@@ -15,6 +21,7 @@ import {
   detectChange,
   getActionHint,
   parseYahooCloses,
+  type TrendResult,
   type TrendSignal,
   type WaechterResultRow,
 } from "@shared/waechter";
@@ -39,12 +46,29 @@ async function getOwnRun(db: Db, userId: number, runId: number) {
 
 type ErgebnisFelder = Pick<
   typeof waechterErgebnisse.$inferSelect,
-  "positionId" | "ticker" | "name" | "wkn" | "signal" | "signalDetail" | "price" | "sma50" | "sma200" | "prevSignal" | "isProxy"
+  | "positionId" | "ticker" | "name" | "wkn" | "signal" | "signalDetail" | "price" | "sma50" | "sma200"
+  | "prevSignal" | "isProxy" | "positionType" | "currency" | "promptCopiedAt"
 >;
+
+/** Schluessel, unter dem Twelve Data den Kurs abruft (US-Zwilling bzw. Symbol:Boerse). */
+function symbolKey(ticker: string): string {
+  const c = convertTickerForTwelveData(ticker);
+  return c.exchange ? `${c.symbol}:${c.exchange}` : c.symbol;
+}
+
+/**
+ * Positionen mit gleichem Abruf bilden eine Gruppe (spart Aufrufe). Werte mit US-Zwilling
+ * werden zuerst per ECHTEM Ticker bei Yahoo geholt - da duerfen zwei ETFs mit demselben
+ * Zwilling (z. B. XAIX.DE und AIFS.DE -> AIQ) NICHT zusammenfallen.
+ */
+function groupKey(ticker: string): string {
+  return isTrendProxyTicker(ticker) ? `Y:${ticker}` : symbolKey(ticker);
+}
 
 function toResultRow(r: ErgebnisFelder): WaechterResultRow {
   const signal = r.signal as TrendSignal;
   const prev = (r.prevSignal as TrendSignal | null) ?? null;
+  const isProxy = Boolean(r.isProxy);
   return {
     positionId: r.positionId,
     ticker: r.ticker,
@@ -57,18 +81,17 @@ function toResultRow(r: ErgebnisFelder): WaechterResultRow {
     sma200: r.sma200 !== null ? Number(r.sma200) : null,
     prevSignal: prev,
     change: detectChange(prev, signal),
-    isProxy: Boolean(r.isProxy),
+    isProxy,
     actionHint: getActionHint(signal, r.wkn),
+    positionType: r.positionType ?? null,
+    currency: r.currency ?? null,
+    proxySymbol: isProxy ? symbolKey(r.ticker) : null,
+    entryThesis: null,
+    promptCopiedAt: r.promptCopiedAt ? r.promptCopiedAt.toISOString() : null,
   };
 }
 
-/** Schluessel, unter dem Twelve Data den Kurs abruft: gleicher Schluessel = gleicher Abruf (spart Kontingent). */
-function symbolKey(ticker: string): string {
-  const c = convertTickerForTwelveData(ticker);
-  return c.exchange ? `${c.symbol}:${c.exchange}` : c.symbol;
-}
-
-/** Legt einen neuen Lauf an und sagt, welche Positionen geprueft werden. Positionen mit gleichem Kurs-Abruf bilden eine Gruppe. */
+/** Legt einen neuen Lauf an und sagt, welche Positionen geprueft werden. */
 export async function startWaechterRun(userId: number) {
   const db = await requireDb();
   const positions = await db.select().from(portfolioPositions).where(eq(portfolioPositions.userId, userId));
@@ -81,7 +104,7 @@ export async function startWaechterRun(userId: number) {
     const d = decideCheckable({ type: p.type, ticker: p.ticker, waechterMuted: p.waechterMuted });
     if (d.checkable) {
       toCheck.push({ id: p.id, ticker: p.ticker, name: p.name });
-      const key = symbolKey(p.ticker);
+      const key = groupKey(p.ticker);
       const group = groupMap.get(key);
       if (group) group.positionIds.push(p.id);
       else groupMap.set(key, { key, ticker: p.ticker, positionIds: [p.id] });
@@ -105,7 +128,9 @@ export async function startWaechterRun(userId: number) {
   };
 }
 
-type FetchResult = { closes: number[] } | { error: string; retryable: boolean };
+type FetchResult =
+  | { closes: number[]; currency: string | null }
+  | { error: string; retryable: boolean };
 
 async function fetchCloses(ticker: string, apiKey: string): Promise<FetchResult> {
   const symbol = symbolKey(ticker);
@@ -117,15 +142,14 @@ async function fetchCloses(ticker: string, apiKey: string): Promise<FetchResult>
     const e = classifyTwelveDataError(data.code, data.message, symbol);
     return { error: e.text, retryable: e.retryable };
   }
-  return { closes: data.values.map((v: any) => parseFloat(v.close)) };
+  return {
+    closes: data.values.map((v: any) => parseFloat(v.close)),
+    currency: typeof data.meta?.currency === "string" ? data.meta.currency : null,
+  };
 }
 
-/**
- * Ausweichquelle: Yahoo Finance mit dem ECHTEN Ticker der Position (z. B. RHM.DE).
- * Wird nur benutzt, wenn Twelve Data den Wert nicht liefern kann (Xetra-Werte im Gratis-Plan,
- * Tageslimit, unbekanntes Symbol). Inoffizielle Schnittstelle, deshalb nur als Notlösung.
- */
-async function fetchYahooCloses(ticker: string): Promise<{ closes: number[] } | { error: string }> {
+/** Yahoo Finance mit dem ECHTEN Ticker der Position (z. B. RHM.DE, ASWC.DE). Inoffizielle Schnittstelle. */
+async function fetchYahooCloses(ticker: string): Promise<{ closes: number[]; currency: string | null } | { error: string }> {
   try {
     const res = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1y`,
@@ -138,6 +162,55 @@ async function fetchYahooCloses(ticker: string): Promise<{ closes: number[] } | 
   } catch (err: any) {
     return { error: `Yahoo: ${String(err?.message ?? err).slice(0, 100)}` };
   }
+}
+
+const noData = (detail: string): TrendResult => ({ signal: "KEINE_DATEN", detail, price: null, sma50: null, sma200: null });
+const YAHOO_SUFFIX = " · Quelle: Yahoo Finance";
+
+type Resolved = { trend: TrendResult; currency: string | null; retryable: boolean; usedYahoo: boolean; tdCalls: number };
+
+/** Holt die Kurse einer Position aus der passenden Quelle (siehe Kopfkommentar). */
+async function resolveTrend(ticker: string, apiKey: string): Promise<Resolved> {
+  const hasTwin = isTrendProxyTicker(ticker);
+  let yahooError: string | null = null;
+
+  if (hasTwin) {
+    const y = await fetchYahooCloses(ticker);
+    if ("closes" in y) {
+      const t = computeTrendSignal(y.closes);
+      return { trend: { ...t, detail: t.detail + YAHOO_SUFFIX }, currency: y.currency, retryable: false, usedYahoo: true, tdCalls: 0 };
+    }
+    yahooError = y.error;
+  }
+
+  let fetched: FetchResult;
+  try {
+    fetched = await fetchCloses(ticker, apiKey);
+  } catch (err: any) {
+    return {
+      trend: noData(`Abruf fehlgeschlagen: ${String(err?.message ?? err).slice(0, 140)}`),
+      currency: null, retryable: true, usedYahoo: false, tdCalls: 1,
+    };
+  }
+  if ("closes" in fetched) {
+    return { trend: computeTrendSignal(fetched.closes), currency: fetched.currency, retryable: false, usedYahoo: false, tdCalls: 1 };
+  }
+  if (fetched.retryable) {
+    // Minuten-Limit: nicht bei Yahoo suchen, der Browser holt es nach einer Pause nach
+    return { trend: noData(fetched.error), currency: null, retryable: true, usedYahoo: false, tdCalls: 1 };
+  }
+  if (!hasTwin) {
+    const y = await fetchYahooCloses(ticker);
+    if ("closes" in y) {
+      const t = computeTrendSignal(y.closes);
+      return { trend: { ...t, detail: t.detail + YAHOO_SUFFIX }, currency: y.currency, retryable: false, usedYahoo: true, tdCalls: 1 };
+    }
+    yahooError = y.error;
+  }
+  return {
+    trend: noData(yahooError ? `${fetched.error} · ${yahooError}` : fetched.error),
+    currency: null, retryable: false, usedYahoo: false, tdCalls: 1,
+  };
 }
 
 async function getPreviousSignals(db: Db, userId: number, positionIds: number[]): Promise<Map<number, TrendSignal>> {
@@ -156,16 +229,17 @@ async function getPreviousSignals(db: Db, userId: number, positionIds: number[])
 }
 
 /**
- * Prueft ein Haeppchen und speichert die Ergebnisse. Positionen mit gleichem Kurs-Abruf
- * (z. B. zwei Positionen mit demselben ETF-Ticker) kosten nur EINEN Abruf. Ein bereits
- * gespeichertes Ergebnis derselben Position im selben Lauf wird ersetzt (Nachholen).
- * retryPositionIds = Positionen, die wegen des Minuten-Limits fehlschlugen und sich lohnen, es erneut zu versuchen.
+ * Prueft ein Haeppchen und speichert die Ergebnisse. Positionen mit gleichem Abruf (z. B. zwei
+ * Positionen mit demselben ETF-Ticker) kosten nur EINEN Abruf. Ein bereits gespeichertes Ergebnis
+ * derselben Position im selben Lauf wird ersetzt (Nachholen).
+ * retryPositionIds = Positionen, die am Minuten-Limit scheiterten und sich lohnen, es erneut zu versuchen.
+ * tdCalls = Anzahl Twelve-Data-Abrufe in diesem Haeppchen (0 = keine Wartezeit noetig).
  */
 export async function checkWaechterChunk(
   userId: number,
   runId: number,
   positionIds: number[],
-): Promise<{ results: WaechterResultRow[]; retryPositionIds: number[] }> {
+): Promise<{ results: WaechterResultRow[]; retryPositionIds: number[]; tdCalls: number }> {
   const db = await requireDb();
   const run = await getOwnRun(db, userId, runId);
   if (run.finishedAt) throw new Error("Dieser Lauf ist bereits abgeschlossen.");
@@ -180,7 +254,7 @@ export async function checkWaechterChunk(
   const byKey = new Map<string, typeof positions>();
   for (const p of positions) {
     if (!decideCheckable({ type: p.type, ticker: p.ticker, waechterMuted: p.waechterMuted }).checkable) continue;
-    const key = symbolKey(p.ticker);
+    const key = groupKey(p.ticker);
     const list = byKey.get(key);
     if (list) list.push(p);
     else byKey.set(key, [p]);
@@ -192,40 +266,11 @@ export async function checkWaechterChunk(
   const prev = await getPreviousSignals(db, userId, positionIds);
   const rows: WaechterResultRow[] = [];
   const retryPositionIds: number[] = [];
+  let tdCalls = 0;
 
   for (const group of Array.from(byKey.values())) {
-    let trend;
-    let retryable = false;
-    let usedYahoo = false;
-    try {
-      const fetched = await fetchCloses(group[0].ticker, apiKey);
-      if ("closes" in fetched) {
-        trend = computeTrendSignal(fetched.closes);
-      } else if (fetched.retryable) {
-        // Minuten-Limit: wird vom Browser nach einer Pause nachgeholt, nicht bei Yahoo gesucht
-        trend = { signal: "KEINE_DATEN" as const, detail: fetched.error, price: null, sma50: null, sma200: null };
-        retryable = true;
-      } else {
-        // Twelve Data kann den Wert nicht liefern (Gratis-Plan, Tageslimit, unbekannt) -> Yahoo mit echtem Ticker
-        const yahoo = await fetchYahooCloses(group[0].ticker);
-        if ("closes" in yahoo) {
-          const y = computeTrendSignal(yahoo.closes);
-          trend = { ...y, detail: `${y.detail} · Quelle: Yahoo Finance` };
-          usedYahoo = true;
-        } else {
-          trend = { signal: "KEINE_DATEN" as const, detail: `${fetched.error} · ${yahoo.error}`, price: null, sma50: null, sma200: null };
-        }
-      }
-    } catch (err: any) {
-      trend = {
-        signal: "KEINE_DATEN" as const,
-        detail: `Abruf fehlgeschlagen: ${String(err?.message ?? err).slice(0, 140)}`,
-        price: null,
-        sma50: null,
-        sma200: null,
-      };
-      retryable = true;
-    }
+    const r = await resolveTrend(group[0].ticker, apiKey);
+    tdCalls += r.tdCalls;
 
     for (const p of group) {
       const values = {
@@ -235,24 +280,27 @@ export async function checkWaechterChunk(
         ticker: p.ticker,
         name: p.name,
         wkn: p.wkn ?? null,
-        signal: trend.signal,
-        signalDetail: trend.detail.slice(0, 255),
-        price: trend.price !== null ? String(trend.price) : null,
-        sma50: trend.sma50 !== null ? String(trend.sma50) : null,
-        sma200: trend.sma200 !== null ? String(trend.sma200) : null,
+        signal: r.trend.signal,
+        signalDetail: r.trend.detail.slice(0, 255),
+        price: r.trend.price !== null ? String(r.trend.price) : null,
+        sma50: r.trend.sma50 !== null ? String(r.trend.sma50) : null,
+        sma200: r.trend.sma200 !== null ? String(r.trend.sma200) : null,
         prevSignal: prev.get(p.id) ?? null,
         // Yahoo liefert den echten Kurs der Position, dann ist es keine Näherung
-        isProxy: usedYahoo ? false : isTrendProxyTicker(p.ticker),
+        isProxy: r.usedYahoo ? false : isTrendProxyTicker(p.ticker),
+        positionType: p.type,
+        currency: r.currency,
+        promptCopiedAt: null,
       };
       await db
         .delete(waechterErgebnisse)
         .where(and(eq(waechterErgebnisse.runId, runId), eq(waechterErgebnisse.positionId, p.id)));
       await db.insert(waechterErgebnisse).values(values);
       rows.push(toResultRow(values));
-      if (retryable) retryPositionIds.push(p.id);
+      if (r.retryable) retryPositionIds.push(p.id);
     }
   }
-  return { results: rows, retryPositionIds };
+  return { results: rows, retryPositionIds, tdCalls };
 }
 
 /** Schliesst den Lauf ab. Erst danach zaehlt er als "zuletzt geprueft". */
@@ -272,37 +320,58 @@ export async function finishWaechterRun(userId: number, runId: number) {
   return { finishedAt: finishedAt.toISOString(), geprueft, ohneDaten };
 }
 
-async function getLatestFinishedRun(db: Db, userId: number) {
-  const runs = await db
+async function getFinishedRuns(db: Db, userId: number, limit: number) {
+  return db
     .select()
     .from(waechterLaeufe)
     .where(and(eq(waechterLaeufe.userId, userId), isNotNull(waechterLaeufe.finishedAt)))
     .orderBy(desc(waechterLaeufe.finishedAt))
-    .limit(1);
-  return runs[0] ?? null;
+    .limit(limit);
 }
 
-/** Letzter abgeschlossener Lauf mit allen Ergebnissen (oder null). */
+/** Zuletzt gespeicherte Einstiegs-These/Exit-These je Ticker (aus der Einstiegsanalyse), falls vorhanden. */
+async function getEntryTheses(db: Db, userId: number, tickers: string[]) {
+  const map = new Map<string, { these: string; exitThese: string; analysedAt: string }>();
+  if (tickers.length === 0) return map;
+  const rows = await db
+    .select({
+      ticker: einstiegsanalysen.ticker,
+      these: einstiegsanalysen.these,
+      exitThese: einstiegsanalysen.exitThese,
+      createdAt: einstiegsanalysen.createdAt,
+    })
+    .from(einstiegsanalysen)
+    .where(and(eq(einstiegsanalysen.userId, userId), inArray(einstiegsanalysen.ticker, tickers)))
+    .orderBy(desc(einstiegsanalysen.createdAt));
+  for (const r of rows) {
+    if (!map.has(r.ticker)) map.set(r.ticker, { these: r.these, exitThese: r.exitThese, analysedAt: r.createdAt.toISOString() });
+  }
+  return map;
+}
+
+/** Letzter abgeschlossener Lauf mit allen Ergebnissen (oder null), inkl. Datum des Laufs davor. */
 export async function getLatestWaechterRun(userId: number) {
   const db = await requireDb();
-  const run = await getLatestFinishedRun(db, userId);
+  const [run, previous] = await getFinishedRuns(db, userId, 2);
   if (!run || !run.finishedAt) return null;
   const rows = await db.select().from(waechterErgebnisse).where(eq(waechterErgebnisse.runId, run.id));
+  const theses = await getEntryTheses(db, userId, Array.from(new Set(rows.map((r) => r.ticker))));
   return {
     run: {
       id: run.id,
       startedAt: run.startedAt.toISOString(),
       finishedAt: run.finishedAt.toISOString(),
+      previousFinishedAt: previous?.finishedAt ? previous.finishedAt.toISOString() : null,
       positionenGeprueft: run.positionenGeprueft,
       positionenOhneDaten: run.positionenOhneDaten,
     },
-    results: rows.map(toResultRow),
+    results: rows.map((r) => ({ ...toResultRow(r), entryThesis: theses.get(r.ticker) ?? null })),
   };
 }
 
 export async function getWaechterLastChecked(userId: number): Promise<{ finishedAt: string | null }> {
   const db = await requireDb();
-  const run = await getLatestFinishedRun(db, userId);
+  const [run] = await getFinishedRuns(db, userId, 1);
   return { finishedAt: run?.finishedAt ? run.finishedAt.toISOString() : null };
 }
 
@@ -312,4 +381,23 @@ export async function setPositionMuted(userId: number, positionId: number, muted
     .update(portfolioPositions)
     .set({ waechterMuted: muted })
     .where(and(eq(portfolioPositions.id, positionId), eq(portfolioPositions.userId, userId)));
+}
+
+/** Merkt sich, dass Rafael den KI-Text zu dieser Position (im letzten abgeschlossenen Lauf) kopiert hat. */
+export async function markWaechterPromptCopied(userId: number, positionId: number): Promise<{ promptCopiedAt: string }> {
+  const db = await requireDb();
+  const [run] = await getFinishedRuns(db, userId, 1);
+  if (!run) throw new Error("Kein abgeschlossener Wächter-Lauf vorhanden");
+  const now = new Date();
+  await db
+    .update(waechterErgebnisse)
+    .set({ promptCopiedAt: now })
+    .where(
+      and(
+        eq(waechterErgebnisse.runId, run.id),
+        eq(waechterErgebnisse.userId, userId),
+        eq(waechterErgebnisse.positionId, positionId),
+      ),
+    );
+  return { promptCopiedAt: now.toISOString() };
 }

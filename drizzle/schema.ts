@@ -578,6 +578,11 @@ export const waechterErgebnisse = mysqlTable("waechter_ergebnisse", {
   sma200: decimal("sma200", { precision: 18, scale: 4 }),
   prevSignal: mysqlEnum("prevSignal", ["GRUEN", "GELB", "ROT", "KEINE_DATEN"]),
   isProxy: boolean("isProxy").notNull().default(false),
+  // Fuer den KI-Text: Art der Position (Aktie/ETF/...) und Waehrung des Kurses
+  positionType: varchar("positionType", { length: 20 }),
+  currency: varchar("currency", { length: 8 }),
+  // Wann Rafael den KI-Text zu dieser Position (in diesem Lauf) kopiert hat
+  promptCopiedAt: timestamp("promptCopiedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

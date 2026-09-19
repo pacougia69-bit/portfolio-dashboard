@@ -8,15 +8,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { Loader2, ShieldCheck, Copy, SearchCheck, X } from 'lucide-react';
+import { Loader2, ShieldCheck, Copy, SearchCheck, X, Check } from 'lucide-react';
 import {
   WAECHTER_CHUNK_SIZE,
   WAECHTER_CHUNK_DELAY_MS,
   WAECHTER_MAX_RETRY_ROUNDS,
   chunkArray,
+  formatDateTimeDe,
+  otherPositionNames,
   type TrendSignal,
   type WaechterResultRow,
 } from '@shared/waechter';
@@ -56,11 +60,20 @@ export default function WaechterCard() {
   const startRun = trpc.waechter.startRun.useMutation();
   const checkChunk = trpc.waechter.checkChunk.useMutation();
   const finishRun = trpc.waechter.finishRun.useMutation();
+  const portfolio = trpc.portfolio.list.useQuery();
+  // Merkt sich serverseitig, dass der Text zu dieser Position (in diesem Lauf) kopiert wurde
+  const markCopied = trpc.waechter.markPromptCopied.useMutation({ onSuccess: () => latest.refetch() });
 
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [startInfo, setStartInfo] = useState<{ skipped: { name: string; reason: string }[]; mutedCount: number } | null>(null);
   const [promptRow, setPromptRow] = useState<WaechterResultRow | null>(null);
+  // Schalter im Fenster: Namen der uebrigen Positionen mitgeben. Standard IMMER aus (Datenschutz).
+  const [includeOthers, setIncludeOthers] = useState(false);
+  const openPrompt = (row: WaechterResultRow) => {
+    setIncludeOthers(false);
+    setPromptRow(row);
+  };
   const cancelRef = useRef(false);
 
   const handleStart = async () => {
@@ -86,14 +99,19 @@ export default function WaechterCard() {
           if (cancelRef.current) break;
           setProgress({ label, done: i, total: chunks.length });
           const ids = chunks[i].flatMap((g) => g.positionIds);
+          // Pause nur nötig, wenn dieses Häppchen Twelve-Data-Kontingent verbraucht hat (Yahoo-Abrufe zählen nicht)
+          let usedTwelveData = true;
           try {
             const res = await checkChunk.mutateAsync({ runId: start.runId, positionIds: ids });
             res.retryPositionIds.forEach((id) => retryIds.add(id));
+            usedTwelveData = res.tdCalls > 0;
           } catch (e: any) {
             toast.error(`Häppchen ${i + 1} fehlgeschlagen: ${e?.message ?? 'Fehler'}`);
             ids.forEach((id) => retryIds.add(id));
           }
-          if (i < chunks.length - 1) await sleepUnlessCancelled(WAECHTER_CHUNK_DELAY_MS, () => cancelRef.current);
+          if (i < chunks.length - 1 && usedTwelveData) {
+            await sleepUnlessCancelled(WAECHTER_CHUNK_DELAY_MS, () => cancelRef.current);
+          }
         }
         return retryIds;
       };
@@ -132,24 +150,40 @@ export default function WaechterCard() {
   const withData = results.filter((r) => r.signal !== 'KEINE_DATEN');
   const noData = results.filter((r) => r.signal === 'KEINE_DATEN');
 
+  // Die Zeile im Fenster immer aus den frischen Ergebnissen nehmen, damit "kopiert am ..." sofort erscheint
+  const currentPrompt = promptRow ? (results.find((r) => r.positionId === promptRow.positionId) ?? promptRow) : null;
+
   const promptText = promptRow
     ? buildWaechterPrompt({
         name: promptRow.name,
         ticker: promptRow.ticker,
         wkn: promptRow.wkn,
+        positionType: promptRow.positionType,
         signal: promptRow.signal,
         signalDetail: promptRow.signalDetail,
         prevSignal: promptRow.prevSignal,
         price: promptRow.price,
         sma50: promptRow.sma50,
         sma200: promptRow.sma200,
+        currency: promptRow.currency,
         isProxy: promptRow.isProxy,
+        proxySymbol: promptRow.proxySymbol,
+        runAt: latest.data?.run.finishedAt ?? null,
+        prevRunAt: latest.data?.run.previousFinishedAt ?? null,
+        entryThesis: promptRow.entryThesis,
+        otherPositions: includeOthers
+          ? otherPositionNames(
+              (portfolio.data ?? []).map((p) => ({ name: p.name, ticker: p.ticker })),
+              { name: promptRow.name, ticker: promptRow.ticker },
+            )
+          : null,
       })
     : '';
 
   const copyPrompt = () => {
     navigator.clipboard.writeText(promptText);
     toast.success('Text kopiert — jetzt in Gemini, ChatGPT oder Claude einfügen');
+    if (promptRow) markCopied.mutate({ positionId: promptRow.positionId });
   };
 
   const remainingMinutes = progress ? Math.ceil(((progress.total - progress.done - 1) * WAECHTER_CHUNK_DELAY_MS) / 60000) : 0;
@@ -220,7 +254,11 @@ export default function WaechterCard() {
                         <p className="font-medium">{r.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {r.ticker}
-                          {r.isProxy && <span title="Trend über einen ähnlichen US-Wert berechnet, nicht der echte Kurs"> · Näherung</span>}
+                          {r.isProxy && (
+                            <span title={`Trend über den US-Vergleichswert ${r.proxySymbol ?? ''} berechnet, nicht über den echten Kurs`}>
+                              {' '}· Näherung{r.proxySymbol ? ` (${r.proxySymbol})` : ''}
+                            </span>
+                          )}
                         </p>
                       </td>
                       <td className="p-2">
@@ -238,9 +276,16 @@ export default function WaechterCard() {
                       <td className="p-2 text-xs">{r.actionHint}</td>
                       <td className="p-2 text-right">
                         {(r.signal === 'GELB' || r.signal === 'ROT') && (
-                          <Button variant="outline" size="sm" onClick={() => setPromptRow(r)}>
-                            <SearchCheck className="w-4 h-4 mr-1" /> Genauer ansehen
-                          </Button>
+                          <div className="flex flex-col items-end gap-1">
+                            <Button variant={r.promptCopiedAt ? 'secondary' : 'outline'} size="sm" onClick={() => openPrompt(r)}>
+                              <SearchCheck className="w-4 h-4 mr-1" /> {r.promptCopiedAt ? 'Nochmal ansehen' : 'Genauer ansehen'}
+                            </Button>
+                            {r.promptCopiedAt && (
+                              <span className="flex items-center gap-1 text-xs text-green-400">
+                                <Check className="w-3 h-3" /> Text kopiert {formatDateTimeDe(r.promptCopiedAt)}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -270,6 +315,18 @@ export default function WaechterCard() {
               Diesen Text kopieren und in eine KI deiner Wahl einfügen (Gemini, ChatGPT, Claude). Die App ruft selbst keine KI auf.
             </DialogDescription>
           </DialogHeader>
+          {currentPrompt?.promptCopiedAt && (
+            <p className="flex items-center gap-1 rounded-md border border-green-500/40 px-2 py-1 text-xs text-green-400">
+              <Check className="w-3 h-3" /> Diesen Text hast du schon kopiert ({formatDateTimeDe(currentPrompt.promptCopiedAt)}).
+            </p>
+          )}
+          <div className="flex items-start gap-2 rounded-md border border-border p-2">
+            <Checkbox id="waechter-others" checked={includeOthers} onCheckedChange={(v) => setIncludeOthers(v === true)} />
+            <Label htmlFor="waechter-others" className="text-xs leading-snug font-normal">
+              Meine übrigen Positionen mitgeben (nur Namen, keine Beträge), damit die KI Überschneidungen konkret prüfen kann.
+              Der Text wird in ein fremdes Chatfenster kopiert. Standard: aus.
+            </Label>
+          </div>
           <Textarea readOnly value={promptText} rows={16} className="font-mono text-xs" />
           <Button onClick={copyPrompt}>
             <Copy className="w-4 h-4 mr-1" /> Text kopieren

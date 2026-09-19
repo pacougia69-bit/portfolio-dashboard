@@ -427,6 +427,21 @@ async function runDatabaseMigration() {
           INDEX idx_waechter_ergebnisse_pos (userId, positionId)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
+      // Spalten, die erst nach dem ersten Wächter-Release dazukamen (Art der Position, Währung)
+      const [eCols]: any = await wConn.query(`
+        SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'waechter_ergebnisse'
+      `);
+      const eExisting = new Set((eCols as any[]).map((c) => c.COLUMN_NAME));
+      if (!eExisting.has('positionType')) {
+        await wConn.query(`ALTER TABLE waechter_ergebnisse ADD COLUMN positionType VARCHAR(20) NULL`);
+      }
+      if (!eExisting.has('currency')) {
+        await wConn.query(`ALTER TABLE waechter_ergebnisse ADD COLUMN currency VARCHAR(8) NULL`);
+      }
+      if (!eExisting.has('promptCopiedAt')) {
+        await wConn.query(`ALTER TABLE waechter_ergebnisse ADD COLUMN promptCopiedAt TIMESTAMP NULL DEFAULT NULL`);
+      }
       console.log('✅ Wächter tables ready');
     } finally {
       await wConn.end();

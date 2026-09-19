@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyTrend, simpleMovingAverage, computeTrendSignal, detectChange,
   isThemenwette, isKiWette, getActionHint, decideCheckable, describeLastChecked,
-  THEMENWETTEN_WKNS, KI_WETTEN_WKNS, classifyTwelveDataError, chunkArray, WAECHTER_MAX_RETRY_ROUNDS, parseYahooCloses,
+  THEMENWETTEN_WKNS, KI_WETTEN_WKNS, classifyTwelveDataError, chunkArray, WAECHTER_MAX_RETRY_ROUNDS, parseYahooCloses, formatDateDe, positionKind, formatDateTimeDe, otherPositionNames,
 } from './waechter';
 import { DEFAULT_TARGET_ALLOCATIONS } from './strategy';
 
@@ -203,7 +203,7 @@ describe('parseYahooCloses', () => {
   const chart = (close: (number | null)[]) => ({ chart: { result: [{ indicators: { quote: [{ close }] } }], error: null } });
 
   it('dreht die Reihe auf "neuester zuerst" und entfernt Lücken', () => {
-    expect(parseYahooCloses(chart([1, 2, null, 4]))).toEqual({ closes: [4, 2, 1] });
+    expect(parseYahooCloses(chart([1, 2, null, 4]))).toEqual({ closes: [4, 2, 1], currency: null });
   });
   it('kappt auf die neuesten 200 Kurse', () => {
     const r = parseYahooCloses(chart(Array.from({ length: 250 }, (_, i) => i + 1)));
@@ -219,5 +219,68 @@ describe('parseYahooCloses', () => {
   });
   it('kaputte Antwort ist ein Fehler', () => {
     expect(parseYahooCloses(null)).toEqual({ error: 'Yahoo: Keine Daten' });
+  });
+});
+
+describe('parseYahooCloses: Währung', () => {
+  it('liest die Währung aus den Metadaten', () => {
+    const data = { chart: { result: [{ meta: { currency: 'EUR' }, indicators: { quote: [{ close: [1, 2] }] } }], error: null } };
+    expect(parseYahooCloses(data)).toEqual({ closes: [2, 1], currency: 'EUR' });
+  });
+});
+
+describe('formatDateDe', () => {
+  it('formatiert deutsch mit Zeitzone Berlin', () => {
+    expect(formatDateDe('2026-09-19T08:00:00Z')).toBe('19.09.2026');
+    expect(formatDateDe(new Date('2026-12-31T23:30:00Z'))).toBe('01.01.2027');
+  });
+});
+
+describe('positionKind', () => {
+  it('ETF, Fonds, Anleihe sind Fonds-artig', () => {
+    expect(positionKind('ETF')).toBe('fonds');
+    expect(positionKind('Fonds')).toBe('fonds');
+    expect(positionKind('Anleihe')).toBe('fonds');
+  });
+  it('Krypto', () => expect(positionKind('Krypto')).toBe('krypto'));
+  it('Aktie und alles andere sind Einzelwerte', () => {
+    expect(positionKind('Aktie')).toBe('einzelwert');
+    expect(positionKind('Sonstiges')).toBe('einzelwert');
+  });
+  it('unbekannt (alte Ergebnisse) verhält sich wie bisher: Fonds', () => {
+    expect(positionKind(null)).toBe('fonds');
+  });
+});
+
+describe('formatDateTimeDe', () => {
+  it('zeigt Tag, Monat und Uhrzeit in deutscher Zeit', () => {
+    expect(formatDateTimeDe('2026-09-19T12:32:00Z')).toBe('19.09., 14:32');
+  });
+});
+
+describe('otherPositionNames', () => {
+  const all = [
+    { name: 'Rheinmetall AG', ticker: 'RHM.DE' },
+    { name: 'Xtrackers AI & Big Data ETF', ticker: 'XAIX.DE' },
+    { name: 'Xtrackers AI & Big Data UCITS ETF', ticker: 'XAIX.DE' },
+    { name: 'Amazon', ticker: 'AMZ.F' },
+    { name: 'Broadcom Inc.', ticker: 'AVGO' },
+    { name: 'Amazon', ticker: 'AMZ.F' },
+  ];
+  it('lässt die aktuelle Position weg, auch wenn sie unter zwei Namen im Depot steht', () => {
+    const r = otherPositionNames(all, { name: 'Xtrackers AI & Big Data ETF', ticker: 'XAIX.DE' });
+    expect(r).not.toContain('Xtrackers AI & Big Data ETF');
+    expect(r).not.toContain('Xtrackers AI & Big Data UCITS ETF');
+  });
+  it('entfernt Doppelte und sortiert alphabetisch', () => {
+    expect(otherPositionNames(all, { name: 'Broadcom Inc.', ticker: 'AVGO' })).toEqual([
+      'Amazon',
+      'Rheinmetall AG',
+      'Xtrackers AI & Big Data ETF',
+      'Xtrackers AI & Big Data UCITS ETF',
+    ]);
+  });
+  it('leere Namen werden ignoriert', () => {
+    expect(otherPositionNames([{ name: '  ', ticker: 'X' }], { name: 'A', ticker: 'A' })).toEqual([]);
   });
 });

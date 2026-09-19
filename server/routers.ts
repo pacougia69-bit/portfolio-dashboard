@@ -83,7 +83,7 @@ import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningH
 import { fetchTechnicalData, researchThese } from "./einstiegsanalyse";
 import { generateMorningNote, getLatestMorningNote, getMorningNoteHistory } from "./morning-note";
 import { generateKiExperimentRun, getLatestKiExperimentRun, getKiExperimentHistory, refreshKiExperimentPrices, getKiExperimentStats } from "./ki-experiment";
-import { startWaechterRun, checkWaechterChunk, finishWaechterRun, getLatestWaechterRun, getWaechterLastChecked, setPositionMuted } from "./waechter";
+import { startWaechterRun, checkWaechterChunk, finishWaechterRun, getLatestWaechterRun, getWaechterLastChecked, setPositionMuted, markWaechterPromptCopied } from "./waechter";
 
 // Aktualisiert alle echten Hebelprodukt-Positionen (type === "Hebelprodukt") eines
 // Users per onvista-Scraper (WKN-basiert, kein Ticker) - genutzt von prices.fetch
@@ -2022,6 +2022,12 @@ export const appRouter = router({
     getLastChecked: protectedProcedure.query(async ({ ctx }) => {
       return getWaechterLastChecked(ctx.user.id);
     }),
+
+    markPromptCopied: protectedProcedure
+      .input(z.object({ positionId: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        return markWaechterPromptCopied(ctx.user.id, input.positionId);
+      }),
 
     setMuted: protectedProcedure
       .input(z.object({ positionId: z.number().int(), muted: z.boolean() }))
