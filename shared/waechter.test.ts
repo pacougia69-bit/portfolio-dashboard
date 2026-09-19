@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyTrend, simpleMovingAverage, computeTrendSignal, detectChange,
   isThemenwette, isKiWette, getActionHint, decideCheckable, describeLastChecked,
-  THEMENWETTEN_WKNS, KI_WETTEN_WKNS, classifyTwelveDataError, chunkArray, WAECHTER_MAX_RETRY_ROUNDS, parseYahooCloses, formatDateDe, positionKind, formatDateTimeDe, otherPositionNames,
+  THEMENWETTEN_WKNS, KI_WETTEN_WKNS, classifyTwelveDataError, chunkArray, WAECHTER_MAX_RETRY_ROUNDS, parseYahooCloses, formatDateDe, positionKind, formatDateTimeDe, otherPositionNames, yahooTicker, describePriceDate,
 } from './waechter';
 import { DEFAULT_TARGET_ALLOCATIONS } from './strategy';
 
@@ -282,5 +282,64 @@ describe('otherPositionNames', () => {
   });
   it('leere Namen werden ignoriert', () => {
     expect(otherPositionNames([{ name: '  ', ticker: 'X' }], { name: 'A', ticker: 'A' })).toEqual([]);
+  });
+});
+
+describe('parseYahooCloses: fehlende Schlusskurse der letzten Tage', () => {
+  const DAY = 86400;
+  const T = 1_800_000_000; // beliebiger Startzeitpunkt (Sekunden)
+  const chartWithMeta = (close: (number | null)[], meta: Record<string, unknown>) => ({
+    chart: {
+      result: [{
+        meta,
+        timestamp: close.map((_, i) => T + i * DAY),
+        indicators: { quote: [{ close }] },
+      }],
+      error: null,
+    },
+  });
+
+  it('nimmt den aktuellen Kurs aus den Metadaten, wenn die letzten Tage ohne Schlusskurs sind', () => {
+    // Bilfinger-Fall: 17. und 18.09. ohne Schlusskurs, aber Metadaten kennen den aktuellen Kurs
+    const data = chartWithMeta([10, 11, null, null], { regularMarketPrice: 7, regularMarketTime: T + 3 * DAY + 8 * 3600 });
+    expect(parseYahooCloses(data)).toEqual({ closes: [7, 11, 10], currency: null, asOf: new Date((T + 3 * DAY + 8 * 3600) * 1000).toISOString() });
+  });
+  it('fügt nichts doppelt ein, wenn der letzte Balken vom selben Tag ist', () => {
+    const data = chartWithMeta([10, 11, 12], { regularMarketPrice: 12.5, regularMarketTime: T + 2 * DAY + 8 * 3600 });
+    expect(parseYahooCloses(data)).toEqual({ closes: [12, 11, 10], currency: null, asOf: new Date((T + 2 * DAY) * 1000).toISOString() });
+  });
+  it('ohne Metadaten-Preis bleibt alles wie bisher', () => {
+    const data = chartWithMeta([10, 11, null], {});
+    expect(parseYahooCloses(data)).toEqual({ closes: [11, 10], currency: null, asOf: new Date((T + DAY) * 1000).toISOString() });
+  });
+  it('ein unbrauchbarer Metadaten-Preis wird ignoriert', () => {
+    const data = chartWithMeta([10, 11, null], { regularMarketPrice: 'x', regularMarketTime: T + 5 * DAY });
+    expect(parseYahooCloses(data)).toEqual({ closes: [11, 10], currency: null, asOf: new Date((T + DAY) * 1000).toISOString() });
+  });
+});
+
+describe('yahooTicker (Umleitung)', () => {
+  it('leitet FWRG.DE auf die Mailänder Notierung desselben ETFs um', () => {
+    expect(yahooTicker('FWRG.DE')).toBe('FWRA.MI');
+    expect(yahooTicker('fwrg.de')).toBe('FWRA.MI');
+  });
+  it('alle anderen Ticker bleiben unverändert', () => {
+    expect(yahooTicker('RHM.DE')).toBe('RHM.DE');
+    expect(yahooTicker('AVGO')).toBe('AVGO');
+  });
+});
+
+describe('describePriceDate', () => {
+  it('zeigt das Kursdatum', () => {
+    expect(describePriceDate('2026-09-18T15:35:00Z', '2026-09-19T10:00:00Z')).toEqual({ text: 'Kurs vom 18.09.2026', stale: false });
+  });
+  it('Wochenende (2 Tage) ist noch nicht veraltet', () => {
+    expect(describePriceDate('2026-09-18T15:35:00Z', '2026-09-20T18:00:00Z')?.stale).toBe(false);
+  });
+  it('mehr als 4 Tage vor dem Lauf ist veraltet', () => {
+    expect(describePriceDate('2026-09-10T15:00:00Z', '2026-09-19T10:00:00Z')).toEqual({ text: 'Kurs vom 10.09.2026', stale: true });
+  });
+  it('ohne Kursdatum (alte Ergebnisse) nichts anzeigen', () => {
+    expect(describePriceDate(null, '2026-09-19T10:00:00Z')).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, json, boolean } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, json, boolean, mediumtext } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -583,8 +583,34 @@ export const waechterErgebnisse = mysqlTable("waechter_ergebnisse", {
   currency: varchar("currency", { length: 8 }),
   // Wann Rafael den KI-Text zu dieser Position (in diesem Lauf) kopiert hat
   promptCopiedAt: timestamp("promptCopiedAt"),
+  // Datum des Kurses, mit dem gerechnet wurde (macht veraltete Kurse sichtbar)
+  priceAsOf: timestamp("priceAsOf"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type WaechterLauf = typeof waechterLaeufe.$inferSelect;
 export type WaechterErgebnis = typeof waechterErgebnisse.$inferSelect;
+
+/**
+ * Wächter-Auswertung: gespeicherte KI-Analysen je Position. Rohtext bleibt immer erhalten
+ * (MEDIUMTEXT, bis 60.000 Zeichen à bis zu 4 Byte). Angezeigt wird je Position die neueste.
+ */
+export const waechterAnalysen = mysqlTable("waechter_analysen", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  positionId: int("positionId").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  runId: int("runId"),
+  trendAtAnalysis: mysqlEnum("trendAtAnalysis", ["GRUEN", "GELB", "ROT", "KEINE_DATEN"]).notNull(),
+  priceAtAnalysis: decimal("priceAtAnalysis", { precision: 18, scale: 4 }),
+  grundlage: mysqlEnum("grundlage", ["intakt", "verschlechtert", "unklar"]).notNull(),
+  datenlage: mysqlEnum("datenlage", ["gut", "widerspruechlich", "duenn"]).notNull(),
+  begruendung: text("begruendung"),
+  offen: text("offen"),
+  rawText: mediumtext("rawText").notNull(),
+  kiName: varchar("kiName", { length: 40 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type WaechterAnalyse = typeof waechterAnalysen.$inferSelect;

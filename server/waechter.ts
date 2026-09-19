@@ -21,6 +21,7 @@ import {
   detectChange,
   getActionHint,
   parseYahooCloses,
+  yahooTicker,
   type TrendResult,
   type TrendSignal,
   type WaechterResultRow,
@@ -47,7 +48,7 @@ async function getOwnRun(db: Db, userId: number, runId: number) {
 type ErgebnisFelder = Pick<
   typeof waechterErgebnisse.$inferSelect,
   | "positionId" | "ticker" | "name" | "wkn" | "signal" | "signalDetail" | "price" | "sma50" | "sma200"
-  | "prevSignal" | "isProxy" | "positionType" | "currency" | "promptCopiedAt"
+  | "prevSignal" | "isProxy" | "positionType" | "currency" | "promptCopiedAt" | "priceAsOf"
 >;
 
 /** Schluessel, unter dem Twelve Data den Kurs abruft (US-Zwilling bzw. Symbol:Boerse). */
@@ -88,6 +89,7 @@ function toResultRow(r: ErgebnisFelder): WaechterResultRow {
     proxySymbol: isProxy ? symbolKey(r.ticker) : null,
     entryThesis: null,
     promptCopiedAt: r.promptCopiedAt ? r.promptCopiedAt.toISOString() : null,
+    priceAsOf: r.priceAsOf ? r.priceAsOf.toISOString() : null,
   };
 }
 
@@ -129,7 +131,7 @@ export async function startWaechterRun(userId: number) {
 }
 
 type FetchResult =
-  | { closes: number[]; currency: string | null }
+  | { closes: number[]; currency: string | null; asOf?: string }
   | { error: string; retryable: boolean };
 
 async function fetchCloses(ticker: string, apiKey: string): Promise<FetchResult> {
@@ -142,17 +144,20 @@ async function fetchCloses(ticker: string, apiKey: string): Promise<FetchResult>
     const e = classifyTwelveDataError(data.code, data.message, symbol);
     return { error: e.text, retryable: e.retryable };
   }
+  const newest = typeof data.values[0]?.datetime === "string" ? data.values[0].datetime.slice(0, 10) : null;
   return {
     closes: data.values.map((v: any) => parseFloat(v.close)),
     currency: typeof data.meta?.currency === "string" ? data.meta.currency : null,
+    // Tagesdatum des neuesten Kurses (Mittag UTC, damit die Zeitzone das Datum nicht verschiebt)
+    asOf: newest ? `${newest}T12:00:00.000Z` : undefined,
   };
 }
 
 /** Yahoo Finance mit dem ECHTEN Ticker der Position (z. B. RHM.DE, ASWC.DE). Inoffizielle Schnittstelle. */
-async function fetchYahooCloses(ticker: string): Promise<{ closes: number[]; currency: string | null } | { error: string }> {
+async function fetchYahooCloses(ticker: string): Promise<{ closes: number[]; currency: string | null; asOf?: string } | { error: string }> {
   try {
     const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1y`,
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooTicker(ticker))}?interval=1d&range=1y`,
       {
         headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
         signal: AbortSignal.timeout(15000),
@@ -165,9 +170,16 @@ async function fetchYahooCloses(ticker: string): Promise<{ closes: number[]; cur
 }
 
 const noData = (detail: string): TrendResult => ({ signal: "KEINE_DATEN", detail, price: null, sma50: null, sma200: null });
-const YAHOO_SUFFIX = " · Quelle: Yahoo Finance";
+/** Zusatz im Signaltext; bei umgeleiteter Notierung (z. B. FWRG.DE -> FWRA.MI) mit Hinweis. */
+const yahooSuffix = (ticker: string) => {
+  const y = yahooTicker(ticker);
+  return " · Quelle: Yahoo Finance" + (y !== ticker ? ` (Notierung ${y})` : "");
+};
 
-type Resolved = { trend: TrendResult; currency: string | null; retryable: boolean; usedYahoo: boolean; tdCalls: number };
+type Resolved = {
+  trend: TrendResult; currency: string | null; asOf: string | null;
+  retryable: boolean; usedYahoo: boolean; tdCalls: number;
+};
 
 /** Holt die Kurse einer Position aus der passenden Quelle (siehe Kopfkommentar). */
 async function resolveTrend(ticker: string, apiKey: string): Promise<Resolved> {
@@ -178,7 +190,7 @@ async function resolveTrend(ticker: string, apiKey: string): Promise<Resolved> {
     const y = await fetchYahooCloses(ticker);
     if ("closes" in y) {
       const t = computeTrendSignal(y.closes);
-      return { trend: { ...t, detail: t.detail + YAHOO_SUFFIX }, currency: y.currency, retryable: false, usedYahoo: true, tdCalls: 0 };
+      return { trend: { ...t, detail: t.detail + yahooSuffix(ticker) }, currency: y.currency, asOf: y.asOf ?? null, retryable: false, usedYahoo: true, tdCalls: 0 };
     }
     yahooError = y.error;
   }
@@ -189,27 +201,27 @@ async function resolveTrend(ticker: string, apiKey: string): Promise<Resolved> {
   } catch (err: any) {
     return {
       trend: noData(`Abruf fehlgeschlagen: ${String(err?.message ?? err).slice(0, 140)}`),
-      currency: null, retryable: true, usedYahoo: false, tdCalls: 1,
+      currency: null, asOf: null, retryable: true, usedYahoo: false, tdCalls: 1,
     };
   }
   if ("closes" in fetched) {
-    return { trend: computeTrendSignal(fetched.closes), currency: fetched.currency, retryable: false, usedYahoo: false, tdCalls: 1 };
+    return { trend: computeTrendSignal(fetched.closes), currency: fetched.currency, asOf: fetched.asOf ?? null, retryable: false, usedYahoo: false, tdCalls: 1 };
   }
   if (fetched.retryable) {
     // Minuten-Limit: nicht bei Yahoo suchen, der Browser holt es nach einer Pause nach
-    return { trend: noData(fetched.error), currency: null, retryable: true, usedYahoo: false, tdCalls: 1 };
+    return { trend: noData(fetched.error), currency: null, asOf: null, retryable: true, usedYahoo: false, tdCalls: 1 };
   }
   if (!hasTwin) {
     const y = await fetchYahooCloses(ticker);
     if ("closes" in y) {
       const t = computeTrendSignal(y.closes);
-      return { trend: { ...t, detail: t.detail + YAHOO_SUFFIX }, currency: y.currency, retryable: false, usedYahoo: true, tdCalls: 1 };
+      return { trend: { ...t, detail: t.detail + yahooSuffix(ticker) }, currency: y.currency, asOf: y.asOf ?? null, retryable: false, usedYahoo: true, tdCalls: 1 };
     }
     yahooError = y.error;
   }
   return {
     trend: noData(yahooError ? `${fetched.error} · ${yahooError}` : fetched.error),
-    currency: null, retryable: false, usedYahoo: false, tdCalls: 1,
+    currency: null, asOf: null, retryable: false, usedYahoo: false, tdCalls: 1,
   };
 }
 
@@ -291,6 +303,7 @@ export async function checkWaechterChunk(
         positionType: p.type,
         currency: r.currency,
         promptCopiedAt: null,
+        priceAsOf: r.asOf ? new Date(r.asOf) : null,
       };
       await db
         .delete(waechterErgebnisse)

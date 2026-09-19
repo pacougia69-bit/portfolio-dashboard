@@ -442,12 +442,48 @@ async function runDatabaseMigration() {
       if (!eExisting.has('promptCopiedAt')) {
         await wConn.query(`ALTER TABLE waechter_ergebnisse ADD COLUMN promptCopiedAt TIMESTAMP NULL DEFAULT NULL`);
       }
+      if (!eExisting.has('priceAsOf')) {
+        await wConn.query(`ALTER TABLE waechter_ergebnisse ADD COLUMN priceAsOf TIMESTAMP NULL DEFAULT NULL`);
+      }
       console.log('✅ Wächter tables ready');
     } finally {
       await wConn.end();
     }
   } catch (wError: any) {
     console.error('⚠️  Error ensuring Wächter tables:', wError?.message || wError);
+  }
+
+  // === Wächter-Auswertung: gespeicherte KI-Analysen ===
+  try {
+    console.log('🔍 Checking waechter_analysen table...');
+    const waConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await waConn.query(`
+        CREATE TABLE IF NOT EXISTS waechter_analysen (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          positionId INT NOT NULL,
+          ticker VARCHAR(20) NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          runId INT NULL,
+          trendAtAnalysis ENUM('GRUEN','GELB','ROT','KEINE_DATEN') NOT NULL,
+          priceAtAnalysis DECIMAL(18,4) NULL,
+          grundlage ENUM('intakt','verschlechtert','unklar') NOT NULL,
+          datenlage ENUM('gut','widerspruechlich','duenn') NOT NULL,
+          begruendung TEXT NULL,
+          offen TEXT NULL,
+          rawText MEDIUMTEXT NOT NULL,
+          kiName VARCHAR(40) NULL,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          INDEX idx_waechter_analysen_pos (userId, positionId, createdAt)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ waechter_analysen table ready');
+    } finally {
+      await waConn.end();
+    }
+  } catch (waError: any) {
+    console.error('⚠️  Error ensuring waechter_analysen table:', waError?.message || waError);
   }
 
   // === Fix UNIQUE constraint: remove global unique, add per-user composite ===

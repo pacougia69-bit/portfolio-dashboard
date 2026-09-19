@@ -5,6 +5,7 @@
  */
 import { DEFAULT_TARGET_ALLOCATIONS } from './strategy';
 import { THEMENWETTEN_KILL_KRITERIEN, formatDateDe, isKiWette, positionKind, type TrendSignal } from './waechter';
+import { BEURTEILUNGS_BLOCK_LINES } from './waechter-auswertung';
 
 export interface WaechterPromptInput {
   name: string;
@@ -23,6 +24,7 @@ export interface WaechterPromptInput {
   runAt: string | null; // ISO: Lauf, aus dem die Zahlen stammen
   prevRunAt: string | null; // ISO: vorheriger Lauf
   entryThesis: { these: string; exitThese: string; analysedAt: string } | null;
+  priceAsOf?: string | null; // Datum des Kurses (ISO), damit veraltete Kurse auffallen
   // Nur auf Wunsch (Schalter im Fenster): Namen der uebrigen Positionen, keine Betraege
   otherPositions?: string[] | null;
 }
@@ -63,6 +65,7 @@ export function buildWaechterPrompt(p: WaechterPromptInput): string {
     : undefined;
   const idPart = p.wkn ? `, ${isIsin(p.wkn) ? 'ISIN' : 'WKN'}: ${p.wkn}` : '';
   const cur = p.currency ? ` ${p.currency}` : '';
+  const stand = p.priceAsOf ? ` (Stand ${formatDateDe(p.priceAsOf)})` : '';
 
   const lines: string[] = [];
   lines.push('Bitte prüfe diese Position aus meinem Depot genauer (Einordnung der Grundlagen, kein Kursziel).');
@@ -70,7 +73,7 @@ export function buildWaechterPrompt(p: WaechterPromptInput): string {
   lines.push(`Position: ${p.name} (Ticker: ${p.ticker}${idPart})`);
   lines.push(`Art der Position: ${KIND_LABEL[kind]}`);
   lines.push(
-    `Trend-Signal meines Wächters${p.runAt ? ` (Lauf vom ${formatDateDe(p.runAt)})` : ''}: ${p.signal} – ${p.signalDetail.replace(/ · Quelle: Yahoo Finance$/, '')}` +
+    `Trend-Signal meines Wächters${p.runAt ? ` (Lauf vom ${formatDateDe(p.runAt)})` : ''}: ${p.signal} – ${p.signalDetail.replace(/ · Quelle: Yahoo Finance.*$/, '')}` +
       (p.prevSignal
         ? ` (beim letzten Lauf${p.prevRunAt ? ` am ${formatDateDe(p.prevRunAt)}` : ''}: ${p.prevSignal})`
         : ''),
@@ -82,9 +85,9 @@ export function buildWaechterPrompt(p: WaechterPromptInput): string {
         p.proxySymbol ? `zum US-Vergleichswert ${p.proxySymbol}` : 'zu einem US-Vergleichswert'
       } (Näherung, kann bei Ländern und Branchen vom ETF abweichen).`,
     );
-    lines.push(`Kurs des Vergleichswerts: ${fmt(p.price)}${cur}, ${sma}`);
+    lines.push(`Kurs des Vergleichswerts: ${fmt(p.price)}${cur}${stand}, ${sma}`);
   } else {
-    lines.push(`Kurs: ${fmt(p.price)}${cur}, ${sma}`);
+    lines.push(`Kurs: ${fmt(p.price)}${cur}${stand}, ${sma}`);
   }
   if (baustein) {
     lines.push(`Rolle in meiner Strategie: ${baustein.shortLabel}, Ziel-Anteil ${baustein.targetPercent} % am ETF-Depot.`);
@@ -115,5 +118,8 @@ export function buildWaechterPrompt(p: WaechterPromptInput): string {
       'lässt du weg – erfinde keine Zahlen. Kennzeichne unsichere oder nicht überprüfbare Angaben ausdrücklich. ' +
       'Das ist keine Anlageberatung; die Entscheidung treffe ich selbst.',
   );
+  // Fester Schlussblock, den das Dashboard beim Einfügen der KI-Antwort erkennt (Auswertung)
+  lines.push('');
+  BEURTEILUNGS_BLOCK_LINES.forEach((l) => lines.push(l));
   return lines.join('\n');
 }

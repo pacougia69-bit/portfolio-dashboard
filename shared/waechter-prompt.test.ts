@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildWaechterPrompt, type WaechterPromptInput } from './waechter-prompt';
+import { parseBeurteilung } from './waechter-auswertung';
 
 // Ein ETF mit US-Vergleichswert (Näherung), wie beim Future-of-Defence-ETF im Live-Test
 const etf: WaechterPromptInput = {
@@ -139,5 +140,41 @@ describe('buildWaechterPrompt: übrige Positionen (nur auf Wunsch)', () => {
     const t = buildWaechterPrompt({ ...aktie, otherPositions: ['Amazon', 'Rheinmetall AG'] });
     expect(t).toContain('Meine übrigen Positionen (nur Namen, keine Beträge): Amazon, Rheinmetall AG');
     expect(t).toContain('Überschneidungen konkret');
+  });
+});
+
+describe('buildWaechterPrompt: Kursdatum und Yahoo-Zusatz', () => {
+  it('nennt das Datum des Kurses, damit veraltete Kurse auffallen', () => {
+    const t = buildWaechterPrompt({ ...aktie, priceAsOf: '2026-09-18T15:35:00Z' });
+    expect(t).toContain('Kurs: 357.61 USD (Stand 18.09.2026), SMA 50');
+  });
+  it('bei Vergleichswert steht das Datum auch dabei', () => {
+    const t = buildWaechterPrompt({ ...etf, priceAsOf: '2026-09-18T15:35:00Z' });
+    expect(t).toContain('Kurs des Vergleichswerts: 123.46 USD (Stand 18.09.2026), SMA 50');
+  });
+  it('ohne Datum bleibt der Text wie bisher', () => {
+    expect(buildWaechterPrompt({ ...aktie, priceAsOf: null })).toContain('Kurs: 357.61 USD, SMA 50');
+  });
+  it('lässt auch den Zusatz mit Notierung im Signaltext weg', () => {
+    const t = buildWaechterPrompt({ ...aktie, signalDetail: 'Aufwärtstrend (Golden Cross) · Quelle: Yahoo Finance (Notierung FWRA.MI)' });
+    expect(t).toContain('ROT – Aufwärtstrend (Golden Cross) (beim letzten Lauf: ROT)');
+    expect(t).not.toContain('Notierung');
+  });
+});
+
+describe('buildWaechterPrompt: Beurteilungsblock für die Auswertung', () => {
+  it('steht in allen drei Arten am Ende, nach den Leitplanken', () => {
+    const kryptoVariante = { ...aktie, name: 'Bitcoin ETP', ticker: 'CBTC.SW', wkn: 'A3GZ2Z', positionType: 'Krypto' };
+    for (const p of [etf, aktie, kryptoVariante]) {
+      const t = buildWaechterPrompt(p);
+      expect(t).toContain('BEURTEILUNG\nGRUNDLAGE: intakt | verschlechtert | unklar\nDATENLAGE: gut | widersprüchlich | dünn');
+      expect(t.indexOf('BEURTEILUNG')).toBeGreaterThan(t.indexOf('Das ist keine Anlageberatung'));
+    }
+  });
+  it('die Erkennung liest den echten Block hinter dem zitierten Prompt-Block', () => {
+    const antwort =
+      buildWaechterPrompt(aktie) +
+      '\n\n--- Antwort der KI ---\nMeine Analyse ...\n\nBEURTEILUNG\nGRUNDLAGE: verschlechtert\nDATENLAGE: gut\nBEGRÜNDUNG: Ziele gesenkt.\nOFFEN: nichts';
+    expect(parseBeurteilung(antwort)).toEqual({ grundlage: 'verschlechtert', datenlage: 'gut', begruendung: 'Ziele gesenkt.', offen: 'nichts' });
   });
 });

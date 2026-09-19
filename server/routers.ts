@@ -84,6 +84,8 @@ import { fetchTechnicalData, researchThese } from "./einstiegsanalyse";
 import { generateMorningNote, getLatestMorningNote, getMorningNoteHistory } from "./morning-note";
 import { generateKiExperimentRun, getLatestKiExperimentRun, getKiExperimentHistory, refreshKiExperimentPrices, getKiExperimentStats } from "./ki-experiment";
 import { startWaechterRun, checkWaechterChunk, finishWaechterRun, getLatestWaechterRun, getWaechterLastChecked, setPositionMuted, markWaechterPromptCopied } from "./waechter";
+import { saveWaechterAnalysen, listWaechterAnalysen, deleteWaechterAnalyse } from "./waechter-analysen";
+import { ANALYSE_RAW_MAX } from "@shared/waechter-auswertung";
 
 // Aktualisiert alle echten Hebelprodukt-Positionen (type === "Hebelprodukt") eines
 // Users per onvista-Scraper (WKN-basiert, kein Ticker) - genutzt von prices.fetch
@@ -2027,6 +2029,33 @@ export const appRouter = router({
       .input(z.object({ positionId: z.number().int() }))
       .mutation(async ({ ctx, input }) => {
         return markWaechterPromptCopied(ctx.user.id, input.positionId);
+      }),
+
+    // Auswertung: KI-Antwort samt erkannter Felder speichern (gilt auf Wunsch auch für Positionen mit gleichem Ticker)
+    saveAnalyse: protectedProcedure
+      .input(
+        z.object({
+          positionIds: z.array(z.number().int()).min(1).max(5),
+          rawText: z.string().min(1).max(ANALYSE_RAW_MAX),
+          grundlage: z.enum(["intakt", "verschlechtert", "unklar"]),
+          datenlage: z.enum(["gut", "widerspruechlich", "duenn"]),
+          begruendung: z.string().max(2000).default(""),
+          offen: z.string().max(1000).default(""),
+          kiName: z.string().max(40).optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        return saveWaechterAnalysen(ctx.user.id, input);
+      }),
+
+    listAnalysen: protectedProcedure.query(async ({ ctx }) => {
+      return listWaechterAnalysen(ctx.user.id);
+    }),
+
+    deleteAnalyse: protectedProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        return deleteWaechterAnalyse(ctx.user.id, input.id);
       }),
 
     setMuted: protectedProcedure

@@ -47,6 +47,8 @@ export interface WaechterResultRow {
   entryThesis: { these: string; exitThese: string; analysedAt: string } | null;
   // Wann Rafael den KI-Text zu dieser Position (in diesem Lauf) kopiert hat; null = noch nicht
   promptCopiedAt: string | null;
+  // Datum des Kurses, mit dem gerechnet wurde (ISO); null bei alten Ergebnissen. Macht veraltete Kurse sichtbar.
+  priceAsOf: string | null;
 }
 
 /** Kernregel der Ampel: Kurs gegen SMA 50 und SMA 200. Texte 1:1 wie bisher im Router. */
@@ -241,18 +243,64 @@ export function classifyTwelveDataError(
  * Liest die Antwort von Yahoo Finance (v8/finance/chart, interval=1d) und liefert die
  * Schlusskurse mit dem NEUESTEN zuerst (max. 200). Lücken (null) werden entfernt.
  */
-export function parseYahooCloses(data: any): { closes: number[]; currency: string | null } | { error: string } {
+export function parseYahooCloses(data: any): { closes: number[]; currency: string | null; asOf?: string } | { error: string } {
   const result = data?.chart?.result?.[0];
   if (!result) {
     const desc = data?.chart?.error?.description;
     return { error: `Yahoo: ${desc ? String(desc).slice(0, 140) : 'Keine Daten'}` };
   }
   const raw: unknown = result?.indicators?.quote?.[0]?.close;
-  const closes = (Array.isArray(raw) ? raw : [])
+  const rawArr: unknown[] = Array.isArray(raw) ? raw : [];
+  const closes = rawArr
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
-    .reverse()
-    .slice(0, 200);
+    .reverse();
+
+  // Yahoo lässt bei Xetra-Werten manchmal die Schlusskurse der letzten 1-2 Tage leer (null), kennt aber den
+  // aktuellen Kurs in den Metadaten. Ohne Korrektur würde still ein veralteter Kurs benutzt (Bilfinger am 18.09.2026:
+  // 75,55 statt 57,40 EUR nach einem Kurssturz von über 21 %). Ist der Metadaten-Kurs von einem späteren Tag
+  // als der letzte gültige Balken (mind. 12 Stunden später), gilt er als neuester Kurs.
+  const timestamps: unknown[] = Array.isArray(result?.timestamp) ? result.timestamp : [];
+  let lastValidTs: number | null = null;
+  for (let i = Math.min(rawArr.length, timestamps.length) - 1; i >= 0; i--) {
+    if (typeof rawArr[i] === 'number' && Number.isFinite(rawArr[i] as number) && typeof timestamps[i] === 'number') {
+      lastValidTs = timestamps[i] as number;
+      break;
+    }
+  }
+  const metaPrice: unknown = result?.meta?.regularMarketPrice;
+  const metaTime: unknown = result?.meta?.regularMarketTime;
+  let asOfSec: number | null = null; // Zeitpunkt des neuesten verwendeten Kurses
+  if (
+    typeof metaPrice === 'number' && Number.isFinite(metaPrice) &&
+    typeof metaTime === 'number' && Number.isFinite(metaTime) &&
+    lastValidTs !== null && metaTime - lastValidTs >= 12 * 3600
+  ) {
+    closes.unshift(metaPrice);
+    asOfSec = metaTime;
+  } else if (lastValidTs !== null) {
+    asOfSec = lastValidTs;
+  }
+  closes.splice(200);
   if (closes.length === 0) return { error: 'Yahoo: Keine Kursdaten' };
   const currency = typeof result?.meta?.currency === 'string' ? result.meta.currency : null;
-  return { closes, currency };
+  return { closes, currency, asOf: asOfSec !== null ? new Date(asOfSec * 1000).toISOString() : undefined };
+}
+
+// Yahoo kennt manche Xetra-ETFs nicht unter dem Xetra-Kuerzel, aber unter einer anderen Notierung DESSELBEN Fonds
+// (gleiche Waehrung). Geprueft am 19.09.2026: FWRG.DE unbekannt, FWRA.MI = Invesco FTSE All-World UCITS ETF in EUR.
+const YAHOO_TICKER_ALIASES: Record<string, string> = { 'FWRG.DE': 'FWRA.MI' };
+
+/** Ticker, unter dem Yahoo Finance die Kurse liefert (meist derselbe, selten eine andere Notierung des Fonds). */
+export function yahooTicker(ticker: string): string {
+  return YAHOO_TICKER_ALIASES[ticker.trim().toUpperCase()] ?? ticker;
+}
+
+// Ab so vielen Tagen zwischen Kursdatum und Lauf gilt der Kurs als veraltet (Wochenende/Feiertage sind noch ok).
+export const PRICE_STALE_DAYS = 4;
+
+/** "Kurs vom 18.09.2026"; stale = Kurs deutlich aelter als der Lauf. null bei alten Ergebnissen ohne Kursdatum. */
+export function describePriceDate(asOf: string | null, runAt: string | Date | null): { text: string; stale: boolean } | null {
+  if (!asOf) return null;
+  const days = runAt ? Math.floor((new Date(runAt).getTime() - new Date(asOf).getTime()) / 86_400_000) : 0;
+  return { text: `Kurs vom ${formatDateDe(asOf)}`, stale: days > PRICE_STALE_DAYS };
 }

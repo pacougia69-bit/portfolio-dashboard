@@ -19,12 +19,15 @@ import {
   WAECHTER_CHUNK_DELAY_MS,
   WAECHTER_MAX_RETRY_ROUNDS,
   chunkArray,
+  describePriceDate,
   formatDateTimeDe,
   otherPositionNames,
   type TrendSignal,
   type WaechterResultRow,
 } from '@shared/waechter';
 import { buildWaechterPrompt } from '@shared/waechter-prompt';
+import WaechterAuswertung from '@/components/WaechterAuswertung';
+import WaechterAnalyseForm from '@/components/WaechterAnalyseForm';
 
 const DOT: Record<TrendSignal, string> = {
   GRUEN: 'bg-green-500',
@@ -63,6 +66,11 @@ export default function WaechterCard() {
   const portfolio = trpc.portfolio.list.useQuery();
   // Merkt sich serverseitig, dass der Text zu dieser Position (in diesem Lauf) kopiert wurde
   const markCopied = trpc.waechter.markPromptCopied.useMutation({ onSuccess: () => latest.refetch() });
+  const analysen = trpc.waechter.listAnalysen.useQuery();
+  const deleteAnalyse = trpc.waechter.deleteAnalyse.useMutation({
+    onSuccess: () => analysen.refetch(),
+    onError: (e) => toast.error(e.message),
+  });
 
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
@@ -171,6 +179,7 @@ export default function WaechterCard() {
         runAt: latest.data?.run.finishedAt ?? null,
         prevRunAt: latest.data?.run.previousFinishedAt ?? null,
         entryThesis: promptRow.entryThesis,
+        priceAsOf: promptRow.priceAsOf,
         otherPositions: includeOthers
           ? otherPositionNames(
               (portfolio.data ?? []).map((p) => ({ name: p.name, ticker: p.ticker })),
@@ -236,6 +245,12 @@ export default function WaechterCard() {
               Letzter Lauf: {new Date(latest.data.run.finishedAt).toLocaleString('de-DE')} · {latest.data.run.positionenGeprueft} geprüft
               {latest.data.run.positionenOhneDaten > 0 ? ` · ${latest.data.run.positionenOhneDaten} ohne Daten` : ''}
             </p>
+            <WaechterAuswertung
+              results={results}
+              analysen={analysen.data ?? []}
+              onOpenPrompt={openPrompt}
+              onDelete={(id) => deleteAnalyse.mutate({ id })}
+            />
             <div className="overflow-x-auto -mx-3 sm:mx-0">
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
@@ -267,6 +282,15 @@ export default function WaechterCard() {
                           <span>{LABEL[r.signal]}</span>
                         </div>
                         <p className="text-xs text-muted-foreground">{r.signalDetail}</p>
+                        {(() => {
+                          // Kursdatum: veraltete Kurse (mehr als 4 Tage vor dem Lauf) werden orange
+                          const d = describePriceDate(r.priceAsOf, latest.data?.run.finishedAt ?? null);
+                          return d ? (
+                            <p className={`text-xs ${d.stale ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                              {d.text}{d.stale ? ' – veraltet' : ''}
+                            </p>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="p-2">
                         <Badge variant={r.change === 'verschlechtert' ? 'destructive' : 'secondary'} className="text-xs">
@@ -308,7 +332,7 @@ export default function WaechterCard() {
       </CardContent>
 
       <Dialog open={promptRow !== null} onOpenChange={(open) => !open && setPromptRow(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Genauer ansehen: {promptRow?.name}</DialogTitle>
             <DialogDescription>
@@ -331,6 +355,19 @@ export default function WaechterCard() {
           <Button onClick={copyPrompt}>
             <Copy className="w-4 h-4 mr-1" /> Text kopieren
           </Button>
+          {promptRow && (
+            <div className="space-y-2 border-t border-border pt-3">
+              <p className="text-sm font-medium">Antwort der KI einfügen (für die Auswertung)</p>
+              <WaechterAnalyseForm
+                key={promptRow.positionId}
+                positionId={promptRow.positionId}
+                duplicatePositionIds={results
+                  .filter((r) => r.ticker === promptRow.ticker && r.positionId !== promptRow.positionId)
+                  .map((r) => r.positionId)}
+                onSaved={() => analysen.refetch()}
+              />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </Card>
