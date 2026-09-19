@@ -78,10 +78,12 @@ import { fetchLivePrices, fetchLivePricesTwelveData, analyzePortfolio, generateR
 import { fetchOnvistaProductDetail } from "./onvista-scraper";
 import { getEurUsdRate } from "./currency";
 import { DEFAULT_TARGET_ALLOCATIONS } from "@shared/strategy";
+import { classifyTrend, WAECHTER_CHUNK_SIZE } from "@shared/waechter";
 import { fetchTechWarningSnapshot, getLatestTechWarningSnapshot, getTechWarningHistory } from "./tech-warning";
 import { fetchTechnicalData, researchThese } from "./einstiegsanalyse";
 import { generateMorningNote, getLatestMorningNote, getMorningNoteHistory } from "./morning-note";
 import { generateKiExperimentRun, getLatestKiExperimentRun, getKiExperimentHistory, refreshKiExperimentPrices, getKiExperimentStats } from "./ki-experiment";
+import { startWaechterRun, checkWaechterChunk, finishWaechterRun, getLatestWaechterRun, getWaechterLastChecked, setPositionMuted } from "./waechter";
 
 // Aktualisiert alle echten Hebelprodukt-Positionen (type === "Hebelprodukt") eines
 // Users per onvista-Scraper (WKN-basiert, kein Ticker) - genutzt von prices.fetch
@@ -1303,20 +1305,9 @@ export const appRouter = router({
               let signalDetail = '';
 
               if (sma50 && sma200) {
-                const aboveSma50 = currentPrice > sma50;
-                const aboveSma200 = currentPrice > sma200;
-                const goldenCross = sma50 > sma200;
-
-                if (aboveSma50 && aboveSma200) {
-                  signal = 'GRUEN';
-                  signalDetail = goldenCross ? 'Aufwärtstrend (Golden Cross)' : 'Über SMA 50 & 200';
-                } else if (!aboveSma50 && !aboveSma200) {
-                  signal = 'ROT';
-                  signalDetail = sma50 < sma200 ? 'Abwärtstrend (Death Cross)' : 'Unter SMA 50 & 200';
-                } else {
-                  signal = 'GELB';
-                  signalDetail = aboveSma200 ? 'Über SMA 200, unter SMA 50 (Korrektur)' : 'Über SMA 50, unter SMA 200 (Erholung)';
-                }
+                const trend = classifyTrend(currentPrice, sma50, sma200);
+                signal = trend.signal;
+                signalDetail = trend.detail;
               } else if (sma50) {
                 signalDetail = `Nicht genug Daten für SMA 200 (nur ${closes.length} Tage)`;
               } else {
@@ -1997,6 +1988,46 @@ export const appRouter = router({
     getStats: protectedProcedure.query(async ({ ctx }) => {
       return getKiExperimentStats(ctx.user.id);
     }),
+  }),
+
+  // Wächter (Trend-Prüfung auf Knopfdruck, nur lesen - bewegt kein Geld).
+  // Der Browser ruft startRun -> checkChunk (mehrfach, mit Pause) -> finishRun auf.
+  waechter: router({
+    startRun: protectedProcedure.mutation(async ({ ctx }) => {
+      return startWaechterRun(ctx.user.id);
+    }),
+
+    checkChunk: protectedProcedure
+      .input(
+        z.object({
+          runId: z.number().int(),
+          positionIds: z.array(z.number().int()).min(1).max(WAECHTER_CHUNK_SIZE),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        return { results: await checkWaechterChunk(ctx.user.id, input.runId, input.positionIds) };
+      }),
+
+    finishRun: protectedProcedure
+      .input(z.object({ runId: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        return finishWaechterRun(ctx.user.id, input.runId);
+      }),
+
+    getLatest: protectedProcedure.query(async ({ ctx }) => {
+      return getLatestWaechterRun(ctx.user.id);
+    }),
+
+    getLastChecked: protectedProcedure.query(async ({ ctx }) => {
+      return getWaechterLastChecked(ctx.user.id);
+    }),
+
+    setMuted: protectedProcedure
+      .input(z.object({ positionId: z.number().int(), muted: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        await setPositionMuted(ctx.user.id, input.positionId, input.muted);
+        return { success: true as const };
+      }),
   }),
 });
 

@@ -16,12 +16,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { trpc } from '@/lib/trpc';
 import { parseGermanNumber } from '@/lib/utils';
+import WaechterCard from '@/components/WaechterCard';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 import {
   Briefcase, Search, Plus, ArrowUpDown, ArrowUp, ArrowDown,
   Edit, Trash2, RefreshCw, FileJson, Upload, Loader2, TrafficCone, X, CirclePlus,
-  MessageSquare, Copy, Check, SearchCheck, Banknote
+  MessageSquare, Copy, Check, SearchCheck, Banknote, Eye, EyeOff
 } from 'lucide-react';
 
 const formatCurrency = (value: number) => {
@@ -91,6 +92,12 @@ export default function PortfolioPage() {
     onError: (error) => toast.error(error.message),
   });
   
+  // Wächter: Position stumm schalten / wieder aktivieren
+  const setWaechterMuted = trpc.waechter.setMuted.useMutation({
+    onSuccess: () => refetch(),
+    onError: (error) => toast.error(error.message),
+  });
+
   const updatePosition = trpc.portfolio.update.useMutation({
     onSuccess: () => {
       toast.success('Position aktualisiert');
@@ -1166,6 +1173,19 @@ export default function PortfolioPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          title={asset.waechterMuted
+                            ? 'Wächter ignoriert diese Position (klicken zum Aktivieren)'
+                            : 'Wächter prüft diese Position (klicken zum Ignorieren)'}
+                          onClick={() => setWaechterMuted.mutate({ positionId: asset.id, muted: !asset.waechterMuted })}
+                          className="h-8 w-8"
+                        >
+                          {asset.waechterMuted
+                            ? <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                            : <Eye className="w-3.5 h-3.5" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           title="Verkaufen"
                           onClick={() => handleOpenSell(asset)}
                           className="h-8 w-8"
@@ -1202,6 +1222,8 @@ export default function PortfolioPage() {
             </table>
           </div>
         </Card>
+
+        <WaechterCard />
 
         {/* Aktien-Ampel */}
         <Card className="glass-card">

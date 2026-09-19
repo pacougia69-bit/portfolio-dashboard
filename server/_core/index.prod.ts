@@ -382,6 +382,59 @@ async function runDatabaseMigration() {
     console.error('⚠️  Error ensuring portfolio_positions Hebelprodukt columns:', ppError?.message || ppError);
   }
 
+  // === Waechter: Stummschalt-Spalte + Tabellen fuer Laeufe/Ergebnisse ===
+  try {
+    console.log('🔍 Checking Wächter tables...');
+    const wConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      const [wCols]: any = await wConn.query(`
+        SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'portfolio_positions'
+      `);
+      const wExisting = new Set((wCols as any[]).map((c) => c.COLUMN_NAME));
+      if (!wExisting.has('waechterMuted')) {
+        await wConn.query(`ALTER TABLE portfolio_positions ADD COLUMN waechterMuted TINYINT(1) NOT NULL DEFAULT 0`);
+      }
+      await wConn.query(`
+        CREATE TABLE IF NOT EXISTS waechter_laeufe (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          startedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          finishedAt TIMESTAMP NULL DEFAULT NULL,
+          positionenGeprueft INT NOT NULL DEFAULT 0,
+          positionenOhneDaten INT NOT NULL DEFAULT 0,
+          INDEX idx_waechter_laeufe_user (userId, finishedAt)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      await wConn.query(`
+        CREATE TABLE IF NOT EXISTS waechter_ergebnisse (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          runId INT NOT NULL,
+          userId INT NOT NULL,
+          positionId INT NOT NULL,
+          ticker VARCHAR(20) NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          wkn VARCHAR(20) NULL,
+          \`signal\` ENUM('GRUEN','GELB','ROT','KEINE_DATEN') NOT NULL,
+          signalDetail VARCHAR(255) NULL,
+          price DECIMAL(18,4) NULL,
+          sma50 DECIMAL(18,4) NULL,
+          sma200 DECIMAL(18,4) NULL,
+          prevSignal ENUM('GRUEN','GELB','ROT','KEINE_DATEN') NULL,
+          isProxy TINYINT(1) NOT NULL DEFAULT 0,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          INDEX idx_waechter_ergebnisse_run (runId),
+          INDEX idx_waechter_ergebnisse_pos (userId, positionId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ Wächter tables ready');
+    } finally {
+      await wConn.end();
+    }
+  } catch (wError: any) {
+    console.error('⚠️  Error ensuring Wächter tables:', wError?.message || wError);
+  }
+
   // === Fix UNIQUE constraint: remove global unique, add per-user composite ===
   // Sparplan-PDFs teilen sich dieselbe Auftragsnummer, Duplikat-Prüfung läuft jetzt per User im Code
   try {

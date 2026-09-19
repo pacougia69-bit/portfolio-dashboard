@@ -44,6 +44,8 @@ export const portfolioPositions = mysqlTable("portfolio_positions", {
   gearing: decimal("gearing", { precision: 10, scale: 2 }),
   koThreshold: decimal("koThreshold", { precision: 18, scale: 4 }),
   koPufferPct: decimal("koPufferPct", { precision: 10, scale: 2 }),
+  // Waechter: true = diese Position wird vom Waechter NICHT geprueft (Rafaels Haekchen)
+  waechterMuted: boolean("waechterMuted").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -546,3 +548,38 @@ export const musterdepotTransactions = mysqlTable("musterdepot_transactions", {
 export type MusterdepotTransaction = typeof musterdepotTransactions.$inferSelect;
 export type InsertMusterdepotTransaction = typeof musterdepotTransactions.$inferInsert;
 
+
+/**
+ * Waechter (Trend-Pruefung auf Knopfdruck): ein Lauf = eine Pruefung aller Positionen.
+ * finishedAt bleibt NULL, solange der Lauf nicht komplett durch ist (abgebrochene Laeufe
+ * zaehlen nicht als "zuletzt geprueft").
+ */
+export const waechterLaeufe = mysqlTable("waechter_laeufe", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  finishedAt: timestamp("finishedAt"),
+  positionenGeprueft: int("positionenGeprueft").notNull().default(0),
+  positionenOhneDaten: int("positionenOhneDaten").notNull().default(0),
+});
+
+export const waechterErgebnisse = mysqlTable("waechter_ergebnisse", {
+  id: int("id").autoincrement().primaryKey(),
+  runId: int("runId").notNull(),
+  userId: int("userId").notNull(),
+  positionId: int("positionId").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  wkn: varchar("wkn", { length: 20 }),
+  signal: mysqlEnum("signal", ["GRUEN", "GELB", "ROT", "KEINE_DATEN"]).notNull(),
+  signalDetail: varchar("signalDetail", { length: 255 }),
+  price: decimal("price", { precision: 18, scale: 4 }),
+  sma50: decimal("sma50", { precision: 18, scale: 4 }),
+  sma200: decimal("sma200", { precision: 18, scale: 4 }),
+  prevSignal: mysqlEnum("prevSignal", ["GRUEN", "GELB", "ROT", "KEINE_DATEN"]),
+  isProxy: boolean("isProxy").notNull().default(false),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type WaechterLauf = typeof waechterLaeufe.$inferSelect;
+export type WaechterErgebnis = typeof waechterErgebnisse.$inferSelect;

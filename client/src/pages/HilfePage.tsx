@@ -123,6 +123,22 @@ const faqData: FAQItem[] = [
     answer: "Der Knopf 'Zur Einstiegsanalyse hinzufügen' (Lupe mit Haken) springt direkt zur Einstiegsanalyse-Seite und füllt Ticker, WKN und Name der Aktie schon aus. Praktisch, wenn Sie eine bestehende Ampel-Position noch einmal komplett durch die 5-Kriterien-Checkliste prüfen wollen, bevor Sie nachkaufen."
   },
 
+  {
+    category: "ampel",
+    question: "Was ist der Wächter?",
+    answer: "Der Wächter ist ein Knopf auf der Portfolio-Seite (Karte über der Aktien-Ampel). Er prüft auf Knopfdruck den Trend aller deiner Positionen (Kurs gegen SMA 50 und SMA 200, das sind gleitende Durchschnitte) und zeigt, was sich seit dem letzten Lauf geändert hat. Er bewegt kein Geld und gibt keine Kauf- oder Verkaufsanweisung – nur Handlungsstufen wie 'Beobachten' oder 'Kein neues Geld – selbst prüfen'. Ein Volllauf dauert wegen des Kursabruf-Limits ca. 5 Minuten, das Fenster bitte offen lassen. Auf der Startseite steht 'Wächter zuletzt geprüft vor N Tagen' – nach 7 Tagen wird die Zeile orange als stille Erinnerung."
+  },
+  {
+    category: "ampel",
+    question: "Wie schalte ich eine Position für den Wächter stumm?",
+    answer: "In der Portfolio-Tabelle gibt es pro Zeile ein Augen-Symbol. Klick darauf schaltet die Position für den Wächter stumm (durchgestrichenes Auge, orange) – sie wird dann nicht mehr geprüft. Nochmal klicken aktiviert sie wieder. Hebelprodukte prüft der Wächter nie (sie haben den K.O.-Puffer)."
+  },
+  {
+    category: "ampel",
+    question: "Was macht 'Genauer ansehen' beim Wächter?",
+    answer: "Bei Positionen mit Gelb oder Rot erzeugt der Knopf einen fertigen Text mit Kennzahlen, deiner Strategie-Rolle und – bei den KI-ETFs – deinen Kill-Kriterien (Ausstiegs-Kriterien). Du kopierst ihn und fügst ihn in eine KI deiner Wahl ein (Gemini, ChatGPT, Claude). Die App ruft selbst keine KI auf. Die KI soll Kosten, Zusammensetzung und Wirtschaftsumfeld prüfen, aber keine Kauf- oder Verkaufsanweisung geben. Prüfe ihre Angaben immer selbst, KI erfindet manchmal Zahlen."
+  },
+
   // Einstiegsanalyse
   {
     category: "einstiegsanalyse",

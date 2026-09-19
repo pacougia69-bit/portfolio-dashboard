@@ -152,6 +152,11 @@ const PROXY_ONLY_TICKERS = new Set<string>([
 ]);
 
 // Convert ticker to Twelve Data format
+/** true, wenn der Trend fuer diesen Ticker nur ueber einen US-Zwilling angenaehert wird (nicht der echte Kurs). */
+export function isTrendProxyTicker(ticker: string): boolean {
+  return PROXY_ONLY_TICKERS.has(ticker);
+}
+
 export function convertTickerForTwelveData(ticker: string): { symbol: string; exchange?: string; isCrypto?: boolean } {
   const mapped = TICKER_MAPPINGS[ticker];
   if (mapped) {

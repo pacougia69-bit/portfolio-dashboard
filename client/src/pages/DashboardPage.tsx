@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { motion } from 'framer-motion';
 import { trpc } from '@/lib/trpc';
+import WaechterLastChecked from '@/components/WaechterLastChecked';
 import { DEFAULT_TARGET_ALLOCATIONS } from '@shared/strategy';
 import {
   Wallet, TrendingUp, TrendingDown, PieChart as PieChartIcon, BarChart3,
@@ -455,6 +456,9 @@ export default function DashboardPage() {
           <div>
             <h1 className="font-display text-xl sm:text-2xl font-bold">Dashboard</h1>
             <p className="text-muted-foreground text-sm sm:text-base">Übersicht Ihrer Finanzen</p>
+            <div className="mt-2">
+              <WaechterLastChecked />
+            </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
             <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
