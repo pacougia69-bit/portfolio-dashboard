@@ -24,6 +24,7 @@ import {
 import { motion } from 'framer-motion';
 import { trpc } from '@/lib/trpc';
 import WaechterLastChecked from '@/components/WaechterLastChecked';
+import PruefmarkeCard from '@/components/PruefmarkeCard';
 import { DEFAULT_TARGET_ALLOCATIONS } from '@shared/strategy';
 import {
   Wallet, TrendingUp, TrendingDown, PieChart as PieChartIcon, BarChart3,
@@ -993,6 +994,17 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
+          </motion.div>
+        )}
+
+        {/* Prüfmarke: 20 % unter dem Depot-Höchststand */}
+        {snapshots.length >= 1 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+          >
+            <PruefmarkeCard snapshots={snapshots} currentValue={stats.totalValue} />
           </motion.div>
         )}
 
