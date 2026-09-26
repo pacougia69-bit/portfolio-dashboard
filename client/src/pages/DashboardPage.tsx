@@ -26,6 +26,7 @@ import { trpc } from '@/lib/trpc';
 import WaechterLastChecked from '@/components/WaechterLastChecked';
 import PruefmarkeCard from '@/components/PruefmarkeCard';
 import SnapshotLookup from '@/components/SnapshotLookup';
+import RegelnCard from '@/components/RegelnCard';
 import { DEFAULT_TARGET_ALLOCATIONS } from '@shared/strategy';
 import {
   Wallet, TrendingUp, TrendingDown, PieChart as PieChartIcon, BarChart3,
@@ -1008,6 +1009,15 @@ export default function DashboardPage() {
             <PruefmarkeCard snapshots={snapshots} currentValue={stats.totalValue} />
           </motion.div>
         )}
+
+        {/* Meine Regeln (eingeklappt) */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.52 }}
+        >
+          <RegelnCard />
+        </motion.div>
 
         {/* Vermögensverlauf */}
         <motion.div
