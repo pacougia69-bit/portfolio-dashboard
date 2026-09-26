@@ -1326,7 +1326,9 @@ export async function recordSnapshotIfNeeded(userId: number, totalValue: number,
   }
 }
 
-export async function getPortfolioSnapshots(userId: number, days: number = 730) {
+// Standard: praktisch alle gespeicherten Tage (100 Jahre). Frueher nur 730 Tage - dadurch
+// vergass die Pruefmarke einen aelteren Hoechststand und der Verlauf schnitt nach 2 Jahren ab.
+export async function getPortfolioSnapshots(userId: number, days: number = 36500) {
   const db = await getDb();
   if (!db) return [];
 

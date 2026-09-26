@@ -25,6 +25,7 @@ import { motion } from 'framer-motion';
 import { trpc } from '@/lib/trpc';
 import WaechterLastChecked from '@/components/WaechterLastChecked';
 import PruefmarkeCard from '@/components/PruefmarkeCard';
+import SnapshotLookup from '@/components/SnapshotLookup';
 import { DEFAULT_TARGET_ALLOCATIONS } from '@shared/strategy';
 import {
   Wallet, TrendingUp, TrendingDown, PieChart as PieChartIcon, BarChart3,
@@ -1030,7 +1031,7 @@ export default function DashboardPage() {
               {snapshots.length >= 2 ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <ComposedChart data={snapshots.map((s, i) => ({
-                    date: new Date(s.snapshotDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
+                    date: new Date(s.snapshotDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }),
                     Depotwert: s.totalValue,
                     Zuwachs: i > 0 ? s.totalValue - snapshots[i - 1].totalValue : null,
                   }))}>
@@ -1067,7 +1068,7 @@ export default function DashboardPage() {
                         );
                       })}
                     </Bar>
-                    <Line yAxisId="depotwert" type="monotone" dataKey="Depotwert" name="Depotwert" stroke="oklch(0.75 0.15 195)" strokeWidth={2} dot={{ r: 3, fill: 'oklch(0.75 0.15 195)' }} />
+                    <Line yAxisId="depotwert" type="monotone" dataKey="Depotwert" name="Depotwert" stroke="oklch(0.75 0.15 195)" strokeWidth={2} dot={snapshots.length > 120 ? false : { r: 3, fill: 'oklch(0.75 0.15 195)' }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (
@@ -1075,6 +1076,7 @@ export default function DashboardPage() {
                   Noch nicht genug Daten für einen Verlauf — jeder Besuch des Dashboards trägt automatisch den heutigen Stand nach. In ein paar Tagen sehen Sie hier die Entwicklung.
                 </div>
               )}
+              <SnapshotLookup snapshots={snapshots} currentValue={stats.totalValue} />
             </CardContent>
           </Card>
         </motion.div>
