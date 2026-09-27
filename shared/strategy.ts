@@ -18,20 +18,20 @@ export interface TargetAllocation {
 
 export const DEFAULT_TARGET_ALLOCATIONS: TargetAllocation[] = [
   {
-    wkn: 'A2DWBY',
-    name: 'iShares MSCI World Small Cap',
-    shortLabel: 'Small Caps',
-    targetPercent: 37,
-    frozen: false,
-    description: 'MSCI World Small Cap — echte Ergänzung, Sparplan 500 €',
-  },
-  {
     wkn: 'A3D7QX',
     name: 'Invesco FTSE All-World',
     shortLabel: 'Kern',
+    targetPercent: 37,
+    frozen: false,
+    description: 'Invesco FTSE All-World — ganze Welt inkl. EM, Sparplan 500 €',
+  },
+  {
+    wkn: 'A2DWBY',
+    name: 'iShares MSCI World Small Cap',
+    shortLabel: 'Small Caps',
     targetPercent: 22,
     frozen: false,
-    description: 'Invesco FTSE All-World — ganze Welt inkl. EM, Sparplan 300 €',
+    description: 'MSCI World Small Cap — echte Ergänzung, Sparplan 300 €',
   },
   {
     wkn: 'A2N6LC',

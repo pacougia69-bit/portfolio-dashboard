@@ -8,38 +8,37 @@
 - **Build:** Vite (Client) + esbuild (Server) → `dist/`
 - **Deployment:** Railway (Nixpacks), Config in `railway.json`
 
-## Aktuelle Strategie: Depot-Struktur 2026 (Finalplan 06.07.2026, löst 5+1 Wellen ab)
+## Aktuelle Strategie: Depot-Struktur 2026 (Stand 23.08.2026, "eingefroren"-Konzept aufgehoben)
 
-| Baustein | Kategorie | Ziel-% | WKN | Status |
-|----------|-----------|--------|-----|--------|
-| 1 | Kern (All-World) | 39% | A3D7QX | Sparplan 850 €/Monat |
-| 2 | Anleihen (Global Aggregate) | 17% | A2H6ZT | Sparplan 550 €/Monat |
-| 3 | Small Caps | 11% | A2DWBY | Halten |
-| 4 | KI-Wette | 11% | A2N6LC | EINGEFROREN — kein neues Geld, nie Kaufempfehlung |
-| 5 | Defence-Wette | 11% | A3EB9T | EINGEFROREN — kein neues Geld, nie Kaufempfehlung |
-| 6 | iBonds 2030 | 11% | A40KHS | Hält bis Auslauf Ende 2030 |
+| Baustein | Kategorie | Ziel-% | WKN | Sparplan/Monat |
+|----------|-----------|--------|-----|----------------|
+| 1 | Kern (All-World) | 37% | A3D7QX | 500 € |
+| 2 | Small Caps | 22% | A2DWBY | 300 € |
+| 3 | KI-Wette | 19% | A2N6LC | 250 € |
+| 4 | Defence-Wette | 8% | A3EB9T | 100 € |
+| 5 | KI-Infra-Wette | 7% | A40L9T | 100 € |
+| 6 | Digital Security | 7% | A2JMGE | 100 € |
 
-**Summe: 100%** · Verkauft Juli 2026 (Doppelungen): A0RPWH, A111X9, A40L9T, A3D6N1, A113FD
+**Summe: 100%, Sparrate 1.350 €/Monat.** Alle 6 Bausteine aktiv, keine eingefroren (Rafael, 23.08.2026:
+"bitte alle auf aktiv setzen"). Anleihen (A2H6ZT) und iBonds (A40KHS) sind raus, Erlös liegt auf dem
+Tagesgeld. Verkauft Juli 2026 (Doppelungen): A0RPWH, A111X9, A40L9T (später neu dazugekommen als eigener
+Baustein), A3D6N1, A113FD.
 Hintergrund: `C:\Users\rafae\Claude.Dateien\PROJEKTE\Portfolio-Dashboard\ETF-STRATEGIE.md`
 
 ## Wo sind die Zielwerte definiert?
 
-Die Strategie-Prozente müssen an 4 Stellen konsistent sein:
+**Eine Quelle der Wahrheit:** `shared/strategy.ts` (`DEFAULT_TARGET_ALLOCATIONS`). Alle anderen Stellen
+importieren von dort, nichts ist mehr separat gepflegt (Stand 27.09.2026 geprüft):
+`client/src/pages/StrategiePage.tsx`, `client/src/pages/DashboardPage.tsx` (`STRATEGY_TARGETS`),
+`server/routers.ts` (`individualETFTargets`), `server/dkb-parser.ts`, `shared/waechter-prompt.ts`.
+Eine Änderung an der Zielstruktur reicht also in `shared/strategy.ts` allein.
 
-1. **`client/src/pages/StrategiePage.tsx`** — `DEFAULT_ALLOCATIONS` (Zeile ~56)
-   - Wird als Fallback verwendet, wenn der User noch keine eigenen Settings gespeichert hat
-   - Kategorienamen: "Kern (All-World)", "Anleihen (Global Aggregate)", "Small Caps", "KI-Wette (eingefroren)", "Defence-Wette (eingefroren)", "iBonds 2030"
-
-2. **`client/src/pages/DashboardPage.tsx`** — `STRATEGY_TARGETS` (Zeile ~160)
-   - Steuert die Rebalancing-Anzeige und Investment-Vorschläge im Dashboard
-   - Nutzt WKN-basierte Zuordnung; `frozen: true` schließt eine Position von allen Kaufempfehlungen aus
-
-3. **`server/routers.ts`** — `individualETFTargets` (im Sparplan-/Rebalancing-Endpoint, Zeile ~1203)
-   - Server-seitige Rebalancing-Berechnung für die RebalancingPage
-   - Nutzt ebenfalls WKN-basierte Zuordnung
-
-4. **`server/dkb-parser.ts`** — `WKN_STRATEGY_MAP` (Zeile ~21)
-   - Kategorisiert importierte DKB-Abrechnungen; verkaufte WKNs bleiben als "Verkauft 2026" gemappt
+**Wichtig bei den Rebalancing-Berechnungen** (DashboardPage `waveValues`, routers.ts `etfDeficits`):
+Die Prozente (37/22/19/8/7/7) beziehen sich nur auf den ETF-Teil des Depots, nicht aufs Gesamtdepot
+(Einzelaktien, Krypto, Hebel zählen nicht mit) — als Basis für Soll-Werte und Ist-Prozente immer die
+Summe der ETF-Positionen nehmen, nicht `totalValue`. Außerdem beim Zusammenzählen einer Position nach
+WKN `filter()+reduce()` statt `find()` benutzen: A2N6LC steht absichtlich zweimal im Depot (Altbestand
+und neuerer Bestand getrennt geführt), `find()` findet nur den ersten Treffer und unterschlägt den Rest.
 
 ## Deployment (Railway)
 

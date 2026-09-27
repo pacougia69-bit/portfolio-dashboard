@@ -1600,7 +1600,8 @@ export const appRouter = router({
         // 2. Get portfolio positions to get current values
         const positions = await getPortfolioPositions(userId);
 
-        // Calculate total portfolio value from ALL positions
+        // Calculate total portfolio value from ALL positions (nur fuer Anzeige/andere Zwecke -
+        // NICHT als Basis fuer die ETF-Soll-Werte, siehe unten)
         const totalValue = positions.reduce((sum, pos) => {
           const price = pos.currentPrice || pos.buyPrice;
           return sum + (pos.amount * price);
@@ -1610,21 +1611,25 @@ export const appRouter = router({
         // nicht mehr hier fest hinterlegt.
         const individualETFTargets = DEFAULT_TARGET_ALLOCATIONS;
 
+        // Die Prozente (37/22/19/8/7/7) beziehen sich nur auf den ETF-Teil des Depots, nicht aufs
+        // Gesamtdepot (siehe ETF-STRATEGIE.md) - deshalb hier den ETF-Teil separat summieren.
+        // filter()+reduce() statt find(): manche WKNs (z.B. A2N6LC) stehen absichtlich zweimal im
+        // Depot (Altbestand + neuerer Bestand) - find() wuerde den zweiten Eintrag verlieren.
+        const currentValueForWkn = (wkn: string) =>
+          positions
+            .filter(p => p.wkn === wkn)
+            .reduce((sum, p) => sum + p.amount * (p.currentPrice || p.buyPrice), 0);
+        const etfTotal = individualETFTargets.reduce((sum, t) => sum + currentValueForWkn(t.wkn), 0);
+
         // 4. Find matching positions by WKN and calculate deficits
         const etfDeficits: any[] = [];
 
         individualETFTargets.forEach(etfTarget => {
-          // Find position by WKN
+          const currentValue = currentValueForWkn(etfTarget.wkn);
           const position = positions.find(p => p.wkn === etfTarget.wkn);
 
-          let currentValue = 0;
-          if (position) {
-            const price = position.currentPrice || position.buyPrice;
-            currentValue = position.amount * price;
-          }
-
-          const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
-          const targetValue = totalValue * (etfTarget.targetPercent / 100);
+          const currentPercent = etfTotal > 0 ? (currentValue / etfTotal) * 100 : 0;
+          const targetValue = etfTotal * (etfTarget.targetPercent / 100);
           const deficit = targetValue - currentValue;
           const difference = currentPercent - etfTarget.targetPercent;
 

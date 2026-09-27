@@ -217,14 +217,22 @@ export default function DashboardPage() {
       assetsByCategory[category] = (assetsByCategory[category] || 0) + value;
     });
 
-    // Depot-Struktur 2026 Rebalancing
+    // Depot-Struktur 2026 Rebalancing. Die Prozente (37/22/19/8/7/7) beziehen sich nur auf den
+    // ETF-Teil, nicht aufs Gesamtdepot (siehe ETF-STRATEGIE.md) - deshalb hier zuerst den ETF-Teil
+    // summieren und den als Basis fuer Soll-Werte und Ist-Prozente nehmen, nicht totalValue.
+    // filter() statt find(): manche WKNs (z.B. A2N6LC) stehen absichtlich zweimal im Depot
+    // (Altbestand + neuerer Bestand, getrennt gefuehrt) - find() wuerde den zweiten Eintrag verlieren.
+    const currentValueForWkn = (wkn: string) =>
+      portfolio
+        .filter(p => p.wkn === wkn)
+        .reduce((sum, p) => sum + (p.currentPrice ? p.amount * p.currentPrice : p.amount * p.buyPrice), 0);
+
+    const etfTotal = STRATEGY_TARGETS.reduce((sum, target) => sum + currentValueForWkn(target.wkn), 0);
+
     const waveValues = STRATEGY_TARGETS.map(target => {
-      const position = portfolio.find(p => p.wkn === target.wkn);
-      const currentValue = position
-        ? (position.currentPrice ? position.amount * position.currentPrice : position.amount * position.buyPrice)
-        : 0;
-      const targetValue = totalValue * (target.targetPercent / 100);
-      const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
+      const currentValue = currentValueForWkn(target.wkn);
+      const targetValue = etfTotal * (target.targetPercent / 100);
+      const currentPercent = etfTotal > 0 ? (currentValue / etfTotal) * 100 : 0;
 
       return {
         name: target.name,
@@ -238,9 +246,6 @@ export default function DashboardPage() {
         diffPercent: currentPercent - target.targetPercent,
       };
     });
-
-    // ETF total (all waves combined)
-    const etfTotal = waveValues.reduce((sum, w) => sum + w.current, 0);
 
     return {
       totalWealth: totalValue,
