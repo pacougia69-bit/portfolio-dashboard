@@ -295,6 +295,44 @@ export function yahooTicker(ticker: string): string {
   return YAHOO_TICKER_ALIASES[ticker.trim().toUpperCase()] ?? ticker;
 }
 
+// Google Finanzen braucht fuer Nicht-US-Werte die Boerse im Link (SU:EPA). Yahoo-Endung -> Google-Boerse.
+// Geprueft am 15.10.2026: SU:EPA und MELI (US, ohne Boerse ueber die Suche) laden; MC.PA ueber die Suche nicht.
+const GOOGLE_EXCHANGE_BY_SUFFIX: Record<string, string> = {
+  PA: 'EPA',
+  DE: 'ETR',
+  F: 'FRA',
+  MI: 'BIT',
+  L: 'LON',
+  AS: 'AMS',
+  SW: 'SWX',
+  MC: 'BME',
+  VI: 'VIE',
+  BR: 'EBR',
+  ST: 'STO',
+  CO: 'CPH',
+  HE: 'HEL',
+  OL: 'OSL',
+  TO: 'TSE',
+  HK: 'HKG',
+  T: 'TYO',
+};
+
+/**
+ * Link zur Aktie bei Google Finanzen (nur zum Anschauen im Browser, die App liest dort nichts aus).
+ * Mit bekannter Endung (z. B. SU.PA) direkt zur Boerse, sonst (meist US-Werte) ueber die Google-Suche.
+ * null ohne Ticker.
+ */
+export function googleFinanceUrl(ticker: string | null | undefined): string | null {
+  const t = (ticker ?? '').trim().toUpperCase();
+  if (t === '') return null;
+  const dot = t.lastIndexOf('.');
+  if (dot > 0) {
+    const exchange = GOOGLE_EXCHANGE_BY_SUFFIX[t.slice(dot + 1)];
+    if (exchange) return `https://www.google.com/finance/quote/${encodeURIComponent(t.slice(0, dot))}:${exchange}?hl=de`;
+  }
+  return `https://www.google.com/finance/?q=${encodeURIComponent(t)}&hl=de`;
+}
+
 // Ab so vielen Tagen zwischen Kursdatum und Lauf gilt der Kurs als veraltet (Wochenende/Feiertage sind noch ok).
 export const PRICE_STALE_DAYS = 4;
 

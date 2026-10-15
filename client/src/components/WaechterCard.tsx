@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { Loader2, ShieldCheck, Copy, SearchCheck, X, Check } from 'lucide-react';
+import { Loader2, ShieldCheck, Copy, SearchCheck, X, Check, ExternalLink } from 'lucide-react';
 import {
   WAECHTER_CHUNK_SIZE,
   WAECHTER_CHUNK_DELAY_MS,
@@ -21,6 +21,7 @@ import {
   chunkArray,
   describePriceDate,
   formatDateTimeDe,
+  googleFinanceUrl,
   otherPositionNames,
   type TrendSignal,
   type WaechterResultRow,
@@ -299,11 +300,24 @@ export default function WaechterCard() {
                       </td>
                       <td className="p-2 text-xs">{r.actionHint}</td>
                       <td className="p-2 text-right">
-                        {(r.signal === 'GELB' || r.signal === 'ROT') && (
+                        {(
                           <div className="flex flex-col items-end gap-1">
-                            <Button variant={r.promptCopiedAt ? 'secondary' : 'outline'} size="sm" onClick={() => openPrompt(r)}>
-                              <SearchCheck className="w-4 h-4 mr-1" /> {r.promptCopiedAt ? 'Nochmal ansehen' : 'Genauer ansehen'}
-                            </Button>
+                            {(r.signal === 'GELB' || r.signal === 'ROT') && (
+                              <Button variant={r.promptCopiedAt ? 'secondary' : 'outline'} size="sm" onClick={() => openPrompt(r)}>
+                                <SearchCheck className="w-4 h-4 mr-1" /> {r.promptCopiedAt ? 'Nochmal ansehen' : 'Genauer ansehen'}
+                              </Button>
+                            )}
+                            {googleFinanceUrl(r.ticker) && (
+                              <a
+                                href={googleFinanceUrl(r.ticker) ?? undefined}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                                title="Öffnet die Aktie bei Google Finanzen in einem neuen Tab (kostenlos, dort steht oft, warum der Kurs sich bewegt hat)"
+                              >
+                                <ExternalLink className="w-3 h-3" /> Bei Google ansehen
+                              </a>
+                            )}
                             {r.promptCopiedAt && (
                               <span className="flex items-center gap-1 text-xs text-green-400">
                                 <Check className="w-3 h-3" /> Text kopiert {formatDateTimeDe(r.promptCopiedAt)}
@@ -351,6 +365,21 @@ export default function WaechterCard() {
               Der Text wird in ein fremdes Chatfenster kopiert. Standard: aus.
             </Label>
           </div>
+          {promptRow && googleFinanceUrl(promptRow.ticker) && (
+            <p className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground">
+              Tipp: Bei{' '}
+              <a
+                href={googleFinanceUrl(promptRow.ticker) ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                Google Finanzen
+              </a>{' '}
+              steht oft, warum sich der Kurs bewegt hat. Den Text kannst du unten an den Prompt hängen. Er ist KI-erzeugt und
+              nicht geprüft, also als Hinweis nehmen, nicht als Beleg.
+            </p>
+          )}
           <Textarea readOnly value={promptText} rows={16} className="font-mono text-xs" />
           <Button onClick={copyPrompt}>
             <Copy className="w-4 h-4 mr-1" /> Text kopieren

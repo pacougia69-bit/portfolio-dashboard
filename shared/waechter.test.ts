@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyTrend, simpleMovingAverage, computeTrendSignal, detectChange,
   isThemenwette, isKiWette, getActionHint, decideCheckable, describeLastChecked,
-  THEMENWETTEN_WKNS, KI_WETTEN_WKNS, classifyTwelveDataError, chunkArray, WAECHTER_MAX_RETRY_ROUNDS, parseYahooCloses, formatDateDe, positionKind, formatDateTimeDe, otherPositionNames, yahooTicker, describePriceDate,
+  THEMENWETTEN_WKNS, KI_WETTEN_WKNS, classifyTwelveDataError, chunkArray, WAECHTER_MAX_RETRY_ROUNDS, parseYahooCloses, formatDateDe, positionKind, formatDateTimeDe, otherPositionNames, yahooTicker, describePriceDate, googleFinanceUrl,
 } from './waechter';
 import { DEFAULT_TARGET_ALLOCATIONS } from './strategy';
 
@@ -341,5 +341,26 @@ describe('describePriceDate', () => {
   });
   it('ohne Kursdatum (alte Ergebnisse) nichts anzeigen', () => {
     expect(describePriceDate(null, '2026-09-19T10:00:00Z')).toBeNull();
+  });
+});
+
+describe('googleFinanceUrl', () => {
+  it('Nicht-US-Wert mit Yahoo-Endung geht direkt zur Google-Boerse', () => {
+    expect(googleFinanceUrl('SU.PA')).toBe('https://www.google.com/finance/quote/SU:EPA?hl=de');
+    expect(googleFinanceUrl('MC.PA')).toBe('https://www.google.com/finance/quote/MC:EPA?hl=de');
+    expect(googleFinanceUrl('IUSN.DE')).toBe('https://www.google.com/finance/quote/IUSN:ETR?hl=de');
+    expect(googleFinanceUrl('FWRA.MI')).toBe('https://www.google.com/finance/quote/FWRA:BIT?hl=de');
+  });
+  it('US-Wert ohne Endung geht ueber die Google-Suche', () => {
+    expect(googleFinanceUrl('IONQ')).toBe('https://www.google.com/finance/?q=IONQ&hl=de');
+    expect(googleFinanceUrl('meli')).toBe('https://www.google.com/finance/?q=MELI&hl=de');
+  });
+  it('unbekannte Endung faellt auf die Suche zurueck, nie ein kaputter Link', () => {
+    expect(googleFinanceUrl('ABC.XX')).toBe('https://www.google.com/finance/?q=ABC.XX&hl=de');
+  });
+  it('ohne Ticker kein Link', () => {
+    expect(googleFinanceUrl('')).toBeNull();
+    expect(googleFinanceUrl(null)).toBeNull();
+    expect(googleFinanceUrl('   ')).toBeNull();
   });
 });
