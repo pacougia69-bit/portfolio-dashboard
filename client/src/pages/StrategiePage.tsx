@@ -160,7 +160,18 @@ export default function StrategiePage() {
   const etfPositions = useMemo(() => {
     return portfolio.filter(p => p.type === 'ETF');
   }, [portfolio]);
-  
+
+  // Ein Sparplan gehört zu einem ETF (Ticker), nicht zu einer Depot-Position.
+  // Steht ein ETF zweimal im Depot (z. B. XAIX: Altbestand + neuerer Bestand),
+  // gibt es im Sparplan trotzdem nur eine Zeile, sonst würde die Rate doppelt gezählt.
+  const sparEtfs = useMemo(() => {
+    const byTicker = new Map<string, (typeof etfPositions)[number]>();
+    etfPositions.forEach(p => {
+      if (!byTicker.has(p.ticker)) byTicker.set(p.ticker, p);
+    });
+    return Array.from(byTicker.values());
+  }, [etfPositions]);
+
   // Load savings plans into etfSparRates
   useEffect(() => {
     if (savingsPlans.length > 0) {
@@ -199,8 +210,8 @@ export default function StrategiePage() {
   
   // Summe der eingetragenen Sparraten (nur für sichtbare ETFs)
   const totalSparRate = useMemo(() => {
-    return etfPositions.reduce((sum, etf) => sum + (etfSparRates[etf.ticker] || 0), 0);
-  }, [etfPositions, etfSparRates]);
+    return sparEtfs.reduce((sum, etf) => sum + (etfSparRates[etf.ticker] || 0), 0);
+  }, [sparEtfs, etfSparRates]);
   
   // Differenz zur Ziel-Sparrate
   const sparRateDifference = monthlyBudget - totalSparRate;
@@ -310,7 +321,7 @@ export default function StrategiePage() {
       }
       
       // Step 2: Update/create plans for current ETFs
-      for (const etf of etfPositions) {
+      for (const etf of sparEtfs) {
         const rate = etfSparRates[etf.ticker] || 0;
         const existingPlan = existingPlans.find(p => p.ticker === etf.ticker);
         
@@ -378,7 +389,7 @@ export default function StrategiePage() {
   const handleGenerateAiSuggestion = async () => {
     setIsAiLoading(true);
     try {
-      const portfolioSummary = etfPositions.map(p => {
+      const portfolioSummary = sparEtfs.map(p => {
         const target = targetAllocations.find(t => (t as any).wkn && (t as any).wkn === p.wkn);
         return {
           name: p.name,
@@ -386,7 +397,9 @@ export default function StrategiePage() {
           wkn: p.wkn || '',
           category: target ? target.category : (p.category || 'Nicht zugeordnet'),
           frozen: !!(target as any)?.frozen,
-          value: Number(p.amount) * (Number(p.currentPrice) || Number(p.buyPrice)),
+          value: etfPositions
+            .filter(q => q.ticker === p.ticker)
+            .reduce((s, q) => s + Number(q.amount) * (Number(q.currentPrice) || Number(q.buyPrice)), 0),
           currentRate: etfSparRates[p.ticker] || 0,
         };
       });
@@ -783,8 +796,8 @@ Format: Liste jeden aktiven ETF mit dem empfohlenen monatlichen Betrag. Erwähne
                   </div>
                   
                   {/* Einzelne ETFs mit Eingabefeldern */}
-                  {etfPositions.length > 0 ? (
-                    etfPositions.map((etf, index) => {
+                  {sparEtfs.length > 0 ? (
+                    sparEtfs.map((etf, index) => {
                       const currentRate = etfSparRates[etf.ticker] || 0;
                       const percentOfBudget = monthlyBudget > 0 ? (currentRate / monthlyBudget) * 100 : 0;
                       
@@ -834,9 +847,9 @@ Format: Liste jeden aktiven ETF mit dem empfohlenen monatlichen Betrag. Erwähne
                     </div>
                   )}
                   
-                  {etfPositions.length > 0 && (
+                  {sparEtfs.length > 0 && (
                     <div className="flex justify-between pt-4 border-t border-border">
-                      <span className="font-medium">Gesamt ({etfPositions.length} ETFs)</span>
+                      <span className="font-medium">Gesamt ({sparEtfs.length} ETFs)</span>
                       <span className={`font-mono text-xl font-bold ${
                         sparRateDifference === 0 ? 'text-green-500' : 
                         sparRateDifference > 0 ? 'text-amber-500' : 'text-red-500'
