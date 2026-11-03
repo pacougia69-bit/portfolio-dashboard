@@ -123,7 +123,7 @@ export interface Einordnung {
 
 /** Regelbasierte Einordnung, die erste zutreffende Zeile gilt. Nie eine Kauf-/Verkaufsempfehlung. */
 export function deriveEinordnung(i: { trend: TrendSignal; grundlage: Grundlage; datenlage: Datenlage; wkn: string | null }): Einordnung {
-  const regel = i.trend === 'ROT' && isThemenwette(i.wkn) ? 'Deine Regel: ROT → halbieren.' : null;
+  const regel = i.trend === 'ROT' && isThemenwette(i.wkn) ? 'Deine Regel: ROT → nur prüfen.' : null;
 
   if (i.grundlage === 'verschlechtert') {
     return { stufe: 1, text: 'Selbst prüfen – dringend', grund: ['Grundlage verschlechtert', regel].filter(Boolean).join(' · ') };

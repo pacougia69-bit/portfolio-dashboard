@@ -96,7 +96,7 @@ describe('Themenwetten', () => {
 
 describe('getActionHint', () => {
   it('ROT bei Themenwette erinnert an Rafaels eigene Regel', () => {
-    expect(getActionHint('ROT', 'A2N6LC')).toContain('Deine Regel: ROT → halbieren.');
+    expect(getActionHint('ROT', 'A2N6LC')).toContain('Deine Regel: ROT → nur prüfen.');
   });
   it('ROT bei normalem ETF ohne diese Regel', () => {
     const hint = getActionHint('ROT', 'A2DWBY');

@@ -134,7 +134,7 @@ export function getActionHint(signal: TrendSignal, wkn: string | null | undefine
       return 'Beobachten';
     case 'ROT':
       return isThemenwette(wkn)
-        ? 'Kein neues Geld – selbst prüfen. Deine Regel: ROT → halbieren.'
+        ? 'Kein neues Geld – selbst prüfen. Deine Regel: ROT → nur prüfen.'
         : 'Kein neues Geld – selbst prüfen';
     default:
       return 'Ohne Daten – nicht bewertet';

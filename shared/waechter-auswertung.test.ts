@@ -87,7 +87,7 @@ describe('deriveEinordnung', () => {
   });
   it('Stufe 1 nennt bei Themenwette und Rot zusätzlich Rafaels Regel', () => {
     const e = deriveEinordnung({ trend: 'ROT', grundlage: 'verschlechtert', datenlage: 'gut', wkn: 'A2N6LC' });
-    expect(e.grund).toBe('Grundlage verschlechtert · Deine Regel: ROT → halbieren.');
+    expect(e.grund).toBe('Grundlage verschlechtert · Deine Regel: ROT → nur prüfen.');
   });
   it('unklare Grundlage, widersprüchliche oder dünne Daten, fehlender Trend: Stufe 2 mit Grund', () => {
     expect(deriveEinordnung({ ...base, trend: 'GRUEN', grundlage: 'unklar', datenlage: 'gut' })).toEqual({ stufe: 2, text: 'Selbst prüfen', grund: 'Grundlage unklar' });
@@ -100,7 +100,7 @@ describe('deriveEinordnung', () => {
   });
   it('Themenwette mit Rot und intakter Grundlage: Stufe 2 mit Regel', () => {
     const e = deriveEinordnung({ trend: 'ROT', grundlage: 'intakt', datenlage: 'gut', wkn: 'A3EB9T' });
-    expect(e).toEqual({ stufe: 2, text: 'Selbst prüfen', grund: 'Deine Regel: ROT → halbieren.' });
+    expect(e).toEqual({ stufe: 2, text: 'Selbst prüfen', grund: 'Deine Regel: ROT → nur prüfen.' });
   });
   it('normale Position mit Rot und intakter Grundlage: Stufe 3', () => {
     expect(deriveEinordnung({ ...base, trend: 'ROT', grundlage: 'intakt', datenlage: 'gut' })).toEqual({ stufe: 3, text: 'Kein neues Geld, beobachten', grund: null });
