@@ -486,6 +486,34 @@ async function runDatabaseMigration() {
     console.error('⚠️  Error ensuring waechter_analysen table:', waError?.message || waError);
   }
 
+  // === Ausstiegs-Prüfung: gespeicherte Marken je Position ===
+  try {
+    console.log('🔍 Checking ausstiegs_marken table...');
+    const amConn = await mysql.createConnection(DATABASE_URL);
+    try {
+      await amConn.query(`
+        CREATE TABLE IF NOT EXISTS ausstiegs_marken (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          positionId INT NOT NULL,
+          basisKurs DECIMAL(18,4) NOT NULL,
+          verlustPct DECIMAL(6,2) NOT NULL,
+          gewinnPct DECIMAL(7,2) NULL,
+          monate INT NOT NULL DEFAULT 12,
+          notiz VARCHAR(255) NULL,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+          UNIQUE KEY uq_ausstiegs_marken_pos (userId, positionId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('✅ ausstiegs_marken table ready');
+    } finally {
+      await amConn.end();
+    }
+  } catch (amError: any) {
+    console.error('⚠️  Error ensuring ausstiegs_marken table:', amError?.message || amError);
+  }
+
   // === Fix UNIQUE constraint: remove global unique, add per-user composite ===
   // Sparplan-PDFs teilen sich dieselbe Auftragsnummer, Duplikat-Prüfung läuft jetzt per User im Code
   try {

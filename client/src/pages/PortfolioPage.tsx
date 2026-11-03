@@ -17,6 +17,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { trpc } from '@/lib/trpc';
 import { parseGermanNumber } from '@/lib/utils';
 import WaechterCard from '@/components/WaechterCard';
+import AusstiegCard from '@/components/AusstiegCard';
+import { abstandZurMarke } from '@shared/ausstieg';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 import {
@@ -80,6 +82,9 @@ export default function PortfolioPage() {
   
   // Fetch portfolio data
   const { data: portfolio = [], isLoading, refetch } = trpc.portfolio.list.useQuery();
+  // Ausstiegs-Marken (Kaufkarte): je Position, nur als Erinnerung neben dem Namen
+  const { data: ausstiegsMarken = [] } = trpc.ausstieg.listMarken.useQuery();
+  const markenByPosition = useMemo(() => new Map(ausstiegsMarken.map((m) => [m.positionId, m])), [ausstiegsMarken]);
   
   // Mutations
   const createPosition = trpc.portfolio.create.useMutation({
@@ -1130,6 +1135,19 @@ export default function PortfolioPage() {
                       <div>
                         <p className="font-medium text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">{asset.name}</p>
                         <p className="text-xs text-muted-foreground">{asset.ticker}</p>
+                        {(() => {
+                          const m = markenByPosition.get(asset.id);
+                          const a = m && asset.currentPrice ? abstandZurMarke(asset.currentPrice, m.basisKurs, m.verlustPct) : null;
+                          if (!a) return null;
+                          return (
+                            <p
+                              className={`text-[10px] mt-0.5 ${a.abstandPct <= 0 ? 'text-red-400' : 'text-muted-foreground'}`}
+                              title="Verlust-Marke aus der Ausstiegs-Prüfung (Erinnerung für den Prüfgang, kein Verkaufsbefehl)"
+                            >
+                              Marke {formatCurrency(a.markeKurs)} · {a.abstandPct <= 0 ? 'darunter: Prüfgang' : `Abstand +${a.abstandPct.toFixed(0)}%`}
+                            </p>
+                          );
+                        })()}
                       </div>
                     </td>
                     <td className="p-2 sm:p-4 font-mono text-xs text-muted-foreground hidden md:table-cell">
@@ -1224,6 +1242,8 @@ export default function PortfolioPage() {
         </Card>
 
         <WaechterCard />
+
+        <AusstiegCard portfolio={portfolio} />
 
         {/* Aktien-Ampel */}
         <Card className="glass-card">

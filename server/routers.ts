@@ -85,6 +85,7 @@ import { generateMorningNote, getLatestMorningNote, getMorningNoteHistory } from
 import { generateKiExperimentRun, getLatestKiExperimentRun, getKiExperimentHistory, refreshKiExperimentPrices, getKiExperimentStats } from "./ki-experiment";
 import { startWaechterRun, checkWaechterChunk, finishWaechterRun, getLatestWaechterRun, getWaechterLastChecked, setPositionMuted, markWaechterPromptCopied } from "./waechter";
 import { saveWaechterAnalysen, listWaechterAnalysen, deleteWaechterAnalyse } from "./waechter-analysen";
+import { pruefePosition, listMarken, speichereMarken, loescheMarken } from "./ausstieg";
 import { ANALYSE_RAW_MAX } from "@shared/waechter-auswertung";
 
 // Aktualisiert alle echten Hebelprodukt-Positionen (type === "Hebelprodukt") eines
@@ -2068,6 +2069,51 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         await setPositionMuted(ctx.user.id, input.positionId, input.muted);
         return { success: true as const };
+      }),
+  }),
+
+  // Ausstiegs-Prüfung (Kaufkarte 2a/2b): Realitätscheck für Marken, nur rechnen und Marken merken.
+  // Kein Kauf-/Verkaufssignal, bewegt kein Geld.
+  ausstieg: router({
+    pruefen: protectedProcedure
+      .input(
+        z.object({
+          positionId: z.number().int(),
+          verlustPct: z.number().min(-95).max(-1),
+          gewinnPct: z.number().gt(0).max(1000).nullable(),
+          monate: z.number().int().min(1).max(84),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        return pruefePosition(ctx.user.id, input.positionId, {
+          verlustPct: input.verlustPct,
+          gewinnPct: input.gewinnPct,
+          monate: input.monate,
+        });
+      }),
+
+    listMarken: protectedProcedure.query(async ({ ctx }) => {
+      return listMarken(ctx.user.id);
+    }),
+
+    saveMarken: protectedProcedure
+      .input(
+        z.object({
+          positionId: z.number().int(),
+          verlustPct: z.number().min(-95).max(-1),
+          gewinnPct: z.number().gt(0).max(1000).nullable(),
+          monate: z.number().int().min(1).max(84),
+          notiz: z.string().max(255).nullable().optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        return speichereMarken(ctx.user.id, input);
+      }),
+
+    deleteMarken: protectedProcedure
+      .input(z.object({ positionId: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        return loescheMarken(ctx.user.id, input.positionId);
       }),
   }),
 });

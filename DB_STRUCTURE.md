@@ -547,6 +547,12 @@ Felder: `jahr`, `zielbetrag`.
 **Zweck:** Einzelne Verbrauchs-Einträge gegen das Jahresziel, optional verknüpft mit der auslösenden Einstiegsanalyse.
 Felder: `jahr`, `ticker`, `name`, `betrag`, `beschreibung`, `einstiegsanalyseId` (→ `einstiegsanalysen.id`), `datum`.
 
+### 24. `ausstiegs_marken` (Ausstiegs-Prüfung, seit 03.11.2026)
+**Zweck:** Rafaels aktuelle Verlust-/Gewinn-Marken je Position (Kaufkarte 2a/2b). Eine Zeile pro Position (`UNIQUE (userId, positionId)`), Speichern ersetzt. Nur Erinnerung/Realitätscheck, löst nie etwas aus.
+Felder: `userId`, `positionId` (→ `portfolio_positions.id`), `basisKurs` (Depot-Kurs in EUR beim Speichern), `verlustPct` (negativ, z. B. −40,00), `gewinnPct` (positiv oder NULL = kein Gewinn-Ausstieg), `monate` (Zeitraum, Standard 12), `notiz`, `createdAt`, `updatedAt`.
+Die Marken sind Prozent vom `basisKurs`; der Abstand in der Portfolio-Liste rechnet Depot-Kurs gegen `basisKurs × (1 + verlustPct/100)`, deshalb ist die Währung der Yahoo-Kurse egal.
+Backend: `server/ausstieg.ts`, Rechenkern `shared/ausstieg.ts`, tRPC-Namespace `ausstieg.*`. Tabelle wird beim Serverstart in `server/_core/index.prod.ts` idempotent angelegt.
+
 ---
 
 ## Datenbankbeziehungen (ER-Diagramm)

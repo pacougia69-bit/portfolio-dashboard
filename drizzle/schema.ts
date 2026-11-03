@@ -614,3 +614,24 @@ export const waechterAnalysen = mysqlTable("waechter_analysen", {
 });
 
 export type WaechterAnalyse = typeof waechterAnalysen.$inferSelect;
+
+/**
+ * Ausstiegs-Marken je Position (Kaufkarte 2a/2b). Eine Zeile pro Position (Rafaels aktuelle Marken).
+ * Marken sind Prozent vom Basiskurs; basisKurs ist der Depot-Kurs (EUR) beim Speichern, damit der
+ * Abstand später in der Portfolio-Liste ohne Währungsumrechnung berechnet werden kann.
+ * Nur Erinnerung/Realitätscheck, löst nie etwas aus.
+ */
+export const ausstiegsMarken = mysqlTable("ausstiegs_marken", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  positionId: int("positionId").notNull(),
+  basisKurs: decimal("basisKurs", { precision: 18, scale: 4 }).notNull(),
+  verlustPct: decimal("verlustPct", { precision: 6, scale: 2 }).notNull(),
+  gewinnPct: decimal("gewinnPct", { precision: 7, scale: 2 }),
+  monate: int("monate").notNull().default(12),
+  notiz: varchar("notiz", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AusstiegsMarke = typeof ausstiegsMarken.$inferSelect;
