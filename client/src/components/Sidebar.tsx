@@ -29,6 +29,7 @@ import {
   Sunrise,
   Swords,
   Gamepad2,
+  PiggyBank,
 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,7 @@ const navItems = [
   { path: '/strategie', label: 'Strategie', icon: Target },
   { path: '/rebalancing', label: 'Rebalancing', icon: Scale },
   { path: '/dividenden', label: 'Dividenden', icon: Coins },
+  { path: '/eingezahlt-gewinn', label: 'Eingezahlt / Gewinn', icon: PiggyBank },
   { path: '/simulator', label: 'Simulator', icon: Calculator },
   { path: '/notizen', label: 'Notizen', icon: StickyNote },
   { path: '/ki-assistent', label: 'KI-Assistent', icon: Bot },

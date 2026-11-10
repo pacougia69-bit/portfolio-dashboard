@@ -25,6 +25,7 @@ import TechFruehwarnsystemPage from "./pages/TechFruehwarnsystemPage";
 import EinstiegsanalysePage from "./pages/EinstiegsanalysePage";
 import MorningNotePage from "./pages/MorningNotePage";
 import KiExperimentPage from "./pages/KiExperimentPage";
+import EinzahlungenPage from "./pages/EinzahlungenPage";
 
 function Router() {
   return (
@@ -38,6 +39,7 @@ function Router() {
       <Route path="/watchlist" component={WatchlistPage} />
       <Route path="/strategie" component={StrategiePage} />
       <Route path="/dividenden" component={DividendenPage} />
+      <Route path="/eingezahlt-gewinn" component={EinzahlungenPage} />
       <Route path="/simulator" component={SimulatorPage} />
       <Route path="/notizen" component={NotizenPage} />
       <Route path="/rebalancing" component={RebalancingPage} />
