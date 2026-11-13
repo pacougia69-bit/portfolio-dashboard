@@ -1,0 +1,1372 @@
+{
+  "funktionen": 96,
+  "mitSql": 96,
+  "ergebnis": {
+    "upsertUser": {
+      "sql": [
+        {
+          "sql": "insert into `users` (`id`, `openId`, `name`, `email`, `loginMethod`, `role`, `pin`, `createdAt`, `updatedAt`, `lastSignedIn`) values (default, ?, ?, ?, ?, default, default, default, default, ?) on duplicate key update `name` = ?, `email` = ?, `loginMethod` = ?, `lastSignedIn` = ?",
+          "params": [
+            "open-1",
+            "Test",
+            "t@example.com",
+            "pin",
+            "2026-01-15 12:00:00.000",
+            "Test",
+            "t@example.com",
+            "pin",
+            "2026-01-15 12:00:00.000"
+          ]
+        }
+      ]
+    },
+    "getUserByOpenId": {
+      "sql": [
+        {
+          "sql": "select `id`, `openId`, `name`, `email`, `loginMethod`, `role`, `pin`, `createdAt`, `updatedAt`, `lastSignedIn` from `users` where `users`.`openId` = ? limit ?",
+          "params": [
+            "open-1",
+            1
+          ]
+        }
+      ]
+    },
+    "getPortfolioPositions": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt` from `portfolio_positions` where `portfolio_positions`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "createPortfolioPosition": {
+      "sql": [
+        {
+          "sql": "insert into `portfolio_positions` (`id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, ?, default, ?, ?, ?, default, default, default, default, default, default, default, default, default, default, default)",
+          "params": [
+            1,
+            "A1",
+            "AAA",
+            "Alpha",
+            "Aktie",
+            "undefined",
+            "5.5",
+            "6"
+          ]
+        }
+      ]
+    },
+    "updatePortfolioPosition": {
+      "sql": [
+        {
+          "sql": "update `portfolio_positions` set `currentPrice` = ? where (`portfolio_positions`.`id` = ? and `portfolio_positions`.`userId` = ?)",
+          "params": [
+            "7.25",
+            7,
+            1
+          ]
+        }
+      ]
+    },
+    "deletePortfolioPosition": {
+      "sql": [
+        {
+          "sql": "delete from `portfolio_positions` where (`portfolio_positions`.`id` = ? and `portfolio_positions`.`userId` = ?)",
+          "params": [
+            7,
+            1
+          ]
+        }
+      ]
+    },
+    "getWatchlistItems": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `ticker`, `wkn`, `name`, `currentPrice`, `targetPrice`, `notes`, `createdAt`, `updatedAt` from `watchlist_items` where `watchlist_items`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "createWatchlistItem": {
+      "sql": [
+        {
+          "sql": "insert into `watchlist_items` (`id`, `userId`, `ticker`, `wkn`, `name`, `currentPrice`, `targetPrice`, `notes`, `createdAt`, `updatedAt`) values (default, ?, ?, default, ?, ?, ?, default, default, default)",
+          "params": [
+            1,
+            "BBB",
+            "Beta",
+            null,
+            null
+          ]
+        }
+      ]
+    },
+    "updateWatchlistItem": {
+      "sql": [
+        {
+          "sql": "update `watchlist_items` set `name` = ? where (`watchlist_items`.`id` = ? and `watchlist_items`.`userId` = ?)",
+          "params": [
+            "Beta2",
+            3,
+            1
+          ]
+        }
+      ]
+    },
+    "deleteWatchlistItem": {
+      "sql": [
+        {
+          "sql": "delete from `watchlist_items` where (`watchlist_items`.`id` = ? and `watchlist_items`.`userId` = ?)",
+          "params": [
+            3,
+            1
+          ]
+        }
+      ]
+    },
+    "removeFromWatchlistByISINOrWKN": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `ticker`, `wkn`, `name`, `currentPrice`, `targetPrice`, `notes`, `createdAt`, `updatedAt` from `watchlist_items` where (`watchlist_items`.`userId` = ? and `watchlist_items`.`ticker` = ?) limit ?",
+          "params": [
+            1,
+            "DE0000000001",
+            1
+          ]
+        },
+        {
+          "sql": "select `id`, `userId`, `ticker`, `wkn`, `name`, `currentPrice`, `targetPrice`, `notes`, `createdAt`, `updatedAt` from `watchlist_items` where (`watchlist_items`.`userId` = ? and `watchlist_items`.`wkn` = ?) limit ?",
+          "params": [
+            1,
+            "A1",
+            1
+          ]
+        }
+      ]
+    },
+    "getDividends": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `positionId`, `ticker`, `name`, `amount`, `taxAmount`, `paymentDate`, `createdAt` from `dividends` where `dividends`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "getDividends(Jahr)": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `positionId`, `ticker`, `name`, `amount`, `taxAmount`, `paymentDate`, `createdAt` from `dividends` where (`dividends`.`userId` = ? and `dividends`.`paymentDate` >= ? and `dividends`.`paymentDate` <= ?)",
+          "params": [
+            1,
+            "2025-12-31 23:00:00.000",
+            "2026-12-31 22:59:59.000"
+          ]
+        }
+      ]
+    },
+    "createDividend": {
+      "sql": [
+        {
+          "sql": "insert into `dividends` (`id`, `userId`, `positionId`, `ticker`, `name`, `amount`, `taxAmount`, `paymentDate`, `createdAt`) values (default, ?, ?, ?, ?, ?, ?, ?, default)",
+          "params": [
+            1,
+            7,
+            "AAA",
+            "Alpha",
+            "12.5",
+            "3.3",
+            "2026-03-01 00:00:00.000"
+          ]
+        }
+      ]
+    },
+    "deleteDividend": {
+      "sql": [
+        {
+          "sql": "delete from `dividends` where (`dividends`.`id` = ? and `dividends`.`userId` = ?)",
+          "params": [
+            4,
+            1
+          ]
+        }
+      ]
+    },
+    "getNotes": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `title`, `content`, `category`, `createdAt`, `updatedAt` from `notes` where `notes`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "createNote": {
+      "sql": [
+        {
+          "sql": "insert into `notes` (`id`, `userId`, `title`, `content`, `category`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "T",
+            "C",
+            "x"
+          ]
+        }
+      ]
+    },
+    "updateNote": {
+      "sql": [
+        {
+          "sql": "update `notes` set `title` = ? where (`notes`.`id` = ? and `notes`.`userId` = ?)",
+          "params": [
+            "T2",
+            2,
+            1
+          ]
+        }
+      ]
+    },
+    "deleteNote": {
+      "sql": [
+        {
+          "sql": "delete from `notes` where (`notes`.`id` = ? and `notes`.`userId` = ?)",
+          "params": [
+            2,
+            1
+          ]
+        }
+      ]
+    },
+    "getSavingsPlans": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `ticker`, `name`, `monthlyAmount`, `executionDay`, `isActive`, `createdAt`, `updatedAt` from `savings_plans` where `savings_plans`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "createSavingsPlan": {
+      "sql": [
+        {
+          "sql": "insert into `savings_plans` (`id`, `userId`, `ticker`, `name`, `monthlyAmount`, `executionDay`, `isActive`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "XAIX",
+            "AI",
+            "125",
+            1,
+            true
+          ]
+        }
+      ]
+    },
+    "updateSavingsPlan": {
+      "sql": [
+        {
+          "sql": "update `savings_plans` set `monthlyAmount` = ? where (`savings_plans`.`id` = ? and `savings_plans`.`userId` = ?)",
+          "params": [
+            "250",
+            5,
+            1
+          ]
+        }
+      ]
+    },
+    "deleteSavingsPlan": {
+      "sql": [
+        {
+          "sql": "delete from `savings_plans` where (`savings_plans`.`id` = ? and `savings_plans`.`userId` = ?)",
+          "params": [
+            5,
+            1
+          ]
+        }
+      ]
+    },
+    "getPriceCacheForTickers": {
+      "sql": [
+        {
+          "sql": "select `id`, `ticker`, `price`, `changePercent`, `currency`, `lastUpdated` from `price_cache` where `price_cache`.`ticker` in (?, ?)",
+          "params": [
+            "AAA",
+            "BBB"
+          ]
+        }
+      ]
+    },
+    "updatePriceCache": {
+      "sql": [
+        {
+          "sql": "insert into `price_cache` (`id`, `ticker`, `price`, `changePercent`, `currency`, `lastUpdated`) values (default, ?, ?, ?, default, default) on duplicate key update `price` = ?, `changePercent` = ?",
+          "params": [
+            "AAA",
+            "6.5",
+            "1.2",
+            "6.5",
+            "1.2"
+          ]
+        }
+      ]
+    },
+    "importPortfolioData": {
+      "sql": [
+        {
+          "sql": "delete from `portfolio_positions` where `portfolio_positions`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "delete from `watchlist_items` where `watchlist_items`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "insert into `portfolio_positions` (`id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, default, default, default, default, default, default, default, default)",
+          "params": [
+            1,
+            null,
+            "AAA",
+            "Alpha",
+            "Aktie",
+            null,
+            "undefined",
+            "1",
+            null,
+            "Halten",
+            true,
+            null
+          ]
+        },
+        {
+          "sql": "insert into `watchlist_items` (`id`, `userId`, `ticker`, `wkn`, `name`, `currentPrice`, `targetPrice`, `notes`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "BBB",
+            null,
+            "Beta",
+            null,
+            null,
+            null
+          ]
+        }
+      ]
+    },
+    "exportPortfolioData": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt` from `portfolio_positions` where `portfolio_positions`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "select `id`, `userId`, `ticker`, `wkn`, `name`, `currentPrice`, `targetPrice`, `notes`, `createdAt`, `updatedAt` from `watchlist_items` where `watchlist_items`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "select `id`, `userId`, `positionId`, `ticker`, `name`, `amount`, `taxAmount`, `paymentDate`, `createdAt` from `dividends` where `dividends`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "select `id`, `userId`, `title`, `content`, `category`, `createdAt`, `updatedAt` from `notes` where `notes`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "select `id`, `userId`, `ticker`, `name`, `monthlyAmount`, `executionDay`, `isActive`, `createdAt`, `updatedAt` from `savings_plans` where `savings_plans`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "select `id`, `userId`, `date`, `type`, `isin`, `wkn`, `name`, `quantity`, `price`, `fees`, `totalAmount`, `orderNumber`, `invoiceNumber`, `createdAt` from `transactions` where `transactions`.`userId` = ? order by `transactions`.`date` desc",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "select `id`, `userId`, `monthlyBudget`, `targetAllocations`, `retirementTargetSum`, `desiredPension`, `pinEnabled`, `pinHash`, `autoLockMinutes`, `createdAt`, `updatedAt` from `user_settings` where `user_settings`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "saveAiAnalysis": {
+      "sql": [
+        {
+          "sql": "insert into `ai_analyses` (`id`, `userId`, `type`, `targetTicker`, `analysis`, `createdAt`) values (default, ?, ?, ?, ?, default)",
+          "params": [
+            1,
+            "portfolio",
+            "AAA",
+            "Text"
+          ]
+        }
+      ]
+    },
+    "getUserSettings": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `monthlyBudget`, `targetAllocations`, `retirementTargetSum`, `desiredPension`, `pinEnabled`, `pinHash`, `autoLockMinutes`, `createdAt`, `updatedAt` from `user_settings` where `user_settings`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "saveUserSettings": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `monthlyBudget`, `targetAllocations`, `retirementTargetSum`, `desiredPension`, `pinEnabled`, `pinHash`, `autoLockMinutes`, `createdAt`, `updatedAt` from `user_settings` where `user_settings`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "insert into `user_settings` (`id`, `userId`, `monthlyBudget`, `targetAllocations`, `retirementTargetSum`, `desiredPension`, `pinEnabled`, `pinHash`, `autoLockMinutes`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, ?, default, default, default, default, default)",
+          "params": [
+            1,
+            "1350",
+            null,
+            "400000",
+            null
+          ]
+        }
+      ]
+    },
+    "setUserPin": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `monthlyBudget`, `targetAllocations`, `retirementTargetSum`, `desiredPension`, `pinEnabled`, `pinHash`, `autoLockMinutes`, `createdAt`, `updatedAt` from `user_settings` where `user_settings`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "insert into `user_settings` (`id`, `userId`, `monthlyBudget`, `targetAllocations`, `retirementTargetSum`, `desiredPension`, `pinEnabled`, `pinHash`, `autoLockMinutes`, `createdAt`, `updatedAt`) values (default, ?, default, default, default, default, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            true,
+            "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+            10
+          ]
+        }
+      ]
+    },
+    "verifyUserPin": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `monthlyBudget`, `targetAllocations`, `retirementTargetSum`, `desiredPension`, `pinEnabled`, `pinHash`, `autoLockMinutes`, `createdAt`, `updatedAt` from `user_settings` where `user_settings`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "removeUserPin": {
+      "sql": [
+        {
+          "sql": "update `user_settings` set `pinEnabled` = ?, `pinHash` = ? where `user_settings`.`userId` = ?",
+          "params": [
+            false,
+            null,
+            1
+          ]
+        }
+      ]
+    },
+    "getUserPinStatus": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `monthlyBudget`, `targetAllocations`, `retirementTargetSum`, `desiredPension`, `pinEnabled`, `pinHash`, `autoLockMinutes`, `createdAt`, `updatedAt` from `user_settings` where `user_settings`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "createTransaction": {
+      "sql": [
+        {
+          "sql": "insert into `transactions` (`id`, `userId`, `date`, `type`, `isin`, `wkn`, `name`, `quantity`, `price`, `fees`, `totalAmount`, `orderNumber`, `invoiceNumber`, `createdAt`) values (default, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "2026-01-02 00:00:00.000",
+            "Kauf",
+            "DE0000000001",
+            "A1",
+            "Alpha",
+            "1",
+            "2",
+            "0",
+            "2",
+            "undefined"
+          ]
+        }
+      ]
+    },
+    "getTransactions": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `date`, `type`, `isin`, `wkn`, `name`, `quantity`, `price`, `fees`, `totalAmount`, `orderNumber`, `invoiceNumber`, `createdAt` from `transactions` where `transactions`.`userId` = ? order by `transactions`.`date` desc",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "getTransactionsByISIN": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `date`, `type`, `isin`, `wkn`, `name`, `quantity`, `price`, `fees`, `totalAmount`, `orderNumber`, `invoiceNumber`, `createdAt` from `transactions` where (`transactions`.`userId` = ? and `transactions`.`isin` = ?) order by `transactions`.`date` desc",
+          "params": [
+            1,
+            "DE0000000001"
+          ]
+        }
+      ]
+    },
+    "updatePortfolioFromTransaction": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt` from `portfolio_positions` where (`portfolio_positions`.`userId` = ? and `portfolio_positions`.`wkn` = ?) limit ?",
+          "params": [
+            1,
+            "A1",
+            1
+          ]
+        },
+        {
+          "sql": "insert into `portfolio_positions` (`id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, default, default, default, default, default, default, default, default)",
+          "params": [
+            1,
+            "A1",
+            "DE0000000001",
+            "Alpha",
+            "ETF",
+            "ETF",
+            "1",
+            "2",
+            null,
+            "Halten",
+            true,
+            "Importiert aus DKB-Abrechnung am 15.1.2026"
+          ]
+        }
+      ]
+    },
+    "getTaxSources": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `name`, `exemptionOrder`, `notes`, `createdAt`, `updatedAt` from `tax_sources` where `tax_sources`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "createTaxSource": {
+      "sql": [
+        {
+          "sql": "insert into `tax_sources` (`id`, `userId`, `name`, `exemptionOrder`, `notes`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "Bank",
+            "100",
+            "n"
+          ]
+        }
+      ]
+    },
+    "updateTaxSource": {
+      "sql": [
+        {
+          "sql": "update `tax_sources` set `name` = ? where (`tax_sources`.`id` = ? and `tax_sources`.`userId` = ?)",
+          "params": [
+            "Bank2",
+            2,
+            1
+          ]
+        }
+      ]
+    },
+    "deleteTaxSource": {
+      "sql": [
+        {
+          "sql": "delete from `tax_sources` where (`tax_sources`.`id` = ? and `tax_sources`.`userId` = ?)",
+          "params": [
+            2,
+            1
+          ]
+        }
+      ]
+    },
+    "getTaxSettings": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `stockLossPot`, `otherLossPot`, `maxExemptionOrder`, `createdAt`, `updatedAt` from `tax_settings` where `tax_settings`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "saveTaxSettings": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `stockLossPot`, `otherLossPot`, `maxExemptionOrder`, `createdAt`, `updatedAt` from `tax_settings` where `tax_settings`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "insert into `tax_settings` (`id`, `userId`, `stockLossPot`, `otherLossPot`, `maxExemptionOrder`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "5",
+            "0",
+            "1000"
+          ]
+        }
+      ]
+    },
+    "getTotalExemptionOrders": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `name`, `exemptionOrder`, `notes`, `createdAt`, `updatedAt` from `tax_sources` where `tax_sources`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "getAllowances": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `year`, `amount`, `used`, `broker`, `notes`, `createdAt`, `updatedAt` from `tax_allowances` where `tax_allowances`.`userId` = ? order by `tax_allowances`.`year` desc",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "createAllowance": {
+      "sql": [
+        {
+          "sql": "insert into `tax_allowances` (`id`, `userId`, `year`, `amount`, `used`, `broker`, `notes`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, ?, default, default, default)",
+          "params": [
+            1,
+            2026,
+            "1000",
+            "0",
+            "DKB"
+          ]
+        }
+      ]
+    },
+    "updateAllowance": {
+      "sql": [
+        {
+          "sql": "update `tax_allowances` set `used` = ? where (`tax_allowances`.`id` = ? and `tax_allowances`.`userId` = ?)",
+          "params": [
+            "10",
+            3,
+            1
+          ]
+        }
+      ]
+    },
+    "deleteAllowance": {
+      "sql": [
+        {
+          "sql": "delete from `tax_allowances` where (`tax_allowances`.`id` = ? and `tax_allowances`.`userId` = ?)",
+          "params": [
+            3,
+            1
+          ]
+        }
+      ]
+    },
+    "getLossCarryforwards": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `year`, `category`, `amount`, `broker`, `notes`, `createdAt`, `updatedAt` from `loss_carryforwards` where `loss_carryforwards`.`userId` = ? order by `loss_carryforwards`.`year` desc",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "createLossCarryforward": {
+      "sql": [
+        {
+          "sql": "insert into `loss_carryforwards` (`id`, `userId`, `year`, `category`, `amount`, `broker`, `notes`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, ?, default, default, default, default)",
+          "params": [
+            1,
+            2025,
+            "stocks",
+            "100"
+          ]
+        }
+      ]
+    },
+    "updateLossCarryforward": {
+      "sql": [
+        {
+          "sql": "update `loss_carryforwards` set `amount` = ? where (`loss_carryforwards`.`id` = ? and `loss_carryforwards`.`userId` = ?)",
+          "params": [
+            "50",
+            6,
+            1
+          ]
+        }
+      ]
+    },
+    "deleteLossCarryforward": {
+      "sql": [
+        {
+          "sql": "delete from `loss_carryforwards` where (`loss_carryforwards`.`id` = ? and `loss_carryforwards`.`userId` = ?)",
+          "params": [
+            6,
+            1
+          ]
+        }
+      ]
+    },
+    "clearAllTransactions": {
+      "sql": [
+        {
+          "sql": "delete from `transactions` where `transactions`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "getTrafficLightEntries": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `ticker`, `wkn`, `name`, `currentPrice`, `sma50`, `sma200`, `signal`, `signalDetail`, `lastUpdated`, `createdAt` from `stock_traffic_light` where `stock_traffic_light`.`userId` = ? order by `stock_traffic_light`.`name` asc",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "addTrafficLightEntry": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `ticker`, `wkn`, `name`, `currentPrice`, `sma50`, `sma200`, `signal`, `signalDetail`, `lastUpdated`, `createdAt` from `stock_traffic_light` where (`stock_traffic_light`.`userId` = ? and `stock_traffic_light`.`ticker` = ?) limit ?",
+          "params": [
+            1,
+            "AAA",
+            1
+          ]
+        },
+        {
+          "sql": "insert into `stock_traffic_light` (`id`, `userId`, `ticker`, `wkn`, `name`, `currentPrice`, `sma50`, `sma200`, `signal`, `signalDetail`, `lastUpdated`, `createdAt`) values (default, ?, ?, ?, ?, default, default, default, default, default, default, default)",
+          "params": [
+            1,
+            "AAA",
+            "A1",
+            "Alpha"
+          ]
+        }
+      ]
+    },
+    "updateTrafficLightData": {
+      "sql": [
+        {
+          "sql": "update `stock_traffic_light` set `currentPrice` = ?, `sma50` = ?, `sma200` = ?, `signal` = ?, `signalDetail` = ?, `lastUpdated` = ? where (`stock_traffic_light`.`id` = ? and `stock_traffic_light`.`userId` = ?)",
+          "params": [
+            "1",
+            "1",
+            "1",
+            "GRUEN",
+            "ok",
+            "2026-01-15 12:00:00.000",
+            8,
+            1
+          ]
+        }
+      ]
+    },
+    "deleteTrafficLightEntry": {
+      "sql": [
+        {
+          "sql": "delete from `stock_traffic_light` where (`stock_traffic_light`.`id` = ? and `stock_traffic_light`.`userId` = ?)",
+          "params": [
+            8,
+            1
+          ]
+        }
+      ]
+    },
+    "recordSnapshotIfNeeded": {
+      "sql": [
+        {
+          "sql": "insert into `portfolio_snapshots` (`id`, `userId`, `snapshotDate`, `totalValue`, `totalInvested`, `createdAt`) values (default, ?, ?, ?, ?, default)",
+          "params": [
+            1,
+            "2026-01-15",
+            "1000",
+            "900"
+          ]
+        }
+      ]
+    },
+    "getPortfolioSnapshots": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `snapshotDate`, `totalValue`, `totalInvested`, `createdAt` from `portfolio_snapshots` where (`portfolio_snapshots`.`userId` = ? and `portfolio_snapshots`.`snapshotDate` >= ?) order by `portfolio_snapshots`.`snapshotDate` asc",
+          "params": [
+            1,
+            "2025-12-16"
+          ]
+        }
+      ]
+    },
+    "saveEinstiegsanalyse": {
+      "sql": [
+        {
+          "sql": "insert into `einstiegsanalysen` (`id`, `userId`, `ticker`, `wkn`, `name`, `preisBeiAnalyse`, `kurssprungAusgeloest`, `kurssprungWochenperf`, `kurssprungGrund`, `kurssprungSpezifisch`, `kurssprungVorlauf`, `kurssprungKonsequenz`, `coolDown`, `kriterium1Signal`, `kriterium1Detail`, `kriterium2Signal`, `kriterium2Detail`, `kriterium3Signal`, `kriterium3Detail`, `kriterium4Signal`, `kriterium4Detail`, `these`, `exitThese`, `ergebnis`, `gruenCount`, `gelbCount`, `rotCount`, `createdAt`) values (default, ?, ?, default, ?, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default)",
+          "params": [
+            1,
+            "AAA",
+            "Alpha"
+          ]
+        }
+      ]
+    },
+    "getEinstiegsanalysen": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `ticker`, `wkn`, `name`, `preisBeiAnalyse`, `kurssprungAusgeloest`, `kurssprungWochenperf`, `kurssprungGrund`, `kurssprungSpezifisch`, `kurssprungVorlauf`, `kurssprungKonsequenz`, `coolDown`, `kriterium1Signal`, `kriterium1Detail`, `kriterium2Signal`, `kriterium2Detail`, `kriterium3Signal`, `kriterium3Detail`, `kriterium4Signal`, `kriterium4Detail`, `these`, `exitThese`, `ergebnis`, `gruenCount`, `gelbCount`, `rotCount`, `createdAt` from `einstiegsanalysen` where `einstiegsanalysen`.`userId` = ? order by `einstiegsanalysen`.`createdAt` desc",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "getEinstiegsanalyse": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `ticker`, `wkn`, `name`, `preisBeiAnalyse`, `kurssprungAusgeloest`, `kurssprungWochenperf`, `kurssprungGrund`, `kurssprungSpezifisch`, `kurssprungVorlauf`, `kurssprungKonsequenz`, `coolDown`, `kriterium1Signal`, `kriterium1Detail`, `kriterium2Signal`, `kriterium2Detail`, `kriterium3Signal`, `kriterium3Detail`, `kriterium4Signal`, `kriterium4Detail`, `these`, `exitThese`, `ergebnis`, `gruenCount`, `gelbCount`, `rotCount`, `createdAt` from `einstiegsanalysen` where (`einstiegsanalysen`.`id` = ? and `einstiegsanalysen`.`userId` = ?) limit ?",
+          "params": [
+            9,
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    "deleteEinstiegsanalyse": {
+      "sql": [
+        {
+          "sql": "delete from `einstiegsanalysen` where (`einstiegsanalysen`.`id` = ? and `einstiegsanalysen`.`userId` = ?)",
+          "params": [
+            9,
+            1
+          ]
+        }
+      ]
+    },
+    "getInnovationsbudgetJahr": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `jahr`, `zielbetrag`, `updatedAt` from `innovationsbudget_jahresziel` where (`innovationsbudget_jahresziel`.`userId` = ? and `innovationsbudget_jahresziel`.`jahr` = ?) limit ?",
+          "params": [
+            1,
+            2026,
+            1
+          ]
+        },
+        {
+          "sql": "select `id`, `userId`, `jahr`, `ticker`, `name`, `betrag`, `beschreibung`, `einstiegsanalyseId`, `datum`, `createdAt` from `innovationsbudget_nutzung` where (`innovationsbudget_nutzung`.`userId` = ? and `innovationsbudget_nutzung`.`jahr` = ?) order by `innovationsbudget_nutzung`.`datum` desc",
+          "params": [
+            1,
+            2026
+          ]
+        }
+      ]
+    },
+    "setInnovationsbudgetZiel": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `jahr`, `zielbetrag`, `updatedAt` from `innovationsbudget_jahresziel` where (`innovationsbudget_jahresziel`.`userId` = ? and `innovationsbudget_jahresziel`.`jahr` = ?) limit ?",
+          "params": [
+            1,
+            2026,
+            1
+          ]
+        },
+        {
+          "sql": "insert into `innovationsbudget_jahresziel` (`id`, `userId`, `jahr`, `zielbetrag`, `updatedAt`) values (default, ?, ?, ?, default)",
+          "params": [
+            1,
+            2026,
+            "1000"
+          ]
+        }
+      ]
+    },
+    "addInnovationsbudgetNutzung": {
+      "sql": [
+        {
+          "sql": "insert into `innovationsbudget_nutzung` (`id`, `userId`, `jahr`, `ticker`, `name`, `betrag`, `beschreibung`, `einstiegsanalyseId`, `datum`, `createdAt`) values (default, ?, ?, ?, ?, ?, ?, ?, ?, default)",
+          "params": [
+            1,
+            2026,
+            "AAA",
+            "Alpha",
+            "100",
+            null,
+            null,
+            "2026-02-01"
+          ]
+        }
+      ]
+    },
+    "removeInnovationsbudgetNutzung": {
+      "sql": [
+        {
+          "sql": "delete from `innovationsbudget_nutzung` where (`innovationsbudget_nutzung`.`id` = ? and `innovationsbudget_nutzung`.`userId` = ?)",
+          "params": [
+            10,
+            1
+          ]
+        }
+      ]
+    },
+    "getMusterdepotSettings": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `startkapital`, `cashBalance`, `createdAt`, `updatedAt` from `musterdepot_settings` where `musterdepot_settings`.`userId` = ? limit ?",
+          "params": [
+            1,
+            1
+          ]
+        },
+        {
+          "sql": "insert into `musterdepot_settings` (`id`, `userId`, `startkapital`, `cashBalance`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "10000",
+            "10000"
+          ]
+        }
+      ]
+    },
+    "setMusterdepotCashBalance": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `startkapital`, `cashBalance`, `createdAt`, `updatedAt` from `musterdepot_settings` where `musterdepot_settings`.`userId` = ? limit ?",
+          "params": [
+            1,
+            1
+          ]
+        },
+        {
+          "sql": "insert into `musterdepot_settings` (`id`, `userId`, `startkapital`, `cashBalance`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "10000",
+            "10000"
+          ]
+        },
+        {
+          "sql": "update `musterdepot_settings` set `cashBalance` = ? where `musterdepot_settings`.`userId` = ?",
+          "params": [
+            "5000",
+            1
+          ]
+        }
+      ]
+    },
+    "resetMusterdepot": {
+      "sql": [
+        {
+          "sql": "delete from `musterdepot_positions` where `musterdepot_positions`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "delete from `musterdepot_transactions` where `musterdepot_transactions`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "select `id` from `musterdepot_settings` where `musterdepot_settings`.`userId` = ? limit ?",
+          "params": [
+            1,
+            1
+          ]
+        },
+        {
+          "sql": "insert into `musterdepot_settings` (`id`, `userId`, `startkapital`, `cashBalance`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "10000",
+            "10000"
+          ]
+        }
+      ]
+    },
+    "getMusterdepotPositions": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `amount`, `buyPrice`, `currentPrice`, `notes`, `createdAt`, `updatedAt` from `musterdepot_positions` where `musterdepot_positions`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "getMusterdepotTransactions": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `positionId`, `date`, `type`, `wkn`, `ticker`, `name`, `quantity`, `price`, `totalAmount`, `createdAt` from `musterdepot_transactions` where `musterdepot_transactions`.`userId` = ? order by `musterdepot_transactions`.`date` desc",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "buyMusterdepotPosition": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `startkapital`, `cashBalance`, `createdAt`, `updatedAt` from `musterdepot_settings` where `musterdepot_settings`.`userId` = ? limit ?",
+          "params": [
+            1,
+            1
+          ]
+        },
+        {
+          "sql": "insert into `musterdepot_settings` (`id`, `userId`, `startkapital`, `cashBalance`, `createdAt`, `updatedAt`) values (default, ?, ?, ?, default, default)",
+          "params": [
+            1,
+            "10000",
+            "10000"
+          ]
+        },
+        {
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `amount`, `buyPrice`, `currentPrice`, `notes`, `createdAt`, `updatedAt` from `musterdepot_positions` where (`musterdepot_positions`.`userId` = ? and `musterdepot_positions`.`ticker` = ? and `musterdepot_positions`.`type` = ?) limit ?",
+          "params": [
+            1,
+            "AAA",
+            "Aktie",
+            1
+          ]
+        },
+        {
+          "sql": "insert into `musterdepot_positions` (`id`, `userId`, `wkn`, `ticker`, `name`, `type`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `amount`, `buyPrice`, `currentPrice`, `notes`, `createdAt`, `updatedAt`) values (default, ?, default, ?, ?, ?, default, default, ?, ?, ?, ?, ?, ?, default, default, default)",
+          "params": [
+            1,
+            "AAA",
+            "Alpha",
+            "Aktie",
+            null,
+            null,
+            null,
+            "100",
+            "5",
+            "5"
+          ]
+        },
+        {
+          "sql": "update `musterdepot_settings` set `cashBalance` = ? where `musterdepot_settings`.`userId` = ?",
+          "params": [
+            "9500",
+            1
+          ]
+        },
+        {
+          "sql": "insert into `musterdepot_transactions` (`id`, `userId`, `positionId`, `date`, `type`, `wkn`, `ticker`, `name`, `quantity`, `price`, `totalAmount`, `createdAt`) values (default, ?, default, ?, ?, default, ?, ?, ?, ?, ?, default)",
+          "params": [
+            1,
+            "2026-01-15 12:00:00.000",
+            "Kauf",
+            "AAA",
+            "Alpha",
+            "100",
+            "5",
+            "500"
+          ]
+        }
+      ]
+    },
+    "sellMusterdepotPosition": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `amount`, `buyPrice`, `currentPrice`, `notes`, `createdAt`, `updatedAt` from `musterdepot_positions` where (`musterdepot_positions`.`id` = ? and `musterdepot_positions`.`userId` = ?) limit ?",
+          "params": [
+            11,
+            1,
+            1
+          ]
+        }
+      ],
+      "fehler": "Position nicht gefunden"
+    },
+    "updateMusterdepotPosition": {
+      "sql": [
+        {
+          "sql": "update `musterdepot_positions` set `name` = ? where (`musterdepot_positions`.`id` = ? and `musterdepot_positions`.`userId` = ?)",
+          "params": [
+            "Alpha2",
+            11,
+            1
+          ]
+        }
+      ]
+    },
+    "updateMusterdepotPositionPrice": {
+      "sql": [
+        {
+          "sql": "update `musterdepot_positions` set `currentPrice` = ? where (`musterdepot_positions`.`id` = ? and `musterdepot_positions`.`userId` = ?)",
+          "params": [
+            "6",
+            11,
+            1
+          ]
+        }
+      ]
+    },
+    "ausstieg.listMarken": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `positionId`, `basisKurs`, `verlustPct`, `gewinnPct`, `monate`, `notiz`, `createdAt`, `updatedAt` from `ausstiegs_marken` where `ausstiegs_marken`.`userId` = ?",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "ausstieg.speichereMarken": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt` from `portfolio_positions` where (`portfolio_positions`.`id` = ? and `portfolio_positions`.`userId` = ?) limit ?",
+          "params": [
+            7,
+            1,
+            1
+          ]
+        }
+      ],
+      "fehler": "Position nicht gefunden"
+    },
+    "ausstieg.loescheMarken": {
+      "sql": [
+        {
+          "sql": "delete from `ausstiegs_marken` where (`ausstiegs_marken`.`userId` = ? and `ausstiegs_marken`.`positionId` = ?)",
+          "params": [
+            1,
+            7
+          ]
+        }
+      ]
+    },
+    "waechterAnalysen.save": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt` from `portfolio_positions` where (`portfolio_positions`.`userId` = ? and `portfolio_positions`.`id` in (?))",
+          "params": [
+            1,
+            7
+          ]
+        }
+      ],
+      "fehler": "Position nicht gefunden"
+    },
+    "waechterAnalysen.list": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `positionId`, `ticker`, `name`, `runId`, `trendAtAnalysis`, `priceAtAnalysis`, `grundlage`, `datenlage`, `begruendung`, `offen`, `rawText`, `kiName`, `createdAt` from `waechter_analysen` where `waechter_analysen`.`userId` = ? order by `waechter_analysen`.`createdAt` desc, `waechter_analysen`.`id` desc",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "waechterAnalysen.delete": {
+      "sql": [
+        {
+          "sql": "delete from `waechter_analysen` where (`waechter_analysen`.`id` = ? and `waechter_analysen`.`userId` = ?)",
+          "params": [
+            3,
+            1
+          ]
+        }
+      ]
+    },
+    "waechter.getLatestRun": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `startedAt`, `finishedAt`, `positionenGeprueft`, `positionenOhneDaten` from `waechter_laeufe` where (`waechter_laeufe`.`userId` = ? and `waechter_laeufe`.`finishedAt` is not null) order by `waechter_laeufe`.`finishedAt` desc limit ?",
+          "params": [
+            1,
+            2
+          ]
+        }
+      ]
+    },
+    "waechter.getLastChecked": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `startedAt`, `finishedAt`, `positionenGeprueft`, `positionenOhneDaten` from `waechter_laeufe` where (`waechter_laeufe`.`userId` = ? and `waechter_laeufe`.`finishedAt` is not null) order by `waechter_laeufe`.`finishedAt` desc limit ?",
+          "params": [
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    "waechter.setPositionMuted": {
+      "sql": [
+        {
+          "sql": "update `portfolio_positions` set `waechterMuted` = ? where (`portfolio_positions`.`id` = ? and `portfolio_positions`.`userId` = ?)",
+          "params": [
+            true,
+            7,
+            1
+          ]
+        }
+      ]
+    },
+    "waechter.markPromptCopied": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `startedAt`, `finishedAt`, `positionenGeprueft`, `positionenOhneDaten` from `waechter_laeufe` where (`waechter_laeufe`.`userId` = ? and `waechter_laeufe`.`finishedAt` is not null) order by `waechter_laeufe`.`finishedAt` desc limit ?",
+          "params": [
+            1,
+            1
+          ]
+        }
+      ],
+      "fehler": "Kein abgeschlossener Wächter-Lauf vorhanden"
+    },
+    "waechter.finishRun": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `startedAt`, `finishedAt`, `positionenGeprueft`, `positionenOhneDaten` from `waechter_laeufe` where (`waechter_laeufe`.`id` = ? and `waechter_laeufe`.`userId` = ?) limit ?",
+          "params": [
+            3,
+            1,
+            1
+          ]
+        }
+      ],
+      "fehler": "Wächter-Lauf nicht gefunden"
+    },
+    "waechter.startRun": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt` from `portfolio_positions` where `portfolio_positions`.`userId` = ?",
+          "params": [
+            1
+          ]
+        },
+        {
+          "sql": "insert into `waechter_laeufe` (`id`, `userId`, `startedAt`, `finishedAt`, `positionenGeprueft`, `positionenOhneDaten`) values (default, ?, default, default, default, default)",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "morningNote.history": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `headline`, `bodyMarkdown`, `positionsCovered`, `errorMessage`, `createdAt` from `morning_notes` where `morning_notes`.`userId` = ? order by `morning_notes`.`createdAt` desc limit ?",
+          "params": [
+            1,
+            5
+          ]
+        }
+      ]
+    },
+    "morningNote.latest": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `headline`, `bodyMarkdown`, `positionsCovered`, `errorMessage`, `createdAt` from `morning_notes` where `morning_notes`.`userId` = ? order by `morning_notes`.`createdAt` desc limit ?",
+          "params": [
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    "kiExperiment.latest": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `runId`, `model`, `ticker`, `name`, `bodyMarkdown`, `virtualAmount`, `entryPrice`, `entryCurrency`, `entryDate`, `currentPrice`, `lastPriceCheckAt`, `status`, `closedAt`, `closePrice`, `closeReturnPercent`, `errorMessage`, `createdAt` from `ki_experiment_picks` where `ki_experiment_picks`.`userId` = ? order by `ki_experiment_picks`.`createdAt` desc limit ?",
+          "params": [
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    "kiExperiment.history": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `runId`, `model`, `ticker`, `name`, `bodyMarkdown`, `virtualAmount`, `entryPrice`, `entryCurrency`, `entryDate`, `currentPrice`, `lastPriceCheckAt`, `status`, `closedAt`, `closePrice`, `closeReturnPercent`, `errorMessage`, `createdAt` from `ki_experiment_picks` where `ki_experiment_picks`.`userId` = ? order by `ki_experiment_picks`.`createdAt` desc",
+          "params": [
+            1
+          ]
+        }
+      ]
+    },
+    "kiExperiment.stats": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `runId`, `model`, `ticker`, `name`, `bodyMarkdown`, `virtualAmount`, `entryPrice`, `entryCurrency`, `entryDate`, `currentPrice`, `lastPriceCheckAt`, `status`, `closedAt`, `closePrice`, `closeReturnPercent`, `errorMessage`, `createdAt` from `ki_experiment_picks` where (`ki_experiment_picks`.`userId` = ? and `ki_experiment_picks`.`status` = ?)",
+          "params": [
+            1,
+            "geschlossen"
+          ]
+        }
+      ]
+    },
+    "techWarning.history": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `overallSignal`, `indicators`, `summary`, `errorMessage`, `createdAt` from `tech_warning_signals` where `tech_warning_signals`.`userId` = ? order by `tech_warning_signals`.`createdAt` desc limit ?",
+          "params": [
+            1,
+            5
+          ]
+        }
+      ]
+    },
+    "techWarning.latest": {
+      "sql": [
+        {
+          "sql": "select `id`, `userId`, `overallSignal`, `indicators`, `summary`, `errorMessage`, `createdAt` from `tech_warning_signals` where `tech_warning_signals`.`userId` = ? order by `tech_warning_signals`.`createdAt` desc limit ?",
+          "params": [
+            1,
+            1
+          ]
+        }
+      ]
+    }
+  }
+}

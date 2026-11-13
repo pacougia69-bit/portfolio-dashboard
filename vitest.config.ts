@@ -13,6 +13,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     // server/ausstieg.test.ts ersetzt Datenbank und Netz durch Attrappen, läuft also ohne beides.
-    include: ['shared/**/*.test.ts', 'server/ausstieg.test.ts'],
+    include: ['shared/**/*.test.ts', 'server/ausstieg.test.ts', 'server/sql-vergleich.test.ts'],
   },
 });
