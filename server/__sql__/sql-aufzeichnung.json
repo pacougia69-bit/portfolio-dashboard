@@ -545,11 +545,10 @@
     "updatePortfolioFromTransaction": {
       "sql": [
         {
-          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt` from `portfolio_positions` where (`portfolio_positions`.`userId` = ? and `portfolio_positions`.`wkn` = ?) limit ?",
+          "sql": "select `id`, `userId`, `wkn`, `ticker`, `name`, `type`, `category`, `amount`, `buyPrice`, `currentPrice`, `status`, `autoUpdate`, `notes`, `issuer`, `direction`, `gearing`, `koThreshold`, `koPufferPct`, `waechterMuted`, `createdAt`, `updatedAt` from `portfolio_positions` where (`portfolio_positions`.`userId` = ? and `portfolio_positions`.`wkn` = ?)",
           "params": [
             1,
-            "A1",
-            1
+            "A1"
           ]
         },
         {

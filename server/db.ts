@@ -22,6 +22,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { getEurUsdRate, USD_DENOMINATED_WKNS } from './currency';
+import { waehleImportPosition } from "@shared/import-position";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -820,12 +821,12 @@ export async function updatePortfolioFromTransaction(
     // We need to search by ISIN - but we don't have ISIN in portfolioPositions
     // Let's search by WKN if available
     if (wkn) {
+      // Alle Positionen mit dieser WKN laden: manche stehen absichtlich zweimal im Depot
+      // (z. B. XAIX = A2N6LC, Altbestand + Neukäufe). Welche gilt, entscheidet
+      // waehleImportPosition (Kauf/Sparplan -> neueste, Verkauf -> neueste, die reicht).
       const positions = await db.select().from(portfolioPositions)
-        .where(and(eq(portfolioPositions.userId, userId), eq(portfolioPositions.wkn, wkn)))
-        .limit(1);
-      if (positions.length > 0) {
-        existingPosition = positions[0];
-      }
+        .where(and(eq(portfolioPositions.userId, userId), eq(portfolioPositions.wkn, wkn)));
+      existingPosition = waehleImportPosition(positions, transactionType, quantity);
     }
   }
 
